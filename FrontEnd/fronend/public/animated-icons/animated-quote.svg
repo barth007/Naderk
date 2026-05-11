@@ -1,0 +1,15 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      @keyframes quotePulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.1); opacity: 0.8; }
+      }
+      #quote-path {
+        animation: quotePulse 3s ease-in-out infinite;
+        transform-origin: center center;
+      }
+    </style>
+  </defs>
+  <path id="quote-path" d="M3 21c3 0 7-1 7-8V5H3v8h5c0 2-1 4-5 6v2zm11 0c3 0 7-1 7-8V5h-7v8h5c0 2-1 4-5 6v2z" fill="#E53935"/>
+</svg>

@@ -1,0 +1,7 @@
+export { AboutHeroSection } from "./AboutHeroSection"
+export { VisionMissionSection } from "./VisionMissionSection"
+export { CorePillarsSection } from "./CorePillarsSection"
+export { TeamSection } from "./TeamSection"
+export { PromiseMandateSection } from "./PromiseMandateSection"
+export * from "./about.constants"
+export * from "./about.types"

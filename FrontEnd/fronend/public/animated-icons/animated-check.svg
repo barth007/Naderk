@@ -1,0 +1,16 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      @keyframes checkDraw {
+        from { stroke-dashoffset: 20; }
+        to { stroke-dashoffset: 0; }
+      }
+      #check-path {
+        stroke-dasharray: 20;
+        stroke-dashoffset: 20;
+        animation: checkDraw 1.5s ease-out forwards;
+      }
+    </style>
+  </defs>
+  <path id="check-path" d="M20 6L9 17L4 12" stroke="#E53935" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

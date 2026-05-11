@@ -1,0 +1,16 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      @keyframes phoneRing {
+        0%, 100% { transform: rotate(0deg); }
+        10%, 30%, 50% { transform: rotate(-10deg); }
+        20%, 40% { transform: rotate(10deg); }
+      }
+      #phone-path {
+        animation: phoneRing 5s ease-in-out infinite;
+        transform-origin: center center;
+      }
+    </style>
+  </defs>
+  <path id="phone-path" d="M22 16.92V19.92C22 20.47 21.53 20.94 20.97 20.91C19.14 20.81 17.39 20.31 15.77 19.46C14.3 18.68 13.04 17.5 12.18 16.03C11.33 14.41 10.83 12.66 10.73 10.83C10.7 10.27 11.17 9.8 11.72 9.8H14.72C15.22 9.8 15.64 10.16 15.71 10.65C15.81 11.4 16 12.13 16.28 12.83C16.42 13.18 16.33 13.57 16.08 13.82L14.81 15.09C15.72 16.8 17.15 18.23 18.86 19.14L20.13 17.87C20.38 17.62 20.77 17.53 21.12 17.67C21.82 17.95 22.55 18.14 23.3 18.24C23.79 18.31 24.15 18.73 24.15 19.23L22 16.92Z" fill="#E53935"/>
+</svg>

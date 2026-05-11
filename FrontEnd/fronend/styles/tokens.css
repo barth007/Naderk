@@ -1,0 +1,199 @@
+/* ============================================================
+   NADERK DESIGN TOKENS — Source of Truth
+   All semantic CSS custom properties.
+   Never use raw values in components — always reference tokens.
+   ============================================================ */
+
+:root {
+  --font-size: 16px;
+
+  /* ── BACKGROUNDS ─────────────────────────────────────────── */
+  --background: #ffffff;
+  --foreground: oklch(0.145 0 0);
+
+  /* ── CARD ────────────────────────────────────────────────── */
+  --card: #ffffff;
+  --card-foreground: oklch(0.145 0 0);
+
+  /* ── POPOVER ─────────────────────────────────────────────── */
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+
+  /* ── PRIMARY ─────────────────────────────────────────────── */
+  --primary: #030213;
+  --primary-foreground: oklch(1 0 0);
+
+  /* ── SECONDARY ───────────────────────────────────────────── */
+  --secondary: oklch(0.95 0.0058 264.53);
+  --secondary-foreground: #030213;
+
+  /* ── MUTED ───────────────────────────────────────────────── */
+  --muted: #ececf0;
+  --muted-foreground: #717182;
+
+  /* ── ACCENT ──────────────────────────────────────────────── */
+  --accent: #e9ebef;
+  --accent-foreground: #030213;
+
+  /* ── DESTRUCTIVE ─────────────────────────────────────────── */
+  --destructive: #d4183d;
+  --destructive-foreground: #ffffff;
+
+  /* ── BORDER / INPUT ──────────────────────────────────────── */
+  --border: rgba(0, 0, 0, 0.1);
+  --input: transparent;
+  --input-background: #f3f3f5;
+  --switch-background: #cbced4;
+
+  /* ── FOCUS RING ──────────────────────────────────────────── */
+  --ring: oklch(0.708 0 0);
+
+  /* ── NAVIGATION LINKS ────────────────────────────────────── */
+  --nav-link-active: #1F2933;
+  --nav-link: #1F2933B3;
+
+  /* ── CHART ───────────────────────────────────────────────── */
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+
+  /* ── RADIUS ──────────────────────────────────────────────── */
+  --radius: 0.625rem;
+  --radius-xs:   calc(var(--radius) - 0.375rem);   /* 0.25rem  */
+  --radius-sm:   calc(var(--radius) - 0.125rem);   /* 0.5rem   */
+  --radius-md:   var(--radius);                    /* 0.625rem */
+  --radius-lg:   calc(var(--radius) + 0.375rem);   /* 1rem     */
+  --radius-xl:   calc(var(--radius) + 0.875rem);   /* 1.5rem   */
+  --radius-2xl:  calc(var(--radius) + 1.375rem);   /* 2rem     */
+  --radius-full: 9999px;
+
+  /* ── SIDEBAR ─────────────────────────────────────────────── */
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: #030213;
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+
+  /* ── TYPOGRAPHY ──────────────────────────────────────────── */
+  --font-sans: var(--font-geist-sans), "Avenir Next", "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", "Fira Code", monospace;
+
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-lg:   1.125rem;
+  --text-xl:   1.25rem;
+  --text-2xl:  1.5rem;
+  --text-3xl:  1.875rem;
+  --text-4xl:  2.25rem;
+  --text-5xl:  3rem;
+
+  --font-regular:  400;
+  --font-medium:   500;
+  --font-semibold: 600;
+  --font-bold:     700;
+
+  --leading-tight:   1.25;
+  --leading-snug:    1.375;
+  --leading-normal:  1.5;
+  --leading-relaxed: 1.75;
+
+  --tracking-tight:  -0.025em;
+  --tracking-normal: 0em;
+  --tracking-wide:   0.025em;
+
+  /* ── SPACING (4px base unit) ─────────────────────────────── */
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+  /* ── SHADOWS ─────────────────────────────────────────────── */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.07), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+
+  /* ── TRANSITIONS ─────────────────────────────────────────── */
+  --transition-fast:   100ms ease;
+  --transition-base:   150ms ease;
+  --transition-slow:   300ms ease;
+  --transition-slower: 500ms ease;
+}
+
+/* ============================================================
+   DARK THEME — overrides every semantic token
+   Applied via .dark class; pair with data-theme="naderk-dark"
+   for full DaisyUI component support.
+   ============================================================ */
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.985 0 0);
+
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --input-background: oklch(0.2 0 0);
+  --switch-background: oklch(0.35 0 0);
+
+  --ring: oklch(0.439 0 0);
+
+  /* ── NAVIGATION LINKS (dark) ─────────────────────────────── */
+  --nav-link-active: oklch(0.985 0 0);
+  --nav-link: oklch(0.985 0 0 / 0.7);
+
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
+
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px -1px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.35), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.2);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+}

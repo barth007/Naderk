@@ -1,0 +1,19 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      @keyframes focus {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(2px); }
+      }
+      #lens-part {
+        animation: focus 3s ease-in-out infinite;
+        transform-origin: center center;
+      }
+    </style>
+  </defs>
+  <path d="M6 18H18" stroke="#E53935" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M3 22H21" stroke="#E53935" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path id="lens-part" d="M12 2V14" stroke="#E53935" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="12" cy="14" r="2" stroke="#E53935" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M18 22V18C18 15.7909 16.2091 14 14 14" stroke="#E53935" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

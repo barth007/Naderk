@@ -1,0 +1,358 @@
+/* ============================================================
+   GLOBALS.CSS — Naderk Frontend
+   Entry point: loads Tailwind v4, DaisyUI v5, semantic tokens.
+
+   Architecture:
+   1. @import "tailwindcss"           — Tailwind v4 engine
+   2. @import "../styles/tokens.css"  — Semantic token definitions
+   3. @plugin "daisyui"               — DaisyUI components (no built-in themes)
+   4. @plugin "daisyui/theme"         — Custom light theme
+   5. @plugin "daisyui/theme"         — Custom dark theme
+   6. @theme inline                   — Maps tokens → Tailwind utility classes
+   7. @layer base                     — Global resets + typography
+   ============================================================ */
+
+/* ── 1. TAILWIND v4 ────────────────────────────────────────── */
+@import "tailwindcss";
+
+/* ── 2. SEMANTIC TOKENS (source of truth) ──────────────────── */
+@import "../styles/tokens.css";
+
+/* ── 3. DAISYUI PLUGIN (disable built-in themes; we define ours) */
+@plugin "daisyui" {
+  themes: false;
+}
+
+/* ── 4. NADERK LIGHT THEME ─────────────────────────────────── */
+@plugin "daisyui/theme" {
+  name: "naderk-light";
+  default: true;
+  color-scheme: light;
+
+  --color-base-100: #ffffff;
+  --color-base-200: #f3f3f5;
+  --color-base-300: #ececf0;
+  --color-base-content: oklch(0.145 0 0);
+
+  --color-primary: #030213;
+  --color-primary-content: oklch(1 0 0);
+
+  --color-secondary: oklch(0.95 0.0058 264.53);
+  --color-secondary-content: #030213;
+
+  --color-accent: #e9ebef;
+  --color-accent-content: #030213;
+
+  --color-neutral: #ececf0;
+  --color-neutral-content: #717182;
+
+  --color-info: oklch(0.65 0.15 231);
+  --color-info-content: oklch(1 0 0);
+
+  --color-success: oklch(0.65 0.15 160);
+  --color-success-content: oklch(1 0 0);
+
+  --color-warning: oklch(0.828 0.189 84.429);
+  --color-warning-content: oklch(0.2 0 0);
+
+  --color-error: #d4183d;
+  --color-error-content: #ffffff;
+
+  --radius-selector: 0.625rem;
+  --radius-field: 0.625rem;
+  --radius-box: 0.625rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* ── 5. NADERK DARK THEME ──────────────────────────────────── */
+@plugin "daisyui/theme" {
+  name: "naderk-dark";
+  prefersdark: true;
+  color-scheme: dark;
+
+  --color-base-100: oklch(0.145 0 0);
+  --color-base-200: oklch(0.185 0 0);
+  --color-base-300: oklch(0.269 0 0);
+  --color-base-content: oklch(0.985 0 0);
+
+  --color-primary: oklch(0.985 0 0);
+  --color-primary-content: oklch(0.205 0 0);
+
+  --color-secondary: oklch(0.269 0 0);
+  --color-secondary-content: oklch(0.985 0 0);
+
+  --color-accent: oklch(0.269 0 0);
+  --color-accent-content: oklch(0.985 0 0);
+
+  --color-neutral: oklch(0.32 0 0);
+  --color-neutral-content: oklch(0.708 0 0);
+
+  --color-info: oklch(0.488 0.243 264.376);
+  --color-info-content: oklch(0.985 0 0);
+
+  --color-success: oklch(0.696 0.17 162.48);
+  --color-success-content: oklch(0.185 0 0);
+
+  --color-warning: oklch(0.769 0.188 70.08);
+  --color-warning-content: oklch(0.185 0 0);
+
+  --color-error: oklch(0.396 0.141 25.723);
+  --color-error-content: oklch(0.637 0.237 25.331);
+
+  --radius-selector: 0.625rem;
+  --radius-field: 0.625rem;
+  --radius-box: 0.625rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/*
+  Dark mode bridge: applying .dark class also updates DaisyUI
+  component variables so both systems stay in sync.
+  Recommended usage: set both class AND data-theme together:
+    document.documentElement.classList.toggle('dark')
+    document.documentElement.dataset.theme = isDark ? 'naderk-dark' : 'naderk-light'
+*/
+.dark {
+  --color-base-100: oklch(0.145 0 0);
+  --color-base-200: oklch(0.185 0 0);
+  --color-base-300: oklch(0.269 0 0);
+  --color-base-content: oklch(0.985 0 0);
+
+  --color-primary: oklch(0.985 0 0);
+  --color-primary-content: oklch(0.205 0 0);
+
+  --color-secondary: oklch(0.269 0 0);
+  --color-secondary-content: oklch(0.985 0 0);
+
+  --color-accent: oklch(0.269 0 0);
+  --color-accent-content: oklch(0.985 0 0);
+
+  --color-neutral: oklch(0.32 0 0);
+  --color-neutral-content: oklch(0.708 0 0);
+
+  --color-info: oklch(0.488 0.243 264.376);
+  --color-info-content: oklch(0.985 0 0);
+
+  --color-success: oklch(0.696 0.17 162.48);
+  --color-success-content: oklch(0.185 0 0);
+
+  --color-warning: oklch(0.769 0.188 70.08);
+  --color-warning-content: oklch(0.185 0 0);
+
+  --color-error: oklch(0.396 0.141 25.723);
+  --color-error-content: oklch(0.637 0.237 25.331);
+
+  color-scheme: dark;
+}
+
+/* ── 6. TAILWIND UTILITY MAPPINGS (@theme inline) ──────────── */
+/*
+  @theme inline: maps CSS variables → Tailwind utility classes.
+  'inline' keeps values as var() references so they update at
+  runtime when .dark class or data-theme attribute changes.
+
+  Generated classes:
+    bg-background, text-foreground, bg-card, text-card-foreground,
+    bg-popover, bg-muted, text-muted-foreground, bg-destructive,
+    text-destructive-foreground, border-border, bg-input-bg,
+    ring-ring, bg-sidebar, text-sidebar-foreground,
+    text-chart-1…5, rounded-token, rounded-token-sm, etc.
+*/
+@theme inline {
+  /* Surfaces */
+  --color-background:            var(--background);
+  --color-foreground:            var(--foreground);
+  --color-card:                  var(--card);
+  --color-card-foreground:       var(--card-foreground);
+  --color-popover:               var(--popover);
+  --color-popover-foreground:    var(--popover-foreground);
+
+  /* Semantic state colors */
+  --color-muted:                 var(--muted);
+  --color-muted-foreground:      var(--muted-foreground);
+  --color-destructive:           var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  /* Border / Input / Ring */
+  --color-border:                var(--border);
+  --color-input-bg:              var(--input-background);
+  --color-switch-bg:             var(--switch-background);
+  --color-ring:                  var(--ring);
+
+  /* Charts */
+  --color-chart-1:               var(--chart-1);
+  --color-chart-2:               var(--chart-2);
+  --color-chart-3:               var(--chart-3);
+  --color-chart-4:               var(--chart-4);
+  --color-chart-5:               var(--chart-5);
+
+  /* Sidebar */
+  --color-sidebar:                      var(--sidebar);
+  --color-sidebar-foreground:           var(--sidebar-foreground);
+  --color-sidebar-primary:              var(--sidebar-primary);
+  --color-sidebar-primary-foreground:   var(--sidebar-primary-foreground);
+  --color-sidebar-accent:               var(--sidebar-accent);
+  --color-sidebar-accent-foreground:    var(--sidebar-accent-foreground);
+  --color-sidebar-border:               var(--sidebar-border);
+  --color-sidebar-ring:                 var(--sidebar-ring);
+
+  /* Navigation links */
+  --color-nav-link:                     var(--nav-link);
+  --color-nav-link-active:              var(--nav-link-active);
+
+  /* Typography */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* Border-radius scale (prefixed to avoid Tailwind default conflicts) */
+  --radius-token:     var(--radius);
+  --radius-token-xs:  var(--radius-xs);
+  --radius-token-sm:  var(--radius-sm);
+  --radius-token-md:  var(--radius-md);
+  --radius-token-lg:  var(--radius-lg);
+  --radius-token-xl:  var(--radius-xl);
+  --radius-token-2xl: var(--radius-2xl);
+}
+
+/* ── 7. BASE LAYER ──────────────────────────────────────────── */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    border-color: var(--border);
+  }
+
+  html {
+    font-size: var(--font-size);
+    -webkit-text-size-adjust: 100%;
+    tab-size: 4;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--leading-normal);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ── Headings ─────────────────────────────────────────────── */
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: var(--font-semibold);
+    line-height: var(--leading-tight);
+    color: var(--foreground);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  h1 { font-size: var(--text-4xl); }
+  h2 { font-size: var(--text-3xl); }
+  h3 { font-size: var(--text-2xl); }
+  h4 { font-size: var(--text-xl); }
+  h5 { font-size: var(--text-lg); }
+  h6 { font-size: var(--text-base); }
+
+  /* ── Body text ────────────────────────────────────────────── */
+  p {
+    line-height: var(--leading-relaxed);
+  }
+
+  small {
+    font-size: var(--text-sm);
+  }
+
+  /* ── Links ────────────────────────────────────────────────── */
+  a {
+    color: inherit;
+    text-decoration: none;
+    transition: opacity var(--transition-fast);
+  }
+
+  a:hover {
+    opacity: 0.8;
+  }
+
+  /* ── Code ─────────────────────────────────────────────────── */
+  code, kbd, samp, pre {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+
+  /* ── Images ───────────────────────────────────────────────── */
+  img, svg, video {
+    max-width: 100%;
+    display: block;
+  }
+
+  /* ── Focus ────────────────────────────────────────────────── */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* ── Selection ────────────────────────────────────────────── */
+  ::selection {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  /* ── Scrollbar (Webkit) ───────────────────────────────────── */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--muted);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--muted-foreground);
+    border-radius: var(--radius-full);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--foreground);
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  @keyframes marquee-left {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+
+  @keyframes marquee-right {
+    from { transform: translateX(-50%); }
+    to { transform: translateX(0); }
+  }
+
+  .animate-marquee-left {
+    animation: marquee-left 60s linear infinite;
+  }
+
+  .animate-marquee-right {
+    animation: marquee-right 60s linear infinite;
+  }
+}
