@@ -8,7 +8,15 @@ const siteName = "Naderk Eye Clinic";
 const defaultTitle = "Naderk Eye Clinic | Advanced Vision Care";
 const siteDescription =
   "Naderk Eye Clinic provides comprehensive eye care, telehealth consultations, laboratory diagnostics, and optical services with modern technology and expert support.";
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://naderk.vercel.app";
+
+const rawSiteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  process.env.VERCEL_PROJECT_PRODUCTION_URL ??
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+const siteUrl = rawSiteUrl.startsWith("http")
+  ? rawSiteUrl
+  : `https://${rawSiteUrl}`;
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -72,9 +80,9 @@ export const metadata: Metadata = {
     images: ["/naderk_logo.png"],
   },
   icons: {
-    icon: "/naderk_logo.png",
-    shortcut: "/naderk_logo.png",
-    apple: "/naderk_logo.png",
+    icon: "/icon.png",
+    shortcut: "/icon.png",
+    apple: "/icon.png",
   },
   category: "healthcare",
 };
