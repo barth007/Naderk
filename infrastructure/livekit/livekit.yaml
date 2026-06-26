@@ -1,0 +1,12 @@
+port: 7880
+rtc:
+  port_range_start: 7882
+  port_range_end: 7900
+  use_external_ip: false
+  # node_ip tells ICE candidates to use 127.0.0.1 so browsers reach the server
+  # through Docker's port mapping instead of the internal bridge IP (172.19.0.x).
+  node_ip: "127.0.0.1"
+keys:
+  devkey: naderk-livekit-dev-secret-key-2024
+logging:
+  level: info

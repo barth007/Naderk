@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Geist, Poppins } from "next/font/google";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
+import { ConditionalWrapper } from "@/components/layout/ConditionalWrapper";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const siteName = "Naderk Eye Clinic";
@@ -20,6 +22,12 @@ const siteUrl = rawSiteUrl.startsWith("http")
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const poppins = Poppins({
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-poppins",
   subsets: ["latin"],
 });
 
@@ -87,17 +95,28 @@ export const metadata: Metadata = {
   category: "healthcare",
 };
 
+import QueryProvider from "@/components/providers/QueryProvider";
+import Script from "next/script";
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} h-full antialiased`}>
+    <html lang="en" className={`${geistSans.variable} ${poppins.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
-        <Navbar />
-        <main className="flex-1">{children}</main>
-        <Footer />
+        <Script src="https://js.paystack.co/v1/inline.js" strategy="beforeInteractive" />
+        <QueryProvider>
+          <ConditionalWrapper>
+            <Navbar />
+          </ConditionalWrapper>
+          <main className="flex-1">{children}</main>
+          <ConditionalWrapper>
+            <Footer />
+          </ConditionalWrapper>
+          <Toaster richColors position="top-center" />
+        </QueryProvider>
       </body>
     </html>
   );

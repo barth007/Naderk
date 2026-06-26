@@ -1,4 +1,5 @@
 export { Button } from "./button"
+export { DatePicker } from "./DatePicker"
 export type { ButtonProps } from "./button"
 
 export {
@@ -19,20 +20,20 @@ export {
   Label,
   Textarea,
   Select,
-  Checkbox,
   Switch,
   FormField,
   FieldMessage,
 } from "./input"
+export { Checkbox } from "./Checkbox"
 export type {
   InputProps,
   LabelProps,
   TextareaProps,
   SelectProps,
-  CheckboxProps,
   SwitchProps,
   FormFieldProps,
 } from "./input"
+export type { CheckboxProps } from "./Checkbox"
 
 export {
   TableContainer,
@@ -71,3 +72,7 @@ export type {
   MiniBarChartProps,
   StatCardProps,
 } from "./chart"
+
+export { Avatar } from "./avatar"
+export type { AvatarProps } from "./avatar"
+

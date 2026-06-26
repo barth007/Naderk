@@ -22,6 +22,7 @@
 @plugin "daisyui" {
   themes: false;
 }
+@plugin "@tailwindcss/typography";
 
 /* ── 4. NADERK LIGHT THEME ─────────────────────────────────── */
 @plugin "daisyui/theme" {
@@ -211,6 +212,7 @@
   /* Typography */
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+  --font-poppins: var(--font-poppins);
 
   /* Border-radius scale (prefixed to avoid Tailwind default conflicts) */
   --radius-token:     var(--radius);

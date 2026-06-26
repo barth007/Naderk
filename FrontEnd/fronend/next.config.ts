@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // LiveKit's WebRTC peer connection cannot survive React Strict Mode's
+  // dev-only mount→cleanup→remount cycle. Strict Mode is a no-op in production.
+  reactStrictMode: false,
   images: {
     remotePatterns: [
       {
@@ -20,6 +23,31 @@ const nextConfig: NextConfig = {
         hostname: "i.pravatar.cc",
       },
     ],
+  },
+  async redirects() {
+    return [
+      // Catch stale /auth/login references — the real login page is /login
+      {
+        source: "/auth/login",
+        destination: "/login",
+        permanent: false,
+      },
+      {
+        source: "/services/optical-store",
+        destination: "/dashboard/marketplace",
+        permanent: true,
+      },
+      {
+        source: "/dashboard/store",
+        destination: "/dashboard/marketplace",
+        permanent: true,
+      },
+      {
+        source: "/marketplace/optical-builder",
+        destination: "/dashboard/marketplace/optical-builder",
+        permanent: true,
+      },
+    ];
   },
 };
 

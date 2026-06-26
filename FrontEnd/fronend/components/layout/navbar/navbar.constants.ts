@@ -24,8 +24,8 @@ export const DEFAULT_NAV_ITEMS: NavItem[] = [
         isFeatured: true,
       },
       {
-        label: "Optical Store",
-        href: "/services/optical-store",
+        label: "Naderk Marketplace",
+        href: "/dashboard/marketplace",
       },
       {
         label: "Telehealth / Virtual Care",
@@ -54,7 +54,7 @@ export const DEFAULT_NAV_ITEMS: NavItem[] = [
 export const DEFAULT_CTA_BUTTONS: CTAButton[] = [
   {
     label: "Get Started",
-    href: "/coming-soon",
+    href: "/register",
     variant: "soft",
   },
   {

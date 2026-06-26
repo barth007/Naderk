@@ -1,80 +1,68 @@
+import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
+import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/cn"
-import type { ButtonHTMLAttributes } from "react"
 
-/*
-  Semantic token usage:
-  - "btn"            → DaisyUI base (uses --color-base-*, --radius-field)
-  - "btn-primary"    → DaisyUI (uses --color-primary, --color-primary-content)
-  - "btn-secondary"  → DaisyUI (uses --color-secondary, --color-secondary-content)
-  - "btn-ghost"      → DaisyUI (hover: --color-base-200)
-  - "btn-destructive"→ custom: bg-destructive + text-destructive-foreground
-  - "btn-outline"    → DaisyUI outlined variant
-  - "btn-ghost"      → transparent with hover bg
-  - sizes map to DaisyUI btn-xs/sm/md/lg/xl
-*/
+const buttonVariants = cva(
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-normal font-poppins transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-[#E03E3E] text-white shadow hover:bg-[#c93636]",
+        destructive: "bg-red-500 text-slate-50 hover:bg-red-500/90",
+        outline: "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
+        secondary: "bg-[#faeaea] text-[#E03E3E] hover:bg-[#f3d6d6]",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-12 px-4 py-2",
+        sm: "h-8 rounded-md px-3 text-xs",
+        md: "h-10 px-4 py-2",
+        lg: "h-14 rounded-md px-8",
+        icon: "h-9 w-9",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+)
 
-const variantMap = {
-  primary:     "btn btn-primary",
-  secondary:   "btn btn-secondary",
-  accent:      "btn btn-accent",
-  ghost:       "btn btn-ghost",
-  outline:     "btn btn-outline",
-  neutral:     "btn btn-neutral",
-  destructive: "btn bg-destructive text-destructive-foreground hover:opacity-90 border-0",
-  link:        "btn btn-link",
-} as const
-
-const sizeMap = {
-  xs:  "btn-xs",
-  sm:  "btn-sm",
-  md:  "",
-  lg:  "btn-lg",
-  xl:  "btn-xl",
-} as const
-
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: keyof typeof variantMap
-  size?: keyof typeof sizeMap
-  loading?: boolean
-  wide?: boolean
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean
+  isLoading?: boolean
+  loadingText?: string
 }
 
-export function Button({
-  variant = "primary",
-  size = "md",
-  loading = false,
-  wide = false,
-  className,
-  children,
-  disabled,
-  ...props
-}: ButtonProps) {
-  return (
-    <button
-      className={cn(
-        variantMap[variant],
-        sizeMap[size],
-        wide && "btn-wide",
-        loading && "btn-disabled",
-        className
-      )}
-      disabled={disabled || loading}
-      aria-busy={loading}
-      {...props}
-    >
-      {loading && (
-        <span className="loading loading-spinner loading-xs" aria-hidden="true" />
-      )}
-      {children}
-    </button>
-  )
-}
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, asChild = false, isLoading, loadingText, children, disabled, ...props }, ref) => {
+    const Comp = asChild ? Slot : "button"
+    
+    return (
+      <Comp
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        disabled={disabled || isLoading}
+        {...props}
+      >
+        {asChild ? (
+          children
+        ) : (
+          <>
+            {isLoading && (
+              <span className="loading loading-spinner mr-2 w-4 h-4" />
+            )}
+            {isLoading && loadingText ? loadingText : children}
+          </>
+        )}
+      </Comp>
+    )
+  }
+)
+Button.displayName = "Button"
 
-/* ── Usage examples ────────────────────────────────────────────
-  <Button>Save</Button>
-  <Button variant="secondary">Cancel</Button>
-  <Button variant="destructive">Delete account</Button>
-  <Button variant="outline" size="sm">View details</Button>
-  <Button loading>Processing…</Button>
-  <Button variant="ghost" size="lg" wide>Browse catalog</Button>
-──────────────────────────────────────────────────────────────── */
+export { Button, buttonVariants }

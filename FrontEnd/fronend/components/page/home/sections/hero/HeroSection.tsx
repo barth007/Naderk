@@ -1,140 +1,280 @@
 "use client"
 
-import { motion } from "framer-motion"
+import { useState, useEffect, useCallback } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Badge, Button } from "@/components/ui"
-import { AnimatedIcon } from "@/components/ui/AnimatedIcon"
-import { HERO_CONTENT } from "./hero.constants"
-import { ShowcaseWindow } from "./ShowcaseWindow"
+import { CAROUSEL_SLIDES } from "./carousel.constants"
 import { cn } from "@/lib/cn"
+
+const slideVariants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? "100%" : "-100%",
+    opacity: 0,
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+    zIndex: 1,
+  },
+  exit: (direction: number) => ({
+    x: direction < 0 ? "100%" : "-100%",
+    opacity: 0,
+    zIndex: 0,
+  }),
+}
 
 export function HeroSection() {
   const router = useRouter()
-  const { badge, title, description, ctas, trust } = HERO_CONTENT
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [direction, setDirection] = useState(1) // 1 = forward, -1 = backward
+  const [isHovered, setIsHovered] = useState(false)
+
+  const handleNext = useCallback(() => {
+    setDirection(1)
+    setCurrentIndex((prev) => (prev + 1) % CAROUSEL_SLIDES.length)
+  }, [])
+
+  const handlePrev = useCallback(() => {
+    setDirection(-1)
+    setCurrentIndex((prev) => (prev - 1 + CAROUSEL_SLIDES.length) % CAROUSEL_SLIDES.length)
+  }, [])
+
+  const handleDotClick = (index: number) => {
+    if (index === currentIndex) return
+    setDirection(index > currentIndex ? 1 : -1)
+    setCurrentIndex(index)
+  }
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") {
+        handlePrev()
+      } else if (e.key === "ArrowRight") {
+        handleNext()
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [handleNext, handlePrev])
+
+  // Autoplay functionality
+  useEffect(() => {
+    if (isHovered) return
+    const timer = setInterval(() => {
+      handleNext()
+    }, 5500)
+    return () => clearInterval(timer)
+  }, [currentIndex, isHovered, handleNext])
+
+  const currentSlide = CAROUSEL_SLIDES[currentIndex]
+  const isDark = currentSlide.theme === "dark"
 
   return (
-    <section 
-      className="relative min-h-screen bg-white overflow-hidden pt-24 pb-32"
-      aria-label="NaderkEye Innovation Hero"
+    <section
+      className="relative w-full h-[550px] md:h-[620px] lg:h-[680px] xl:h-[720px] overflow-hidden bg-slate-50 select-none"
+      aria-label="Promotional eye care campaigns"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Background Decor */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        <div className="absolute top-0 right-0 h-[800px] w-[800px] bg-[#E53E3E]/[0.03] blur-[150px]" />
-        <div className="absolute bottom-0 left-0 h-[600px] w-[600px] bg-blue-500/[0.02] blur-[120px]" />
-      </div>
+      <div className="relative w-full h-full">
+        <AnimatePresence initial={false} custom={direction}>
+          <motion.div
+            key={currentIndex}
+            custom={direction}
+            variants={slideVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{
+              x: { type: "spring", stiffness: 300, damping: 30 },
+              opacity: { duration: 0.25 },
+            }}
+            className="absolute inset-0 w-full h-full flex items-center"
+            style={{ background: currentSlide.backgroundColor }}
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.6}
+            onDragEnd={(e, { offset, velocity }) => {
+              const swipeThreshold = 50
+              if (offset.x < -swipeThreshold) {
+                handleNext()
+              } else if (offset.x > swipeThreshold) {
+                handlePrev()
+              }
+            }}
+          >
+            <div className="relative w-full h-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center pt-16 md:pt-20 lg:pt-24 pb-8">
+              
+              {/* Left Column / Mobile Stack: Banner Copy */}
+              <div className="relative z-10 col-span-1 lg:col-span-6 flex flex-col justify-center items-center lg:items-start text-center lg:text-left space-y-4 md:space-y-6 max-w-xl mx-auto lg:mx-0">
+                
+                {/* Badge and Discount Indicator */}
+                <div className="flex flex-wrap gap-2.5 items-center justify-center lg:justify-start">
+                  {currentSlide.badge && (
+                    <Badge
+                      variant="muted"
+                      className={cn(
+                        "h-8 rounded-full border px-4 text-xs font-bold uppercase tracking-widest backdrop-blur-md",
+                        isDark
+                          ? "bg-white/10 border-white/20 text-white"
+                          : "bg-white border-slate-200 text-[#E53E3E] shadow-sm"
+                      )}
+                    >
+                      <span className={cn("mr-2 h-1.5 w-1.5 rounded-full animate-pulse", isDark ? "bg-white" : "bg-[#E53E3E]")} />
+                      {currentSlide.badge}
+                    </Badge>
+                  )}
+                  {currentSlide.discount && (
+                    <Badge
+                      className={cn(
+                        "h-8 rounded-full px-4 text-xs font-bold uppercase border-0 shadow-sm",
+                        isDark
+                          ? "bg-white text-slate-900 hover:bg-slate-100"
+                          : "bg-[#E53E3E] text-white hover:bg-[#c93636]"
+                      )}
+                    >
+                      {currentSlide.discount}
+                    </Badge>
+                  )}
+                </div>
 
-      <div className="relative z-10 mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-12 lg:gap-20">
-          
-          {/* Top Block: Messaging + Trust */}
-          <div className="flex flex-col lg:flex-row items-start justify-between gap-12 lg:gap-24">
-            
-            {/* Left: Messaging */}
-            <div className="flex-1 space-y-8 lg:space-y-10">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
-              >
-                <Badge 
-                  variant="muted" 
-                  className="h-9 rounded-full bg-slate-100 border border-slate-200 px-5 text-xs font-bold uppercase tracking-widest text-[#E53E3E] backdrop-blur-md"
+                {/* Subtitle */}
+                {currentSlide.subtitle && (
+                  <span
+                    className={cn(
+                      "text-xs md:text-sm font-bold uppercase tracking-[0.2em] font-poppins",
+                      isDark ? "text-slate-200" : "text-[#E53E3E]"
+                    )}
+                  >
+                    {currentSlide.subtitle}
+                  </span>
+                )}
+
+                {/* Headline */}
+                <h1
+                  className={cn(
+                    "text-3xl md:text-5xl lg:text-[3.25rem] xl:text-[4rem] font-extrabold leading-[1.1] tracking-tight font-poppins",
+                    isDark ? "text-white" : "text-slate-900"
+                  )}
                 >
-                  <span className="mr-2 h-1.5 w-1.5 rounded-full bg-[#E53E3E] animate-pulse" />
-                  {badge}
-                </Badge>
-              </motion.div>
+                  {currentSlide.title}
+                </h1>
 
-              <motion.h1
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-                className="text-5xl md:text-8xl lg:text-[6.5rem] font-black leading-[0.95] tracking-tight text-slate-900"
-              >
-                {title.first} <br />
-                <span className="text-[#E53E3E]">{title.highlight}</span> <br />
-                <span className="text-slate-800">{title.second}</span>
-              </motion.h1>
+                {/* Description */}
+                <p
+                  className={cn(
+                    "text-sm md:text-base lg:text-lg leading-relaxed font-medium max-w-lg lg:max-w-none",
+                    isDark ? "text-slate-200/90" : "text-slate-600"
+                  )}
+                >
+                  {currentSlide.description}
+                </p>
 
-              <div className="flex flex-col md:flex-row items-start md:items-end gap-10 lg:gap-12 pt-4">
-                 <motion.p
-                   initial={{ opacity: 0, y: 20 }}
-                   animate={{ opacity: 1, y: 0 }}
-                   transition={{ duration: 0.6, delay: 0.2 }}
-                   className="max-w-xl text-base md:text-xl text-slate-500 leading-relaxed font-medium"
-                 >
-                   {description}
-                 </motion.p>
-
-                 {/* Trust Metrics - Integrated into flow */}
-                 <motion.div
-                   initial={{ opacity: 0, x: 20 }}
-                   animate={{ opacity: 1, x: 0 }}
-                   transition={{ duration: 0.6, delay: 0.3 }}
-                   className="flex flex-col gap-4 min-w-[280px]"
-                 >
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">Trusted by 50,000+ patients</span>
-                    <div className="flex items-center gap-4">
-                       <div className="flex -space-x-3">
-                          {[1, 2, 3, 4, 5].map((i) => (
-                             <div key={i} className="h-10 w-10 rounded-full border-2 border-white bg-slate-100 overflow-hidden relative shadow-sm">
-                                <Image 
-                                   src={`https://i.pravatar.cc/100?img=${i + 15}`} 
-                                   alt="Patient" 
-                                   fill 
-                                    sizes="40px"
-                                   className="object-cover" 
-                                />
-                             </div>
-                          ))}
-                       </div>
-                       <div className="flex gap-1 text-[#FEBC2E]">
-                          {[1, 2, 3, 4, 5].map((i) => (
-                             <AnimatedIcon key={i} name="star" size={14} className="fill-current" />
-                          ))}
-                       </div>
-                    </div>
-                 </motion.div>
+                {/* Call To Action Button */}
+                {currentSlide.ctaText && currentSlide.ctaLink && (
+                  <div className="pt-2 w-full sm:w-auto">
+                    <Button
+                      variant={isDark ? "outline" : "default"}
+                      size="lg"
+                      className={cn(
+                        "w-full sm:w-auto rounded-md px-6 font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200",
+                        isDark
+                          ? "bg-white text-slate-900 border-white hover:bg-slate-100 shadow-lg"
+                          : "bg-[#E53E3E] text-white hover:bg-[#c93636]"
+                      )}
+                      onClick={() => router.push(currentSlide.ctaLink!)}
+                    >
+                      {currentSlide.ctaText}
+                    </Button>
+                  </div>
+                )}
               </div>
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.4 }}
-                className="flex flex-col sm:flex-row items-center gap-4 pt-6"
-              >
-                <Button
-                  variant="destructive"
-                  size="md"
-                  className="w-full sm:w-auto rounded-md px-5 font-semibold"
-                  onClick={() => router.push(ctas.primary.href)}
-                >
-                  {ctas.primary.label}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="md"
-                  className="w-full sm:w-auto rounded-md px-5 font-semibold bg-[#fde8ec] text-[var(--destructive)] hover:bg-[#fbd1d9] border-0 hover:opacity-100"
-                  onClick={() => router.push(ctas.secondary.href)}
-                >
-                  {ctas.secondary.label}
-                </Button>
-              </motion.div>
+              {/* Right Column / Mobile Background Image */}
+              <div className="absolute inset-0 lg:static lg:col-span-6 h-full w-full select-none pointer-events-none z-0">
+                {/* Mobile: Dimmed background watermark to guarantee readability */}
+                <div className="absolute inset-0 lg:hidden opacity-[0.18]">
+                  <Image
+                    src={currentSlide.mobileImage || currentSlide.image}
+                    alt={currentSlide.title}
+                    fill
+                    priority={currentIndex === 0}
+                    sizes="100vw"
+                    className="object-cover object-center"
+                  />
+                </div>
+
+                {/* Desktop: Crisp product campaign graphic */}
+                <div className="hidden lg:block relative w-full h-[400px] xl:h-[480px]">
+                  <Image
+                    src={currentSlide.image}
+                    alt={currentSlide.title}
+                    fill
+                    priority={currentIndex === 0}
+                    sizes="(min-width: 1024px) 50vw, 100vw"
+                    className="object-contain drop-shadow-2xl hover:scale-[1.01] transition-transform duration-500"
+                  />
+                </div>
+              </div>
+
             </div>
-          </div>
-
-          {/* Bottom Block: Showcase Window */}
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.5 }}
-          >
-            <ShowcaseWindow />
           </motion.div>
+        </AnimatePresence>
+      </div>
 
-        </div>
+      {/* Navigation Arrows: Glassmorphic, shown only on desktop hover */}
+      <button
+        onClick={handlePrev}
+        className={cn(
+          "absolute left-6 top-1/2 -translate-y-1/2 z-20 hidden lg:flex items-center justify-center w-12 h-12 rounded-full",
+          "bg-white/30 backdrop-blur-md border border-white/20 shadow-lg text-slate-800 hover:bg-white/50 transition-all duration-300",
+          "opacity-0 pointer-events-none",
+          isHovered && "opacity-100 pointer-events-auto"
+        )}
+        aria-label="Previous slide"
+      >
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
+
+      <button
+        onClick={handleNext}
+        className={cn(
+          "absolute right-6 top-1/2 -translate-y-1/2 z-20 hidden lg:flex items-center justify-center w-12 h-12 rounded-full",
+          "bg-white/30 backdrop-blur-md border border-white/20 shadow-lg text-slate-800 hover:bg-white/50 transition-all duration-300",
+          "opacity-0 pointer-events-none",
+          isHovered && "opacity-100 pointer-events-auto"
+        )}
+        aria-label="Next slide"
+      >
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+
+      {/* Bottom Page Indicator Dots */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex gap-2.5 items-center">
+        {CAROUSEL_SLIDES.map((slide, index) => {
+          const isActive = index === currentIndex
+          return (
+            <button
+              key={slide.id}
+              onClick={() => handleDotClick(index)}
+              className={cn(
+                "h-2.5 rounded-full transition-all duration-300 cursor-pointer border-0 outline-none",
+                isActive ? "w-8 bg-[#E53E3E]" : "w-2.5 bg-slate-400/60 hover:bg-slate-500"
+              )}
+              aria-label={`Go to slide ${index + 1}`}
+              aria-current={isActive ? "true" : "false"}
+            />
+          )
+        })}
       </div>
     </section>
   )
 }
+
