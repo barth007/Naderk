@@ -28,14 +28,38 @@ class ProductSerializer(serializers.ModelSerializer):
     variants = ProductVariantSerializer(many=True, read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     category_slug = serializers.CharField(source='category.slug', read_only=True)
+    sale_price = serializers.SerializerMethodField()
+    flash_sale_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = [
             'id', 'name', 'slug', 'description', 'category', 'category_name', 'category_slug',
-            'price', 'images', 'quantity_available', 'low_stock_threshold', 'is_active',
+            'price', 'sale_price', 'flash_sale_name',
+            'images', 'quantity_available', 'low_stock_threshold', 'is_active',
             'variants', 'created_at', 'updated_at'
         ]
+
+    def _active_flash_sale(self, obj):
+        from django.utils import timezone
+        from naderk.ecommerce.models import FlashSale
+        now = timezone.now()
+        return (
+            FlashSale.objects
+            .filter(is_active=True, starts_at__lte=now, ends_at__gte=now, products=obj)
+            .first()
+        )
+
+    def get_sale_price(self, obj):
+        sale = self._active_flash_sale(obj)
+        if sale:
+            discounted = float(obj.price) * (1 - float(sale.discount_percent) / 100)
+            return str(round(discounted, 2))
+        return None
+
+    def get_flash_sale_name(self, obj):
+        sale = self._active_flash_sale(obj)
+        return sale.name if sale else None
 
 
 # --- Optical Configuration Entities ---
