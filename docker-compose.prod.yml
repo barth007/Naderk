@@ -1,0 +1,81 @@
+# Application services — web, celery, frontend.
+# Infrastructure (db, redis, livekit) is managed by docker-compose.yml.
+#
+# Env files on the server:
+#   Production  → BackEnd/.env.production      FrontEnd/fronend/.env.production
+#   Staging/Dev → BackEnd/.env.dev             FrontEnd/fronend/.env.dev
+#
+# The ENVIRONMENT variable is injected by the deploy workflow.
+# Default falls back to "production" for manual local use.
+
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: ./BackEnd
+      dockerfile: Dockerfile.prod
+    env_file:
+      - ./BackEnd/.env.${ENVIRONMENT:-production}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    restart: unless-stopped
+    depends_on:
+      - db
+      - redis
+    networks:
+      - naderk_net
+
+  celery-worker:
+    build:
+      context: ./BackEnd
+      dockerfile: Dockerfile.prod
+    command: celery -A config.celery_app worker --loglevel=info --concurrency=4
+    env_file:
+      - ./BackEnd/.env.${ENVIRONMENT:-production}
+    restart: unless-stopped
+    depends_on:
+      - db
+      - redis
+    networks:
+      - naderk_net
+
+  celery-beat:
+    build:
+      context: ./BackEnd
+      dockerfile: Dockerfile.prod
+    command: celery -A config.celery_app beat --loglevel=info
+    env_file:
+      - ./BackEnd/.env.${ENVIRONMENT:-production}
+    restart: unless-stopped
+    depends_on:
+      - db
+      - redis
+    networks:
+      - naderk_net
+
+  frontend:
+    build:
+      context: ./FrontEnd/fronend
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL}
+        NEXT_PUBLIC_LIVEKIT_URL: ${NEXT_PUBLIC_LIVEKIT_URL}
+    env_file:
+      - ./FrontEnd/fronend/.env.${ENVIRONMENT:-production}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    restart: unless-stopped
+    depends_on:
+      - web
+    networks:
+      - naderk_net
+
+networks:
+  naderk_net:
+    external: true
+
+volumes:
+  postgres_data:
+    external: true

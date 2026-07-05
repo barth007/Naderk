@@ -1,0 +1,49 @@
+# ── Credentials & secrets ──────────────────────────────────────────────────────
+# Never commit real .env files — use .env.example as the template
+BackEnd/.env
+BackEnd/.env.production
+FrontEnd/fronend/.env.local
+FrontEnd/fronend/.env.production
+.env
+.env.production
+.env.local
+
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# ── Django ─────────────────────────────────────────────────────────────────────
+BackEnd/staticfiles/
+BackEnd/mediafiles/
+BackEnd/*.log
+*.sqlite3
+
+# ── Node / Next.js ─────────────────────────────────────────────────────────────
+node_modules/
+.next/
+FrontEnd/fronend/.next/
+FrontEnd/fronend/out/
+
+# ── Docker ─────────────────────────────────────────────────────────────────────
+*.log
+
+# ── IDE ────────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Vercel (legacy, was referenced in codebase) ────────────────────────────────
+.vercel/

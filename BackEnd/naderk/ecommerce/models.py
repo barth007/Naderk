@@ -481,3 +481,21 @@ class OrderActivity(models.Model):
 
     class Meta:
         verbose_name_plural = _("Order Activities")
+
+
+class FlashSale(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    discount_percent = models.DecimalField(max_digits=5, decimal_places=2)
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    products = models.ManyToManyField(Product, related_name='flash_sales', blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name = _("Flash Sale")
+        verbose_name_plural = _("Flash Sales")

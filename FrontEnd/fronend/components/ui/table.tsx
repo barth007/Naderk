@@ -54,11 +54,11 @@ export function Table({
     <table
       className={cn(
         "table w-full",
-        striped  && "table-zebra",
         compact  && "table-xs",
         stickyHeader && "table-pin-rows",
         className
       )}
+      data-striped={striped ? "true" : undefined}
       {...props}
     >
       {children}
@@ -88,7 +88,7 @@ export function TableBody({
 }: HTMLAttributes<HTMLTableSectionElement>) {
   return (
     <tbody
-      className={cn("divide-y divide-border", className)}
+      className={cn("divide-y divide-border [&>tr:nth-child(even)]:bg-gray-50/60", className)}
       {...props}
     >
       {children}
@@ -106,8 +106,8 @@ export function TableRow({ selected, className, children, ...props }: TableRowPr
   return (
     <tr
       className={cn(
-        "transition-colors hover:bg-muted/50",
-        selected && "bg-primary/10",
+        "bg-white transition-colors hover:bg-gray-50",
+        selected && "bg-[#E03E3E]/5",
         className
       )}
       aria-selected={selected}

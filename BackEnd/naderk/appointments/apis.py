@@ -303,33 +303,42 @@ class AppointmentHistoryApi(APIView):
 
 class CancelAppointmentApi(APIView):
     permission_classes = [IsAuthenticated]
-    
+
     def post(self, request, pk):
+        is_admin = request.user.role in ('ADMIN', 'SUPER_ADMIN', 'DOCTOR')
         try:
-            appointment = Appointment.objects.get(id=pk, patient=request.user)
+            if is_admin:
+                appointment = Appointment.objects.get(id=pk)
+            else:
+                appointment = Appointment.objects.get(id=pk, patient=request.user)
         except Appointment.DoesNotExist:
             return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")
-            
+
         if appointment.status in [Appointment.Status.CANCELLED, Appointment.Status.COMPLETED, Appointment.Status.NO_SHOW]:
             return build_error_response("invalid-state", "Cannot cancel", 400, "Appointment is already completed or cancelled")
-            
+
         appointment.status = Appointment.Status.CANCELLED
         appointment.cancelled_at = timezone.now()
+        appointment.cancellation_reason = request.data.get('reason', '')
         appointment.save()
-        
+
         return build_success_response("Appointment cancelled successfully", AppointmentSerializer(appointment).data)
 
 class RescheduleAppointmentApi(APIView):
     permission_classes = [IsAuthenticated]
-    
+
     def post(self, request, pk):
         from .serializers import RescheduleAppointmentRequestSerializer
         serializer = RescheduleAppointmentRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return build_error_response("validation-error", "Invalid Data", 400, "Validation failed", errors=serializer.errors)
-            
+
+        is_admin = request.user.role in ('ADMIN', 'SUPER_ADMIN', 'DOCTOR')
         try:
-            appointment = Appointment.objects.get(id=pk, patient=request.user)
+            if is_admin:
+                appointment = Appointment.objects.get(id=pk)
+            else:
+                appointment = Appointment.objects.get(id=pk, patient=request.user)
         except Appointment.DoesNotExist:
             return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")
             
