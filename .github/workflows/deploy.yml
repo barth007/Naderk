@@ -127,6 +127,9 @@ jobs:
             echo "==> Ensuring naderk_net network exists..."
             docker network inspect naderk_net > /dev/null 2>&1 || docker network create naderk_net
 
+            echo "==> Ensuring postgres_data volume exists..."
+            docker volume inspect postgres_data > /dev/null 2>&1 || docker volume create postgres_data
+
             echo "==> Building and restarting backend services..."
             docker compose -f docker-compose.yml -f docker-compose.prod.yml \
               up -d --build web celery-worker celery-beat
@@ -163,6 +166,9 @@ jobs:
 
             echo "==> Ensuring naderk_net network exists..."
             docker network inspect naderk_net > /dev/null 2>&1 || docker network create naderk_net
+
+            echo "==> Ensuring postgres_data volume exists..."
+            docker volume inspect postgres_data > /dev/null 2>&1 || docker volume create postgres_data
 
             echo "==> Building and restarting frontend..."
             docker compose -f docker-compose.yml -f docker-compose.prod.yml \
