@@ -28,7 +28,8 @@ services:
     build:
       context: ./BackEnd
       dockerfile: Dockerfile.prod
-    command: celery -A config.celery_app worker --loglevel=info --concurrency=4
+    entrypoint: ["./entrypoint.sh"]
+    command: ["celery", "-A", "config.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
     env_file:
       - ./BackEnd/.env.${ENVIRONMENT:-production}
     restart: unless-stopped
@@ -42,7 +43,8 @@ services:
     build:
       context: ./BackEnd
       dockerfile: Dockerfile.prod
-    command: celery -A config.celery_app beat --loglevel=info
+    entrypoint: ["./entrypoint.sh"]
+    command: ["celery", "-A", "config.celery_app", "beat", "--loglevel=info"]
     env_file:
       - ./BackEnd/.env.${ENVIRONMENT:-production}
     restart: unless-stopped
