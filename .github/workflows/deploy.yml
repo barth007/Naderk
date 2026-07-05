@@ -170,6 +170,11 @@ jobs:
             echo "==> Ensuring postgres_data volume exists..."
             docker volume inspect postgres_data > /dev/null 2>&1 || docker volume create postgres_data
 
+            echo "==> Loading NEXT_PUBLIC_* build args from env file..."
+            set -a
+            source ./FrontEnd/frontend/.env.${ENVIRONMENT}
+            set +a
+
             echo "==> Building and restarting frontend..."
             docker compose -f docker-compose.yml -f docker-compose.prod.yml \
               up -d --build frontend
