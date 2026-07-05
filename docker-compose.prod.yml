@@ -8,8 +8,6 @@
 # The ENVIRONMENT variable is injected by the deploy workflow.
 # Default falls back to "production" for manual local use.
 
-version: '3.8'
-
 services:
   web:
     build:

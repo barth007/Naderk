@@ -33,5 +33,7 @@ channels-redis==4.2.1
 livekit-api
 cloudinary
 django-cloudinary-storage
+reportlab
+requests
 
 
