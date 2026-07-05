@@ -124,6 +124,9 @@ jobs:
             export BACKEND_PORT=${{ env.BACKEND_PORT }}
             export FRONTEND_PORT=${{ env.FRONTEND_PORT }}
 
+            echo "==> Ensuring naderk_net network exists..."
+            docker network inspect naderk_net > /dev/null 2>&1 || docker network create naderk_net
+
             echo "==> Building and restarting backend services..."
             docker compose -f docker-compose.yml -f docker-compose.prod.yml \
               up -d --build web celery-worker celery-beat
@@ -157,6 +160,9 @@ jobs:
             export ENVIRONMENT=${{ env.ENVIRONMENT }}
             export BACKEND_PORT=${{ env.BACKEND_PORT }}
             export FRONTEND_PORT=${{ env.FRONTEND_PORT }}
+
+            echo "==> Ensuring naderk_net network exists..."
+            docker network inspect naderk_net > /dev/null 2>&1 || docker network create naderk_net
 
             echo "==> Building and restarting frontend..."
             docker compose -f docker-compose.yml -f docker-compose.prod.yml \
