@@ -1,0 +1,210 @@
+name: Deploy Naderk
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Service to deploy"
+        required: true
+        type: choice
+        options:
+          - backend
+          - frontend
+          - both
+          - infrastructure
+        default: backend
+      branch:
+        description: "Branch to deploy"
+        required: true
+        type: string
+        default: main
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - prod
+          - dev
+        default: prod
+
+# Prevent concurrent deploys to the same environment
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: "Deploy ${{ inputs.service }} → ${{ inputs.environment }}"
+    runs-on: ubuntu-latest
+
+    steps:
+      # ──────────────────────────────────────────────────────────────────────
+      # STEP 1: Checkout the selected branch
+      # ──────────────────────────────────────────────────────────────────────
+      - name: 📥 Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 0
+
+      # ──────────────────────────────────────────────────────────────────────
+      # STEP 2: Resolve deploy path based on environment
+      # ──────────────────────────────────────────────────────────────────────
+      - name: 🎯 Set deployment config
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          echo "ENVIRONMENT=$ENV" >> $GITHUB_ENV
+
+          if [ "$ENV" = "prod" ]; then
+            echo "DEPLOY_PATH=/var/www/naderk" >> $GITHUB_ENV
+            echo "BACKEND_PORT=8000" >> $GITHUB_ENV
+            echo "FRONTEND_PORT=3000" >> $GITHUB_ENV
+          else
+            echo "DEPLOY_PATH=/var/www/naderk-dev" >> $GITHUB_ENV
+            echo "BACKEND_PORT=8001" >> $GITHUB_ENV   # staging runs on different ports
+            echo "FRONTEND_PORT=3001" >> $GITHUB_ENV
+          fi
+
+      # ──────────────────────────────────────────────────────────────────────
+      # STEP 3: Configure SSH
+      # ──────────────────────────────────────────────────────────────────────
+      - name: ⚙️ Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          ssh-keyscan -H "${{ secrets.SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      # ──────────────────────────────────────────────────────────────────────
+      # STEP 4: Install rsync
+      # ──────────────────────────────────────────────────────────────────────
+      - name: 🛠️ Install rsync
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y rsync openssh-client
+
+      # ──────────────────────────────────────────────────────────────────────
+      # STEP 5: Sync code to VPS
+      # The .env.production files already live on the server and are never
+      # overwritten by rsync (excluded below).
+      # ──────────────────────────────────────────────────────────────────────
+      - name: 📤 Sync source code to server
+        run: |
+          # Ensure target directory exists on the server
+          ssh root@${{ secrets.SERVER_IP }} "mkdir -p ${{ env.DEPLOY_PATH }}"
+
+          rsync -az --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude "node_modules" \
+            --exclude ".next" \
+            --exclude "*.pyc" \
+            --exclude "__pycache__" \
+            --exclude ".venv" \
+            --exclude "venv" \
+            --exclude ".env" \
+            --exclude ".env.*" \
+            --exclude "staticfiles/" \
+            --exclude "mediafiles/" \
+            ./ root@${{ secrets.SERVER_IP }}:${{ env.DEPLOY_PATH }}/
+
+      # ──────────────────────────────────────────────────────────────────────
+      # STEP 6a: Deploy — Backend (web + celery-worker + celery-beat)
+      # ──────────────────────────────────────────────────────────────────────
+      - name: 🚀 Deploy Backend
+        if: inputs.service == 'backend' || inputs.service == 'both'
+        run: |
+          ssh root@${{ secrets.SERVER_IP }} << 'EOF'
+            set -e
+            cd ${{ env.DEPLOY_PATH }}
+            export ENVIRONMENT=${{ env.ENVIRONMENT }}
+            export BACKEND_PORT=${{ env.BACKEND_PORT }}
+            export FRONTEND_PORT=${{ env.FRONTEND_PORT }}
+
+            echo "==> Building and restarting backend services..."
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+              up -d --build web celery-worker celery-beat
+
+            echo "==> Waiting for backend health check..."
+            sleep 8
+            for i in $(seq 1 12); do
+              if curl -sf http://localhost:${{ env.BACKEND_PORT }}/api/health/ > /dev/null 2>&1; then
+                echo "  ✅ Backend is healthy!"
+                break
+              fi
+              echo "  Attempt $i/12 — not ready yet, waiting 5s..."
+              if [ $i -eq 12 ]; then
+                echo "  ❌ Backend did not become healthy after 60s"
+                docker compose -f docker-compose.yml -f docker-compose.prod.yml logs web --tail=50
+                exit 1
+              fi
+              sleep 5
+            done
+          EOF
+
+      # ──────────────────────────────────────────────────────────────────────
+      # STEP 6b: Deploy — Frontend
+      # ──────────────────────────────────────────────────────────────────────
+      - name: 🚀 Deploy Frontend
+        if: inputs.service == 'frontend' || inputs.service == 'both'
+        run: |
+          ssh root@${{ secrets.SERVER_IP }} << 'EOF'
+            set -e
+            cd ${{ env.DEPLOY_PATH }}
+            export ENVIRONMENT=${{ env.ENVIRONMENT }}
+            export BACKEND_PORT=${{ env.BACKEND_PORT }}
+            export FRONTEND_PORT=${{ env.FRONTEND_PORT }}
+
+            echo "==> Building and restarting frontend..."
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+              up -d --build frontend
+
+            echo "==> Waiting for frontend..."
+            sleep 8
+            for i in $(seq 1 12); do
+              if curl -sf http://localhost:${{ env.FRONTEND_PORT }}/ > /dev/null 2>&1; then
+                echo "  ✅ Frontend is up!"
+                break
+              fi
+              echo "  Attempt $i/12 — not ready yet, waiting 5s..."
+              if [ $i -eq 12 ]; then
+                echo "  ❌ Frontend did not start after 60s"
+                docker compose -f docker-compose.yml -f docker-compose.prod.yml logs frontend --tail=50
+                exit 1
+              fi
+              sleep 5
+            done
+          EOF
+
+      # ──────────────────────────────────────────────────────────────────────
+      # STEP 6c: Deploy — Infrastructure only (db, redis, livekit)
+      # App services are NOT touched.
+      # ──────────────────────────────────────────────────────────────────────
+      - name: 🏗️ Deploy Infrastructure
+        if: inputs.service == 'infrastructure'
+        run: |
+          ssh root@${{ secrets.SERVER_IP }} << 'EOF'
+            set -e
+            cd ${{ env.DEPLOY_PATH }}
+            echo "==> Pulling latest infra images..."
+            docker compose -f docker-compose.yml pull db redis livekit
+
+            echo "==> Restarting infrastructure services (app containers untouched)..."
+            docker compose -f docker-compose.yml up -d db redis livekit
+          EOF
+
+      # ──────────────────────────────────────────────────────────────────────
+      # STEP 7: Summary
+      # ──────────────────────────────────────────────────────────────────────
+      - name: ✅ Deployment complete
+        run: |
+          echo "=================================================="
+          echo " Service   : ${{ inputs.service }}"
+          echo " Branch    : ${{ inputs.branch }}"
+          echo " Environment: ${{ inputs.environment }}"
+          echo " Server    : ${{ secrets.SERVER_IP }}"
+          echo " Path      : ${{ env.DEPLOY_PATH }}"
+          echo "=================================================="

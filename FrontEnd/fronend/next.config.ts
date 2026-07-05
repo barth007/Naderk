@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Enables self-contained production build for Docker deployment (node server.js)
+  output: 'standalone',
   // LiveKit's WebRTC peer connection cannot survive React Strict Mode's
   // dev-only mount→cleanup→remount cycle. Strict Mode is a no-op in production.
   reactStrictMode: false,
