@@ -5,7 +5,7 @@ import {
   Plus, Pencil, Trash2, X,
   Image as ImageIcon, Loader2, Globe, Star, Users, MessageSquare,
   HelpCircle, BarChart2, Building, Settings, ChevronDown, ChevronUp,
-  Upload,
+  Upload, PenLine, Eye, EyeOff,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
@@ -21,9 +21,13 @@ import {
   useTrustMetrics, useCreateTrustMetric, useUpdateTrustMetric, useDeleteTrustMetric,
   useTrustedClients, useCreateTrustedClient, useUpdateTrustedClient, useDeleteTrustedClient,
   useSiteSettings, useUpdateSiteSettings,
+  useAllBlogsAdmin, useCreateBlog, useUpdateBlog, useDeleteBlog, usePublishBlog, useDraftBlog,
+  useAdminCategories, useCreateCategory, useUpdateCategory, useDeleteCategory,
   type HeroSlide, type Testimonial, type TeamMember, type FAQ,
-  type TrustMetric, type TrustedClient, type SiteSettings,
+  type TrustMetric, type TrustedClient, type SiteSettings, type BlogAuthorPost, type BlogPostInput,
+  type BlogCategoryAdmin,
 } from '@/services/cms/admin-cms.hooks';
+import { useCategories } from '@/services/cms/cms.hooks';
 import { apiClient } from '@/lib/api';
 
 // ── Image Uploader ────────────────────────────────────────────────────────────
@@ -51,7 +55,7 @@ function ImageUploader({ value, onChange, label = 'Image' }: { value: string; on
       <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
       <div className="flex items-center gap-2">
         <input
-          className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#E03E3E]"
+          className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#E03E3E]"
           placeholder="https://..."
           value={value}
           onChange={e => onChange(e.target.value)}
@@ -60,7 +64,7 @@ function ImageUploader({ value, onChange, label = 'Image' }: { value: string; on
           type="button"
           onClick={() => ref.current?.click()}
           disabled={uploading}
-          className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+          className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
         >
           {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
           Upload
@@ -91,7 +95,7 @@ function Input({ value, onChange, placeholder = '', type = 'text' }: { value: st
   return (
     <input
       type={type}
-      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#E03E3E]"
+      className="w-full px-3 py-2 border border-gray-200 rounded-md text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#E03E3E]"
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
@@ -103,7 +107,7 @@ function Textarea({ value, onChange, placeholder = '', rows = 3 }: { value: stri
   return (
     <textarea
       rows={rows}
-      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#E03E3E] resize-none"
+      className="w-full px-3 py-2 border border-gray-200 rounded-md text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#E03E3E] resize-none"
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
@@ -117,15 +121,15 @@ function Modal({ title, onClose, onSave, saving, children }: { title: string; on
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+      <div className="relative bg-white rounded-md shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 className="text-sm font-bold text-gray-900">{title}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">{children}</div>
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-100">
-          <button onClick={onClose} className="px-4 py-2 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
-          <button onClick={onSave} disabled={saving} className="px-4 py-2 text-xs font-bold text-white bg-[#E03E3E] hover:bg-red-700 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50">
+          <button onClick={onClose} className="px-4 py-2 text-xs font-semibold text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors">Cancel</button>
+          <button onClick={onSave} disabled={saving} className="px-4 py-2 text-xs font-bold text-white bg-[#E03E3E] hover:bg-red-700 rounded-md flex items-center gap-1.5 transition-colors disabled:opacity-50">
             {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             Save Changes
           </button>
@@ -153,7 +157,7 @@ function SectionHeader({ title, subtitle, icon: Icon, count, onAdd }: {
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center text-[#E03E3E]">
+        <div className="w-9 h-9 rounded-md bg-red-50 flex items-center justify-center text-[#E03E3E]">
           <Icon className="w-4.5 h-4.5" />
         </div>
         <div>
@@ -161,7 +165,7 @@ function SectionHeader({ title, subtitle, icon: Icon, count, onAdd }: {
           <p className="text-xs text-gray-500 font-medium">{subtitle} · {count} item{count !== 1 ? 's' : ''}</p>
         </div>
       </div>
-      <button onClick={onAdd} className="flex items-center gap-1.5 px-3.5 py-2 bg-[#E03E3E] hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-colors">
+      <button onClick={onAdd} className="flex items-center gap-1.5 px-3.5 py-2 bg-[#E03E3E] hover:bg-red-700 text-white text-xs font-bold rounded-md transition-colors">
         <Plus className="w-3.5 h-3.5" /> Add New
       </button>
     </div>
@@ -178,6 +182,8 @@ const TABS = [
   { id: 'metrics', label: 'Trust Metrics', icon: BarChart2 },
   { id: 'clients', label: 'Client Logos', icon: Building },
   { id: 'settings', label: 'Site Settings', icon: Settings },
+  { id: 'categories', label: 'Categories', icon: Star },
+  { id: 'articles', label: 'Articles', icon: PenLine },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -228,7 +234,7 @@ function HeroSlidesTab() {
   return (
     <div className="space-y-4">
       <SectionHeader title="Hero Slides" subtitle="Homepage carousel" icon={Globe} count={slides.filter(s => s.is_active).length} onAdd={() => open()} />
-      <TableContainer className="rounded-2xl border border-gray-100 shadow-sm">
+      <TableContainer className="rounded-md border border-gray-100 shadow-sm">
         <Table>
           <TableHead>
             <TableRow>
@@ -308,7 +314,7 @@ function HeroSlidesTab() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Theme">
-              <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold focus:outline-none" value={modal.data.theme ?? 'LIGHT'} onChange={e => set('theme', e.target.value)}>
+              <select className="w-full px-3 py-2 border border-gray-200 rounded-md text-xs font-semibold focus:outline-none" value={modal.data.theme ?? 'LIGHT'} onChange={e => set('theme', e.target.value)}>
                 <option value="LIGHT">Light</option>
                 <option value="DARK">Dark</option>
               </select>
@@ -365,7 +371,7 @@ function TestimonialsTab() {
   return (
     <div className="space-y-4">
       <SectionHeader title="Testimonials" subtitle="Homepage reviews" icon={MessageSquare} count={items.filter(t => t.is_active).length} onAdd={() => open()} />
-      <TableContainer className="rounded-2xl border border-gray-100 shadow-sm">
+      <TableContainer className="rounded-md border border-gray-100 shadow-sm">
         <Table>
           <TableHead>
             <TableRow>
@@ -488,7 +494,7 @@ function TeamTab() {
   return (
     <div className="space-y-4">
       <SectionHeader title="Team Members" subtitle="About page & cards" icon={Users} count={members.filter(m => m.is_active).length} onAdd={() => open()} />
-      <TableContainer className="rounded-2xl border border-gray-100 shadow-sm">
+      <TableContainer className="rounded-md border border-gray-100 shadow-sm">
         <Table>
           <TableHead>
             <TableRow>
@@ -610,7 +616,7 @@ function FAQsTab() {
   return (
     <div className="space-y-4">
       <SectionHeader title="FAQs" subtitle="Homepage FAQ section" icon={HelpCircle} count={items.filter(f => f.is_active).length} onAdd={() => open()} />
-      <TableContainer className="rounded-2xl border border-gray-100 shadow-sm">
+      <TableContainer className="rounded-md border border-gray-100 shadow-sm">
         <Table>
           <TableHead>
             <TableRow>
@@ -711,9 +717,9 @@ function TrustMetricsTab() {
       <SectionHeader title="Trust Metrics" subtitle="Homepage stat cards" icon={BarChart2} count={items.filter(m => m.is_active).length} onAdd={() => open()} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {isLoading ? Array.from({ length: 4 }).map((_, i) => (
-          <Card key={i} className="p-4 border border-gray-100 rounded-2xl animate-pulse bg-gray-50" />
+          <Card key={i} className="p-4 border border-gray-100 rounded-md animate-pulse bg-gray-50" />
         )) : items.map(m => (
-          <Card key={m.id} className="p-4 border border-gray-100 rounded-2xl flex items-start justify-between">
+          <Card key={m.id} className="p-4 border border-gray-100 rounded-md flex items-start justify-between">
             <div>
               <p className="text-2xl font-black text-[#E03E3E]">{m.value}</p>
               <p className="text-xs font-bold text-gray-800 mt-0.5">{m.label}</p>
@@ -790,9 +796,9 @@ function TrustedClientsTab() {
       <SectionHeader title="Client Logos" subtitle="Marquee / trusted-by section" icon={Building} count={items.filter(c => c.is_active).length} onAdd={() => open()} />
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
         {isLoading ? Array.from({ length: 12 }).map((_, i) => (
-          <div key={i} className="h-16 bg-gray-50 rounded-xl border border-gray-100 animate-pulse" />
+          <div key={i} className="h-16 bg-gray-50 rounded-md border border-gray-100 animate-pulse" />
         )) : paged.map(c => (
-          <div key={c.id} className="relative group border border-gray-100 rounded-xl p-3 flex flex-col items-center justify-center gap-1.5 bg-white hover:shadow-sm transition-shadow">
+          <div key={c.id} className="relative group border border-gray-100 rounded-md p-3 flex flex-col items-center justify-center gap-1.5 bg-white hover:shadow-sm transition-shadow">
             <img src={c.logo_url} alt={c.name} className="h-8 object-contain grayscale group-hover:grayscale-0 transition-all" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             <p className="text-[10px] font-semibold text-gray-500 text-center truncate w-full">{c.name}</p>
             <div className="absolute top-1 right-1 hidden group-hover:flex items-center gap-0.5">
@@ -856,7 +862,7 @@ function SiteSettingsTab() {
     <div className="space-y-5 max-w-2xl">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center text-[#E03E3E]">
+          <div className="w-9 h-9 rounded-md bg-red-50 flex items-center justify-center text-[#E03E3E]">
             <Settings className="w-4.5 h-4.5" />
           </div>
           <div>
@@ -867,14 +873,14 @@ function SiteSettingsTab() {
         <button
           onClick={save}
           disabled={!dirty || updateSettings.isPending}
-          className="flex items-center gap-1.5 px-4 py-2 bg-[#E03E3E] hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-colors disabled:opacity-40"
+          className="flex items-center gap-1.5 px-4 py-2 bg-[#E03E3E] hover:bg-red-700 text-white text-xs font-bold rounded-md transition-colors disabled:opacity-40"
         >
           {updateSettings.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
           Save Changes
         </button>
       </div>
 
-      <Card className="p-5 border border-gray-100 rounded-2xl space-y-4">
+      <Card className="p-5 border border-gray-100 rounded-md space-y-4">
         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Brand</p>
         <Field label="Company Name"><Input value={form.company_name ?? ''} onChange={v => set('company_name', v)} placeholder="NaderkEye Care" /></Field>
         <Field label="Logo URL">
@@ -893,7 +899,7 @@ function SiteSettingsTab() {
         </Field>
       </Card>
 
-      <Card className="p-5 border border-gray-100 rounded-2xl space-y-4">
+      <Card className="p-5 border border-gray-100 rounded-md space-y-4">
         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Contact</p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Primary Phone"><Input value={form.phone_primary ?? ''} onChange={v => set('phone_primary', v)} placeholder="+234 81234567890" /></Field>
@@ -905,14 +911,14 @@ function SiteSettingsTab() {
         <Field label="Google Maps URL"><Input value={form.google_maps_url ?? ''} onChange={v => set('google_maps_url', v)} placeholder="https://maps.google.com/..." /></Field>
       </Card>
 
-      <Card className="p-5 border border-gray-100 rounded-2xl space-y-4">
+      <Card className="p-5 border border-gray-100 rounded-md space-y-4">
         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Operating Hours</p>
         <Field label="Weekdays"><Input value={form.hours_weekday ?? ''} onChange={v => set('hours_weekday', v)} placeholder="Monday - Friday: 8:00AM - 6:00PM" /></Field>
         <Field label="Saturday"><Input value={form.hours_saturday ?? ''} onChange={v => set('hours_saturday', v)} placeholder="Saturday: 9:00AM - 2:00PM" /></Field>
         <Field label="Sunday"><Input value={form.hours_sunday ?? ''} onChange={v => set('hours_sunday', v)} placeholder="Sunday: Closed" /></Field>
       </Card>
 
-      <Card className="p-5 border border-gray-100 rounded-2xl space-y-4">
+      <Card className="p-5 border border-gray-100 rounded-md space-y-4">
         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Social Links</p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Facebook"><Input value={form.facebook_url ?? ''} onChange={v => set('facebook_url', v)} placeholder="https://facebook.com/..." /></Field>
@@ -921,6 +927,306 @@ function SiteSettingsTab() {
           <Field label="LinkedIn"><Input value={form.linkedin_url ?? ''} onChange={v => set('linkedin_url', v)} placeholder="https://linkedin.com/company/..." /></Field>
         </div>
       </Card>
+    </div>
+  );
+}
+
+// ── Categories Tab ────────────────────────────────────────────────────────────
+
+function CategoriesTab() {
+  const { data: categories = [], isLoading } = useAdminCategories();
+  const create = useCreateCategory();
+  const update = useUpdateCategory();
+  const del = useDeleteCategory();
+
+  const [modal, setModal] = useState<{ open: boolean; data: Partial<BlogCategoryAdmin> }>({
+    open: false, data: {},
+  });
+
+  function openNew() { setModal({ open: true, data: { name: '', description: '' } }); }
+  function openEdit(c: BlogCategoryAdmin) { setModal({ open: true, data: c }); }
+  function close() { setModal({ open: false, data: {} }); }
+  function set(k: string, v: string) { setModal(m => ({ ...m, data: { ...m.data, [k]: v } })); }
+
+  async function save() {
+    const name = (modal.data.name ?? '').trim();
+    if (!name) { toast.error('Name is required'); return; }
+    try {
+      if ((modal.data as BlogCategoryAdmin).id) {
+        await update.mutateAsync({ id: (modal.data as BlogCategoryAdmin).id, name, description: modal.data.description ?? '' });
+      } else {
+        await create.mutateAsync({ name, description: modal.data.description ?? '' });
+      }
+      toast.success('Category saved');
+      close();
+    } catch { toast.error('Failed to save'); }
+  }
+
+  async function remove(id: number) {
+    if (!confirm('Delete this category? Existing articles will lose their category.')) return;
+    try { await del.mutateAsync(id); toast.success('Deleted'); }
+    catch { toast.error('Failed to delete'); }
+  }
+
+  const saving = create.isPending || update.isPending;
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader title="Categories" subtitle="Blog article categories" icon={Star} count={categories.length} onAdd={openNew} />
+      <TableContainer className="rounded-md border border-gray-100 shadow-sm">
+        <Table>
+          <TableHead>
+            <TableRow>
+              <Th className="px-4 py-3 text-xs">Name</Th>
+              <Th className="px-4 py-3 text-xs">Slug</Th>
+              <Th className="px-4 py-3 text-xs">Description</Th>
+              <Th className="px-4 py-3 text-xs">Actions</Th>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <TableRow key={i}>
+                  {Array.from({ length: 4 }).map((_, j) => (
+                    <Td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></Td>
+                  ))}
+                </TableRow>
+              ))
+            ) : categories.length === 0 ? (
+              <TableRow>
+                <Td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400 font-semibold">No categories yet</Td>
+              </TableRow>
+            ) : categories.map(c => (
+              <TableRow key={c.id}>
+                <Td className="px-4 py-3 text-xs font-bold text-gray-900">{c.name}</Td>
+                <Td className="px-4 py-3 text-xs text-gray-400 font-mono">{c.slug}</Td>
+                <Td className="px-4 py-3 text-xs text-gray-500 max-w-xs truncate">{c.description || '—'}</Td>
+                <Td className="px-4 py-3">
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => openEdit(c)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-md hover:bg-blue-50 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => remove(c.id)} className="p-1.5 text-gray-400 hover:text-red-500 rounded-md hover:bg-red-50 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                </Td>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {modal.open && (
+        <Modal
+          title={(modal.data as BlogCategoryAdmin).id ? 'Edit Category' : 'New Category'}
+          onClose={close}
+          onSave={save}
+          saving={saving}
+        >
+          <Field label="Name *">
+            <Input value={modal.data.name ?? ''} onChange={v => set('name', v)} placeholder="e.g. Eye Health" />
+          </Field>
+          <Field label="Description">
+            <Textarea value={modal.data.description ?? ''} onChange={v => set('description', v)} placeholder="Optional short description..." rows={3} />
+          </Field>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ── Articles Tab ──────────────────────────────────────────────────────────────
+
+function BlogStatusBadge({ status }: { status: BlogAuthorPost['status'] }) {
+  const map: Record<string, string> = {
+    DRAFT: 'text-gray-600 bg-gray-50 border-gray-200',
+    PUBLISHED: 'text-green-700 bg-green-50 border-green-100',
+    ARCHIVED: 'text-orange-600 bg-orange-50 border-orange-100',
+  };
+  return (
+    <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${map[status] ?? ''}`}>
+      {status.charAt(0) + status.slice(1).toLowerCase()}
+    </span>
+  );
+}
+
+const EMPTY_BLOG: BlogPostInput = {
+  title: '', content: '', excerpt: '', image_url: '',
+  category_id: null, is_featured: false,
+  meta_title: '', meta_description: '', meta_keywords: '',
+};
+
+function ArticleEditorModal({ initial, onClose }: { initial: BlogPostInput & { id?: number }; onClose: () => void }) {
+  const [form, setForm] = useState<BlogPostInput & { id?: number }>(initial);
+  const { data: categoriesResponse } = useCategories();
+  const categories = categoriesResponse?.data?.results ?? [];
+  const create = useCreateBlog();
+  const update = useUpdateBlog();
+
+  function set(k: keyof BlogPostInput, v: unknown) { setForm(f => ({ ...f, [k]: v })); }
+
+  async function submit(status: 'DRAFT' | 'PUBLISHED') {
+    if (!form.title.trim() || !form.content.trim()) {
+      toast.error('Title and content are required');
+      return;
+    }
+    try {
+      if (form.id) {
+        await update.mutateAsync({ ...form, id: form.id, status });
+      } else {
+        await create.mutateAsync({ ...form, status });
+      }
+      toast.success(status === 'PUBLISHED' ? 'Article published!' : 'Saved as draft');
+      onClose();
+    } catch { toast.error('Failed to save article'); }
+  }
+
+  const saving = create.isPending || update.isPending;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white rounded-md shadow-xl w-full max-w-2xl max-h-[92vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h2 className="text-sm font-bold text-gray-900">{form.id ? 'Edit Article' : 'New Article'}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Title *</label>
+            <input className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[#E03E3E]" placeholder="Article title..." value={form.title} onChange={e => set('title', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Excerpt</label>
+            <textarea rows={2} className="w-full px-3 py-2 border border-gray-200 rounded-md text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#E03E3E] resize-none" placeholder="Short description..." value={form.excerpt ?? ''} onChange={e => set('excerpt', e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Category</label>
+              <select className="w-full px-3 py-2 border border-gray-200 rounded-md text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#E03E3E] bg-white" value={form.category_id ?? ''} onChange={e => set('category_id', e.target.value ? Number(e.target.value) : null)}>
+                <option value="">No category</option>
+                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="flex items-end pb-1">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" className="w-4 h-4 accent-[#E03E3E]" checked={form.is_featured ?? false} onChange={e => set('is_featured', e.target.checked)} />
+                <span className="text-xs font-semibold text-gray-600">Featured article</span>
+              </label>
+            </div>
+          </div>
+          <ImageUploader value={form.image_url ?? ''} onChange={v => set('image_url', v)} label="Cover Image" />
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Content *</label>
+            <textarea rows={14} className="w-full px-3 py-2 border border-gray-200 rounded-md text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#E03E3E] resize-none" placeholder="Write the article here..." value={form.content} onChange={e => set('content', e.target.value)} />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-100">
+          <button onClick={onClose} className="px-4 py-2 text-xs font-semibold text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors">Cancel</button>
+          <button onClick={() => submit('DRAFT')} disabled={saving} className="px-4 py-2 text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md flex items-center gap-1.5 transition-colors disabled:opacity-50">
+            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save as Draft
+          </button>
+          <button onClick={() => submit('PUBLISHED')} disabled={saving} className="px-4 py-2 text-xs font-bold text-white bg-[#E03E3E] hover:bg-red-700 rounded-md flex items-center gap-1.5 transition-colors disabled:opacity-50">
+            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Publish Now
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ArticlesTab() {
+  const { data: blogs = [], isLoading } = useAllBlogsAdmin();
+  const deleteBlog = useDeleteBlog();
+  const publishBlog = usePublishBlog();
+  const draftBlog = useDraftBlog();
+  const [modal, setModal] = useState<(BlogPostInput & { id?: number }) | null>(null);
+  const [page, setPage] = useState(1);
+  const PER_PAGE = 10;
+
+  function openEdit(blog: BlogAuthorPost) {
+    setModal({ id: blog.id, title: blog.title, content: blog.content, excerpt: blog.excerpt, image_url: blog.image_url, category_id: blog.category?.id ?? null, is_featured: blog.is_featured, meta_title: blog.meta_title, meta_description: blog.meta_description, meta_keywords: blog.meta_keywords });
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm('Delete this article?')) return;
+    try { await deleteBlog.mutateAsync(id); toast.success('Deleted'); }
+    catch { toast.error('Failed to delete'); }
+  }
+
+  async function handleTogglePublish(blog: BlogAuthorPost) {
+    try {
+      if (blog.status === 'PUBLISHED') { await draftBlog.mutateAsync(blog.id); toast.success('Reverted to draft'); }
+      else { await publishBlog.mutateAsync(blog.id); toast.success('Published!'); }
+    } catch { toast.error('Action failed'); }
+  }
+
+  const paged = blogs.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const publishedCount = blogs.filter(b => b.status === 'PUBLISHED').length;
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader title="Articles" subtitle="All doctor & admin articles" icon={PenLine} count={publishedCount} onAdd={() => setModal({ ...EMPTY_BLOG })} />
+      <TableContainer className="rounded-md border border-gray-100 shadow-sm">
+        <Table>
+          <TableHead>
+            <TableRow>
+              <Th className="px-4 py-3 text-xs">Article</Th>
+              <Th className="px-4 py-3 text-xs">Author</Th>
+              <Th className="px-4 py-3 text-xs">Category</Th>
+              <Th className="px-4 py-3 text-xs">Status</Th>
+              <Th className="px-4 py-3 text-xs">Featured</Th>
+              <Th className="px-4 py-3 text-xs">Actions</Th>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <TableRow key={i}>{Array.from({ length: 6 }).map((_, j) => <Td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded animate-pulse" /></Td>)}</TableRow>
+              ))
+            ) : paged.length === 0 ? (
+              <TableRow>
+                <Td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400 font-semibold">No articles yet</Td>
+              </TableRow>
+            ) : paged.map(blog => (
+              <TableRow key={blog.id}>
+                <Td className="px-4 py-3">
+                  <div className="flex items-center gap-2.5">
+                    {blog.image_url ? (
+                      <div className="w-10 h-10 rounded-md overflow-hidden border border-gray-100 flex-shrink-0">
+                        <img src={blog.image_url} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="w-10 h-10 rounded-md bg-gray-100 flex items-center justify-center flex-shrink-0">
+                        <PenLine className="w-4 h-4 text-gray-300" />
+                      </div>
+                    )}
+                    <p className="text-xs font-bold text-gray-900 line-clamp-2 max-w-[200px]">{blog.title}</p>
+                  </div>
+                </Td>
+                <Td className="px-4 py-3 text-xs text-gray-600">
+                  {blog.author ? `${blog.author.first_name} ${blog.author.last_name}` : '—'}
+                </Td>
+                <Td className="px-4 py-3 text-xs text-gray-500">{blog.category?.name ?? '—'}</Td>
+                <Td className="px-4 py-3"><BlogStatusBadge status={blog.status} /></Td>
+                <Td className="px-4 py-3">
+                  <ActiveBadge active={blog.is_featured} />
+                </Td>
+                <Td className="px-4 py-3">
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => openEdit(blog)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-md hover:bg-blue-50 transition-colors" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => handleTogglePublish(blog)} className={`p-1.5 rounded-md transition-colors ${blog.status === 'PUBLISHED' ? 'text-gray-400 hover:text-orange-500 hover:bg-orange-50' : 'text-gray-400 hover:text-green-600 hover:bg-green-50'}`} title={blog.status === 'PUBLISHED' ? 'Revert to Draft' : 'Publish'}>
+                      {blog.status === 'PUBLISHED' ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                    <button onClick={() => handleDelete(blog.id)} className="p-1.5 text-gray-400 hover:text-red-500 rounded-md hover:bg-red-50 transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                </Td>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        {blogs.length > PER_PAGE && (
+          <Pagination page={page} totalPages={Math.ceil(blogs.length / PER_PAGE)} totalItems={blogs.length} shownItems={paged.length} noun="articles" onPageChange={setPage} />
+        )}
+      </TableContainer>
+      {modal && <ArticleEditorModal initial={modal} onClose={() => setModal(null)} />}
     </div>
   );
 }
@@ -971,6 +1277,8 @@ export default function AdminCMSPage() {
         {activeTab === 'metrics' && <TrustMetricsTab />}
         {activeTab === 'clients' && <TrustedClientsTab />}
         {activeTab === 'settings' && <SiteSettingsTab />}
+        {activeTab === 'categories' && <CategoriesTab />}
+        {activeTab === 'articles' && <ArticlesTab />}
       </div>
     </div>
   );
