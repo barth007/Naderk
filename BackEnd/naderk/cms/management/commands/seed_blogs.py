@@ -131,19 +131,12 @@ class Command(BaseCommand):
         ]
 
         count = 0
-        try:
-            import cloudinary.uploader
-            cloudinary_configured = True
-        except Exception:
-            cloudinary_configured = False
-
         for data in blogs_data:
             cat = next((c for c in category_objs if c.name == data["category"]), None)
-            
-            # Check if blog exists to avoid duplicate downloads
+
             if BlogPost.objects.filter(title=data["title"]).exists():
                 continue
-                
+
             blog = BlogPost(
                 title=data["title"],
                 category=cat,
@@ -155,21 +148,9 @@ class Command(BaseCommand):
                 is_featured=data["is_featured"],
                 meta_title=data["title"],
                 meta_description=data["excerpt"],
+                image_url=data.get("image", ""),
             )
-            
-            # Upload to Cloudinary if configured, otherwise use raw Unsplash URL
-            if cloudinary_configured and data.get("image"):
-                try:
-                    upload_data = cloudinary.uploader.upload(data["image"], folder="blogs")
-                    blog.image_url = upload_data.get("secure_url")
-                    blog.image_public_id = upload_data.get("public_id")
-                except Exception as e:
-                    self.stdout.write(self.style.WARNING(f"Cloudinary upload failed (using fallback URL): {e}"))
-                    blog.image_url = data["image"]
-            else:
-                blog.image_url = data.get("image", "")
-                
             blog.save()
             count += 1
-                
+
         self.stdout.write(self.style.SUCCESS(f"Successfully seeded {count} new blog posts."))

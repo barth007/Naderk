@@ -10,6 +10,7 @@ import {
   DEFAULT_NAV_ITEMS,
   DEFAULT_CTA_BUTTONS,
 } from "./navbar.constants"
+import { useBrand } from "@/services/cms/admin-cms.hooks"
 import type {
   NavbarProps,
   NavItem,
@@ -214,7 +215,7 @@ function DesktopNavLink({ item, isActive }: NavLinkProps) {
 // Mobile navigation drawer
 // ─────────────────────────────────────────────────────────────
 
-function MobileNav({ id, items, ctas, activePath, isOpen, onClose }: MobileNavProps) {
+function MobileNav({ id, items, ctas, activePath, isOpen, onClose, logoSrc = '/naderk_logo.png', logoAlt = 'Naderk' }: MobileNavProps) {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
 
   // Close drawer on route change
@@ -256,12 +257,12 @@ function MobileNav({ id, items, ctas, activePath, isOpen, onClose }: MobileNavPr
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
           <Link href="/" onClick={onClose} className="flex items-center gap-2">
             <Image
-              src="/naderk_logo.png"
-              alt="Naderk logo"
-              width={100}
-              height={28}
+              src={logoSrc}
+              alt={logoAlt}
+              width={130}
+              height={40}
               loading="eager"
-              className="h-7 w-auto object-contain"
+              className="h-10 w-auto object-contain"
               priority
             />
           </Link>
@@ -430,12 +431,15 @@ export function Navbar({
   items = DEFAULT_NAV_ITEMS,
   ctas = DEFAULT_CTA_BUTTONS,
   sticky = true,
-  logoSrc = "/naderk_logo.png",
-  logoAlt = "Naderk",
+  logoSrc: logoSrcProp,
+  logoAlt: logoAltProp,
   className,
 }: NavbarProps) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const brand = useBrand()
+  const logoSrc = logoSrcProp ?? brand.logoUrl ?? '/naderk_logo.png'
+  const logoAlt = logoAltProp ?? brand.name
 
   const closeMobile = useCallback(() => setMobileOpen(false), [])
 
@@ -475,8 +479,8 @@ export function Navbar({
               <Image
                 src={logoSrc}
                 alt={logoAlt}
-                width={75}
-                height={50}
+                width={110}
+                height={70}
                 loading="eager"
                 className=" object-contain"
                 priority
@@ -531,6 +535,8 @@ export function Navbar({
         activePath={pathname}
         isOpen={mobileOpen}
         onClose={closeMobile}
+        logoSrc={logoSrc}
+        logoAlt={logoAlt}
       />
     </>
   )

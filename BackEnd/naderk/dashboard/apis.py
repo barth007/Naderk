@@ -706,7 +706,7 @@ class AdminProductCreateAPI(APIView):
         if _admin_only(request):
             return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
 
-        import cloudinary.uploader
+        from naderk.common.storage.service import storage_service
         from django.utils.text import slugify
         from naderk.ecommerce.models import Product, ProductVariant, StoreCategory
 
@@ -728,14 +728,13 @@ class AdminProductCreateAPI(APIView):
         except StoreCategory.DoesNotExist:
             return build_success_response(message="Category not found.", data={}, status_code=404, success=False)
 
-        # Upload images to Cloudinary
         image_urls = []
         for key in ['image_0', 'image_1', 'image_2', 'image_3', 'image_4']:
             file = request.FILES.get(key)
             if file:
                 try:
-                    result = cloudinary.uploader.upload(file, folder="products")
-                    image_urls.append(result['secure_url'])
+                    result = storage_service.upload_file(file, bucket_type='public', prefix='products', uploaded_by=request.user)
+                    image_urls.append(result.url)
                 except Exception:
                     pass
 

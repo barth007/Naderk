@@ -101,6 +101,9 @@ def _serialize_trusted_client(obj):
 def _serialize_site_settings(obj):
     return {
         'id': obj.id,
+        'company_name': obj.company_name,
+        'logo_url': obj.logo_url,
+        'favicon_url': obj.favicon_url,
         'phone_primary': obj.phone_primary,
         'phone_secondary': obj.phone_secondary,
         'email_support': obj.email_support,
@@ -406,6 +409,7 @@ class SiteSettingsApi(APIView):
             return build_error_response("forbidden", "Access denied", 403, "Admin access required.")
         obj = SiteSettings.objects.first() or SiteSettings()
         fields = [
+            'company_name', 'logo_url', 'favicon_url',
             'phone_primary', 'phone_secondary', 'email_support', 'email_general',
             'address', 'google_maps_url', 'hours_weekday', 'hours_saturday', 'hours_sunday',
             'facebook_url', 'twitter_url', 'instagram_url', 'linkedin_url',

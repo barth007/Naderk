@@ -12,6 +12,7 @@ import {
 } from '@/services/notifications/notifications.hooks';
 import { format, parseISO } from 'date-fns';
 import { useCart } from '@/services/marketplace/marketplace.hooks';
+import { useBrand } from '@/services/cms/admin-cms.hooks';
 
 export default function DashboardNavbar() {
   const pathname = usePathname();
@@ -29,6 +30,7 @@ export default function DashboardNavbar() {
   const markReadMutation = useMarkNotificationRead();
   const markAllReadMutation = useMarkAllNotificationsRead();
   const { data: cartData } = useCart();
+  const brand = useBrand();
   const searchParams = useSearchParams();
   const [searchVal, setSearchVal] = useState('');
 
@@ -100,7 +102,7 @@ export default function DashboardNavbar() {
       <div className="w-full px-4 md:px-8 flex items-center justify-between h-16 md:h-20">
         {/* Left side: Logo */}
         <Link href="/" className="flex items-center">
-            <img src="/naderk_logo.png" alt="Naderk Eye Center" className="h-7 md:h-10 object-contain" />
+            <img src={brand.logoUrl ?? '/naderk_logo.png'} alt={brand.name} className="h-10 md:h-14 object-contain" />
         </Link>
 
         {/* Global Search Input (Only for Doctor/Staff) */}

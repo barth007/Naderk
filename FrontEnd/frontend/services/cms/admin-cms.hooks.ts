@@ -75,6 +75,9 @@ export interface TrustedClient {
 
 export interface SiteSettings {
   id: number;
+  company_name: string;
+  logo_url: string;
+  favicon_url: string;
   phone_primary: string;
   phone_secondary: string;
   email_support: string;
@@ -318,4 +321,13 @@ export const useUpdateSiteSettings = () => {
     mutationFn: (data: Partial<SiteSettings>) => apiClient.put('/cms/site-settings/', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cms-site-settings'] }),
   });
+};
+
+// Convenience hook — returns the two brand fields used across layout components
+export const useBrand = () => {
+  const { data: settings } = useSiteSettings();
+  return {
+    name: settings?.company_name || 'NaderkEye Care',
+    logoUrl: settings?.logo_url || null,
+  };
 };

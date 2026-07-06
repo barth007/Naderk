@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import * as LucideIcons from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { apiClient } from '@/lib/api';
+import { useBrand } from '@/services/cms/admin-cms.hooks';
 import { Sidebar, SidebarContent, SidebarItem, SidebarFooter, SidebarSection } from '@/components/ui/sidebar';
 import { ROLE_CONFIGS } from '@/utils/role-config';
 
@@ -17,6 +18,7 @@ export default function DashboardSidebar() {
 
   const activeRole = user?.role || 'PATIENT';
   const roleConfig = ROLE_CONFIGS[activeRole] || ROLE_CONFIGS.PATIENT;
+  const brand = useBrand();
   const navItems = roleConfig.sidebarItems;
 
   useEffect(() => {
@@ -138,7 +140,7 @@ export default function DashboardSidebar() {
 
       {/* Mobile Top Navbar Trigger (Only visible on mobile) */}
       <div className="md:hidden fixed top-0 w-full h-16 flex items-center px-4 z-40 bg-white border-b border-gray-100 justify-between">
-         <img src="/naderk_logo.png" alt="Naderk Eye Center" className="h-8 object-contain" />
+         <img src={brand.logoUrl ?? '/naderk_logo.png'} alt={brand.name} className="h-11 object-contain" />
          <button onClick={() => setIsMobileOpen(!isMobileOpen)} className="p-2 text-[#E03E3E]">
           <LucideIcons.LayoutGrid className="w-6 h-6" />
         </button>

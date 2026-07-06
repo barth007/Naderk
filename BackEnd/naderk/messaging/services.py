@@ -1,4 +1,4 @@
-import cloudinary.uploader
+from naderk.common.storage.service import storage_service
 import datetime
 from django.db import transaction
 from django.db.models import Count, Q
@@ -463,15 +463,8 @@ def create_conversation_activity(conversation, actor, action, metadata=None):
     )
 
 def upload_attachment(file) -> str:
-    """
-    Uploads a file directly to Cloudinary and returns the secure URL.
-    """
-    upload_result = cloudinary.uploader.upload(
-        file,
-        folder="messaging_attachments",
-        resource_type="auto" # Auto-detect PDF/images
-    )
-    return upload_result.get("secure_url")
+    result = storage_service.upload_file(file, bucket_type='public', prefix='messaging')
+    return result.url
 
 # WebSocket Broadcasters
 def _broadcast_message_ws(message: Message):

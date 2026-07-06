@@ -6,6 +6,9 @@ if [ "$1" = "" ] || [ "$1" = "daphne" ]; then
     echo "==> Running database migrations..."
     python manage.py migrate --no-input
 
+    echo "==> Seeding CMS content (skips if already seeded)..."
+    python manage.py seed_cms
+
     echo "==> Collecting static files..."
     python manage.py collectstatic --no-input --clear
 

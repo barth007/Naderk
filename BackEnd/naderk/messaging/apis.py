@@ -251,8 +251,8 @@ class AttachmentUploadApi(APIView):
             return build_success_response("File uploaded successfully", {"url": url})
         except Exception as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/cloudinary-error",
-                title="Cloudinary Upload Error",
+                type_uri="https://api.naderkeye.com/problems/storage-error",
+                title="Storage Upload Error",
                 status_code=500,
                 detail=str(e),
                 instance=request.path

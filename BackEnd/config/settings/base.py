@@ -30,8 +30,6 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
-    'cloudinary_storage',
-    'cloudinary',
 
     # Local apps
     'naderk.core',
@@ -50,6 +48,7 @@ INSTALLED_APPS = [
     'naderk.payments',
     'naderk.medical_records',
     'naderk.messaging',
+    'naderk.storage',
 ]
 
 MIDDLEWARE = [
@@ -116,13 +115,17 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Cloudinary Settings
-CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': env('CLOUDINARY_CLOUD_NAME', default=''),
-    'API_KEY': env('CLOUDINARY_API_KEY', default=''),
-    'API_SECRET': env('CLOUDINARY_API_SECRET', default=''),
+# MinIO / S3-compatible Storage
+STORAGE = {
+    'ENDPOINT':        env('MINIO_ENDPOINT', default='http://localhost:9000'),
+    'ACCESS_KEY':      env('MINIO_ACCESS_KEY', default='minioadmin'),
+    'SECRET_KEY':      env('MINIO_SECRET_KEY', default='minioadmin123'),
+    'USE_SSL':         env.bool('MINIO_USE_SSL', default=False),
+    'PUBLIC_BUCKET':   env('MINIO_PUBLIC_BUCKET', default='naderk-public'),
+    'PRIVATE_BUCKET':  env('MINIO_PRIVATE_BUCKET', default='naderk-private'),
+    'REGION':          env('MINIO_REGION', default='us-east-1'),
+    'URL_EXPIRATION':  env.int('MINIO_URL_EXPIRATION', default=300),
 }
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # Custom User Model
 AUTH_USER_MODEL = 'core.User'

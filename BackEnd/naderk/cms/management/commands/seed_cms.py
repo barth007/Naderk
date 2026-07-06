@@ -170,6 +170,8 @@ class Command(BaseCommand):
             self.stdout.write('  Site settings already seeded — skipping')
             return
         SiteSettings.objects.create(
+            company_name='NaderkEye Care',
+            logo_url='',
             phone_primary='+234 81234567890',
             phone_secondary='+234 81234567891',
             email_support='info@naderkeye.com',

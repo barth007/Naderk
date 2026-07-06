@@ -2,11 +2,12 @@
 
 import React, { useState, useRef } from 'react';
 import {
-  Plus, Pencil, Trash2, X, CheckCircle2, AlertCircle,
+  Plus, Pencil, Trash2, X,
   Image as ImageIcon, Loader2, Globe, Star, Users, MessageSquare,
   HelpCircle, BarChart2, Building, Settings, ChevronDown, ChevronUp,
   Upload,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import {
   TableContainer, Table, TableHead, TableBody, TableRow, Th, Td,
@@ -24,22 +25,6 @@ import {
   type TrustMetric, type TrustedClient, type SiteSettings,
 } from '@/services/cms/admin-cms.hooks';
 import { apiClient } from '@/lib/api';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface ToastState { message: string; type: 'success' | 'error' }
-
-// ── Toast ─────────────────────────────────────────────────────────────────────
-
-function Toast({ toast, onDismiss }: { toast: ToastState; onDismiss: () => void }) {
-  return (
-    <div className={`fixed top-5 right-5 z-[100] flex items-center gap-2.5 px-4 py-3 rounded-md shadow-lg text-sm font-medium ${toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-      {toast.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
-      {toast.message}
-      <button onClick={onDismiss} className="ml-2 opacity-70 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
-    </div>
-  );
-}
 
 // ── Image Uploader ────────────────────────────────────────────────────────────
 
@@ -199,7 +184,7 @@ type TabId = typeof TABS[number]['id'];
 
 // ── Hero Slides Tab ───────────────────────────────────────────────────────────
 
-function HeroSlidesTab({ showToast }: { showToast: (m: string, t: 'success' | 'error') => void }) {
+function HeroSlidesTab() {
   const { data: slides = [], isLoading } = useHeroSlides();
   const create = useCreateHeroSlide();
   const update = useUpdateHeroSlide();
@@ -225,15 +210,15 @@ function HeroSlidesTab({ showToast }: { showToast: (m: string, t: 'success' | 'e
       } else {
         await create.mutateAsync(modal.data as Omit<HeroSlide, 'id'>);
       }
-      showToast('Hero slide saved', 'success');
+      toast.success('Hero slide saved');
       close();
-    } catch { showToast('Failed to save', 'error'); }
+    } catch { toast.error('Failed to save'); }
   }
 
   async function remove(id: number) {
     if (!confirm('Delete this slide?')) return;
-    try { await del.mutateAsync(id); showToast('Deleted', 'success'); }
-    catch { showToast('Failed to delete', 'error'); }
+    try { await del.mutateAsync(id); toast.success('Deleted'); }
+    catch { toast.error('Failed to delete'); }
   }
 
   const total = slides.length;
@@ -344,7 +329,7 @@ function HeroSlidesTab({ showToast }: { showToast: (m: string, t: 'success' | 'e
 
 // ── Testimonials Tab ──────────────────────────────────────────────────────────
 
-function TestimonialsTab({ showToast }: { showToast: (m: string, t: 'success' | 'error') => void }) {
+function TestimonialsTab() {
   const { data: items = [], isLoading } = useTestimonials();
   const create = useCreateTestimonial();
   const update = useUpdateTestimonial();
@@ -363,14 +348,14 @@ function TestimonialsTab({ showToast }: { showToast: (m: string, t: 'success' | 
     try {
       if ((modal.data as Testimonial).id) await update.mutateAsync(modal.data as Testimonial);
       else await create.mutateAsync(modal.data as Omit<Testimonial, 'id'>);
-      showToast('Testimonial saved', 'success'); close();
-    } catch { showToast('Failed to save', 'error'); }
+      toast.success('Testimonial saved'); close();
+    } catch { toast.error('Failed to save'); }
   }
 
   async function remove(id: number) {
     if (!confirm('Delete this testimonial?')) return;
-    try { await del.mutateAsync(id); showToast('Deleted', 'success'); }
-    catch { showToast('Failed to delete', 'error'); }
+    try { await del.mutateAsync(id); toast.success('Deleted'); }
+    catch { toast.error('Failed to delete'); }
   }
 
   const total = items.length;
@@ -467,7 +452,7 @@ function TestimonialsTab({ showToast }: { showToast: (m: string, t: 'success' | 
 
 // ── Team Tab ──────────────────────────────────────────────────────────────────
 
-function TeamTab({ showToast }: { showToast: (m: string, t: 'success' | 'error') => void }) {
+function TeamTab() {
   const { data: members = [], isLoading } = useTeamMembers();
   const create = useCreateTeamMember();
   const update = useUpdateTeamMember();
@@ -486,14 +471,14 @@ function TeamTab({ showToast }: { showToast: (m: string, t: 'success' | 'error')
     try {
       if ((modal.data as TeamMember).id) await update.mutateAsync(modal.data as TeamMember);
       else await create.mutateAsync(modal.data as Omit<TeamMember, 'id'>);
-      showToast('Team member saved', 'success'); close();
-    } catch { showToast('Failed to save', 'error'); }
+      toast.success('Team member saved'); close();
+    } catch { toast.error('Failed to save'); }
   }
 
   async function remove(id: number) {
     if (!confirm('Remove this team member?')) return;
-    try { await del.mutateAsync(id); showToast('Removed', 'success'); }
-    catch { showToast('Failed to delete', 'error'); }
+    try { await del.mutateAsync(id); toast.success('Removed'); }
+    catch { toast.error('Failed to delete'); }
   }
 
   const total = members.length;
@@ -588,7 +573,7 @@ function TeamTab({ showToast }: { showToast: (m: string, t: 'success' | 'error')
 
 // ── FAQs Tab ──────────────────────────────────────────────────────────────────
 
-function FAQsTab({ showToast }: { showToast: (m: string, t: 'success' | 'error') => void }) {
+function FAQsTab() {
   const { data: items = [], isLoading } = useFAQs();
   const create = useCreateFAQ();
   const update = useUpdateFAQ();
@@ -608,14 +593,14 @@ function FAQsTab({ showToast }: { showToast: (m: string, t: 'success' | 'error')
     try {
       if ((modal.data as FAQ).id) await update.mutateAsync(modal.data as FAQ);
       else await create.mutateAsync(modal.data as Omit<FAQ, 'id'>);
-      showToast('FAQ saved', 'success'); close();
-    } catch { showToast('Failed to save', 'error'); }
+      toast.success('FAQ saved'); close();
+    } catch { toast.error('Failed to save'); }
   }
 
   async function remove(id: number) {
     if (!confirm('Delete this FAQ?')) return;
-    try { await del.mutateAsync(id); showToast('Deleted', 'success'); }
-    catch { showToast('Failed to delete', 'error'); }
+    try { await del.mutateAsync(id); toast.success('Deleted'); }
+    catch { toast.error('Failed to delete'); }
   }
 
   const total = items.length;
@@ -692,7 +677,7 @@ function FAQsTab({ showToast }: { showToast: (m: string, t: 'success' | 'error')
 
 // ── Trust Metrics Tab ─────────────────────────────────────────────────────────
 
-function TrustMetricsTab({ showToast }: { showToast: (m: string, t: 'success' | 'error') => void }) {
+function TrustMetricsTab() {
   const { data: items = [], isLoading } = useTrustMetrics();
   const create = useCreateTrustMetric();
   const update = useUpdateTrustMetric();
@@ -709,14 +694,14 @@ function TrustMetricsTab({ showToast }: { showToast: (m: string, t: 'success' | 
     try {
       if ((modal.data as TrustMetric).id) await update.mutateAsync(modal.data as TrustMetric);
       else await create.mutateAsync(modal.data as Omit<TrustMetric, 'id'>);
-      showToast('Metric saved', 'success'); close();
-    } catch { showToast('Failed to save', 'error'); }
+      toast.success('Metric saved'); close();
+    } catch { toast.error('Failed to save'); }
   }
 
   async function remove(id: number) {
     if (!confirm('Delete this metric?')) return;
-    try { await del.mutateAsync(id); showToast('Deleted', 'success'); }
-    catch { showToast('Failed to delete', 'error'); }
+    try { await del.mutateAsync(id); toast.success('Deleted'); }
+    catch { toast.error('Failed to delete'); }
   }
 
   const saving = create.isPending || update.isPending;
@@ -767,7 +752,7 @@ function TrustMetricsTab({ showToast }: { showToast: (m: string, t: 'success' | 
 
 // ── Trusted Clients Tab ───────────────────────────────────────────────────────
 
-function TrustedClientsTab({ showToast }: { showToast: (m: string, t: 'success' | 'error') => void }) {
+function TrustedClientsTab() {
   const { data: items = [], isLoading } = useTrustedClients();
   const create = useCreateTrustedClient();
   const update = useUpdateTrustedClient();
@@ -786,14 +771,14 @@ function TrustedClientsTab({ showToast }: { showToast: (m: string, t: 'success' 
     try {
       if ((modal.data as TrustedClient).id) await update.mutateAsync(modal.data as TrustedClient);
       else await create.mutateAsync(modal.data as Omit<TrustedClient, 'id'>);
-      showToast('Client saved', 'success'); close();
-    } catch { showToast('Failed to save', 'error'); }
+      toast.success('Client saved'); close();
+    } catch { toast.error('Failed to save'); }
   }
 
   async function remove(id: number) {
     if (!confirm('Remove this client?')) return;
-    try { await del.mutateAsync(id); showToast('Removed', 'success'); }
-    catch { showToast('Failed to delete', 'error'); }
+    try { await del.mutateAsync(id); toast.success('Removed'); }
+    catch { toast.error('Failed to delete'); }
   }
 
   const total = items.length;
@@ -845,7 +830,7 @@ function TrustedClientsTab({ showToast }: { showToast: (m: string, t: 'success' 
 
 // ── Site Settings Tab ─────────────────────────────────────────────────────────
 
-function SiteSettingsTab({ showToast }: { showToast: (m: string, t: 'success' | 'error') => void }) {
+function SiteSettingsTab() {
   const { data: settings, isLoading } = useSiteSettings();
   const updateSettings = useUpdateSiteSettings();
   const [form, setForm] = useState<Partial<SiteSettings>>({});
@@ -860,9 +845,9 @@ function SiteSettingsTab({ showToast }: { showToast: (m: string, t: 'success' | 
   async function save() {
     try {
       await updateSettings.mutateAsync(form);
-      showToast('Settings saved', 'success');
+      toast.success('Settings saved');
       setDirty(false);
-    } catch { showToast('Failed to save settings', 'error'); }
+    } catch { toast.error('Failed to save settings'); }
   }
 
   if (isLoading) return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-[#E03E3E]" /></div>;
@@ -888,6 +873,25 @@ function SiteSettingsTab({ showToast }: { showToast: (m: string, t: 'success' | 
           Save Changes
         </button>
       </div>
+
+      <Card className="p-5 border border-gray-100 rounded-2xl space-y-4">
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Brand</p>
+        <Field label="Company Name"><Input value={form.company_name ?? ''} onChange={v => set('company_name', v)} placeholder="NaderkEye Care" /></Field>
+        <Field label="Logo URL">
+          <ImageUploader
+            value={form.logo_url ?? ''}
+            onChange={(url: string) => set('logo_url', url)}
+            label="Upload Logo"
+          />
+        </Field>
+        <Field label="Favicon URL">
+          <ImageUploader
+            value={form.favicon_url ?? ''}
+            onChange={(url: string) => set('favicon_url', url)}
+            label="Upload Favicon"
+          />
+        </Field>
+      </Card>
 
       <Card className="p-5 border border-gray-100 rounded-2xl space-y-4">
         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Contact</p>
@@ -925,16 +929,9 @@ function SiteSettingsTab({ showToast }: { showToast: (m: string, t: 'success' | 
 
 export default function AdminCMSPage() {
   const [activeTab, setActiveTab] = useState<TabId>('hero');
-  const [toast, setToast] = useState<ToastState | null>(null);
-
-  function showToast(message: string, type: 'success' | 'error') {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3500);
-  }
 
   return (
     <div className="space-y-6 pb-10">
-      {toast && <Toast toast={toast} onDismiss={() => setToast(null)} />}
 
       <div className="border-b border-gray-100 pb-5">
         <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Content Management</h1>
@@ -967,13 +964,13 @@ export default function AdminCMSPage() {
 
       {/* Tab content */}
       <div>
-        {activeTab === 'hero' && <HeroSlidesTab showToast={showToast} />}
-        {activeTab === 'testimonials' && <TestimonialsTab showToast={showToast} />}
-        {activeTab === 'team' && <TeamTab showToast={showToast} />}
-        {activeTab === 'faqs' && <FAQsTab showToast={showToast} />}
-        {activeTab === 'metrics' && <TrustMetricsTab showToast={showToast} />}
-        {activeTab === 'clients' && <TrustedClientsTab showToast={showToast} />}
-        {activeTab === 'settings' && <SiteSettingsTab showToast={showToast} />}
+        {activeTab === 'hero' && <HeroSlidesTab />}
+        {activeTab === 'testimonials' && <TestimonialsTab />}
+        {activeTab === 'team' && <TeamTab />}
+        {activeTab === 'faqs' && <FAQsTab />}
+        {activeTab === 'metrics' && <TrustMetricsTab />}
+        {activeTab === 'clients' && <TrustedClientsTab />}
+        {activeTab === 'settings' && <SiteSettingsTab />}
       </div>
     </div>
   );
