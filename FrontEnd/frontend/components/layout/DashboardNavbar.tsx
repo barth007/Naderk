@@ -3,8 +3,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Bell, LogOut, Settings, Loader2, Check, ShoppingCart, Search, Package } from 'lucide-react';
+import { Bell, LogOut, Settings, Loader2, Check, ShoppingCart, Search, Package, Menu } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useSidebar } from '@/context/SidebarContext';
 import { 
   useNotifications, 
   useMarkNotificationRead, 
@@ -19,6 +20,7 @@ export default function DashboardNavbar() {
   const router = useRouter();
   const { user, logout, isAuthenticated } = useAuth();
   
+  const { toggle: toggleSidebar } = useSidebar();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   
@@ -100,10 +102,19 @@ export default function DashboardNavbar() {
     <div className="w-full bg-white flex flex-col sticky top-0 z-50 border-b border-gray-100 shadow-sm">
       {/* Top Header Row */}
       <div className="w-full px-4 md:px-8 flex items-center justify-between h-16 md:h-20">
-        {/* Left side: Logo */}
-        <Link href="/" className="flex items-center">
-            <img src={brand.logoUrl ?? '/naderk_logo.png'} alt={brand.name} className="h-10 md:h-14 object-contain" />
-        </Link>
+        {/* Left side: Hamburger (mobile) + Logo */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={toggleSidebar}
+            className="md:hidden p-2 -ml-1 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+            aria-label="Toggle sidebar"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <Link href="/" className="flex items-center">
+            <img src={brand.logoUrl ?? '/naderk_logo.png'} alt={brand.name} className="h-8 md:h-14 object-contain" />
+          </Link>
+        </div>
 
         {/* Global Search Input (Only for Doctor/Staff) */}
         {user && ['DOCTOR', 'MEDICAL_AGENT', 'AGENT', 'ADMIN', 'SUPER_ADMIN'].includes(user.role) && (

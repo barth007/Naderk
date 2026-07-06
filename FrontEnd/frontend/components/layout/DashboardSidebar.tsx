@@ -9,11 +9,12 @@ import { apiClient } from '@/lib/api';
 import { useBrand } from '@/services/cms/admin-cms.hooks';
 import { Sidebar, SidebarContent, SidebarItem, SidebarFooter, SidebarSection } from '@/components/ui/sidebar';
 import { ROLE_CONFIGS } from '@/utils/role-config';
+import { useSidebar } from '@/context/SidebarContext';
 
 export default function DashboardSidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const { isOpen, close } = useSidebar();
   const [patientId, setPatientId] = useState<string | null>(null);
 
   const activeRole = user?.role || 'PATIENT';
@@ -70,24 +71,36 @@ export default function DashboardSidebar() {
 
   return (
     <>
-      {/* Mobile Drawer Overlay */}
-      {isMobileOpen && (
-        <div 
-          className="fixed inset-0 bg-black/20 z-40 md:hidden transition-opacity" 
-          onClick={() => setIsMobileOpen(false)}
+      {/* Overlay — closes sidebar when tapping outside on mobile */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/30 z-40 md:hidden"
+          onClick={close}
         />
       )}
 
       {/* Sidebar Container */}
       <div className={`
         fixed top-0 left-0 z-50 h-full transform transition-transform duration-300 ease-in-out
-        ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}
-        md:relative md:translate-x-0 w-64 shrink-0
+        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+        md:relative md:translate-x-0 md:top-auto md:left-auto w-64 shrink-0
       `}>
-        <Sidebar className="h-full rounded-none md:rounded-none bg-white border-r border-gray-100 w-full" width="100%">
+        <Sidebar className="h-full rounded-none bg-white border-r border-gray-100 w-full" width="100%">
+
+          {/* Mobile close button */}
+          <div className="md:hidden flex items-center justify-between px-4 pt-4 pb-2">
+            <img src={brand.logoUrl ?? '/naderk_logo.png'} alt={brand.name} className="h-9 object-contain" />
+            <button
+              onClick={close}
+              className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
+              aria-label="Close sidebar"
+            >
+              <LucideIcons.X className="w-5 h-5" />
+            </button>
+          </div>
 
           {/* Navigation Links */}
-          <SidebarContent className="px-4 py-6">
+          <SidebarContent className="px-4 py-4 md:py-6">
             <SidebarSection>
               <div className="space-y-1.5">
                 {navItems.map((item) => (
@@ -96,7 +109,7 @@ export default function DashboardSidebar() {
                     href={item.href}
                     icon={renderIcon(item.iconName)}
                     active={pathname === item.href}
-                    onClick={() => setIsMobileOpen(false)}
+                    onClick={close}
                     as={Link}
                     className={pathname === item.href ? "bg-[#E03E3E] text-white hover:bg-[#E03E3E] hover:text-white" : "text-gray-600 hover:bg-gray-50"}
                   >
@@ -107,7 +120,7 @@ export default function DashboardSidebar() {
             </SidebarSection>
           </SidebarContent>
 
-          {/* User Footer Component */}
+          {/* User Footer */}
           <SidebarFooter className="border-t border-gray-100 p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 overflow-hidden">
@@ -125,25 +138,18 @@ export default function DashboardSidebar() {
                   </span>
                 </div>
               </div>
-              
-              <Link 
-                  href="/profile" 
-                  className="p-1.5 shrink-0 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                  title="Settings / Profile"
+
+              <Link
+                href="/profile"
+                onClick={close}
+                className="p-1.5 shrink-0 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Settings / Profile"
               >
                 <LucideIcons.Settings className="w-5 h-5" />
               </Link>
             </div>
           </SidebarFooter>
         </Sidebar>
-      </div>
-
-      {/* Mobile Top Navbar Trigger (Only visible on mobile) */}
-      <div className="md:hidden fixed top-0 w-full h-16 flex items-center px-4 z-40 bg-white border-b border-gray-100 justify-between">
-         <img src={brand.logoUrl ?? '/naderk_logo.png'} alt={brand.name} className="h-11 object-contain" />
-         <button onClick={() => setIsMobileOpen(!isMobileOpen)} className="p-2 text-[#E03E3E]">
-          <LucideIcons.LayoutGrid className="w-6 h-6" />
-        </button>
       </div>
     </>
   );
