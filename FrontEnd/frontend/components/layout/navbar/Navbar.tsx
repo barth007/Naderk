@@ -1,6 +1,5 @@
 "use client"
 
-import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useState, useRef, useEffect, useCallback } from "react"
@@ -256,14 +255,13 @@ function MobileNav({ id, items, ctas, activePath, isOpen, onClose, logoSrc = '/n
         {/* Drawer header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
           <Link href="/" onClick={onClose} className="flex items-center gap-2">
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={logoSrc}
               alt={logoAlt}
               width={130}
               height={40}
-              loading="eager"
               className="h-10 w-auto object-contain"
-              priority
             />
           </Link>
           <button
@@ -476,14 +474,13 @@ export function Navbar({
                 "transition-opacity duration-150 hover:opacity-80"
               )}
             >
-              <Image
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
                 src={logoSrc}
                 alt={logoAlt}
                 width={110}
                 height={70}
-                loading="eager"
-                className=" object-contain"
-                priority
+                className="object-contain"
               />
             </Link>
           </div>
