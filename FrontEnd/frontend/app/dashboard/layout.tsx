@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import DashboardSidebar from '@/components/layout/DashboardSidebar';
 import DashboardNavbar from '@/components/layout/DashboardNavbar';
+import { SidebarProvider } from '@/context/SidebarContext';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { apiClient } from '@/lib/api';
@@ -81,20 +82,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isProfilePage = pathname === '/dashboard/profile' || pathname === '/profile';
 
   return (
-    <div className="flex flex-col h-screen bg-[#f8f9fc] overflow-hidden">
-      {/* Top Navbar spans 100% width */}
-      <DashboardNavbar />
-      
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* On desktop, it renders the side nav if not hidden. */}
-        {!hideSidebar && <DashboardSidebar />}
-        
-        <main className="flex-1 overflow-y-auto">
-          <div className="w-full max-w-7xl mx-auto p-6 md:p-10">
-            {children}
-          </div>
-        </main>
+    <SidebarProvider>
+      <div className="flex flex-col h-screen bg-[#f8f9fc] overflow-hidden">
+        {/* Top Navbar spans 100% width */}
+        <DashboardNavbar />
+
+        <div className="flex flex-1 overflow-hidden relative">
+          {/* Sidebar (hidden on mobile until toggled) */}
+          {!hideSidebar && <DashboardSidebar />}
+
+          <main className="flex-1 overflow-y-auto">
+            <div className="w-full max-w-7xl mx-auto p-4 md:p-10">
+              {children}
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }
