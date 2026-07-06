@@ -1,7 +1,10 @@
 import json
 import logging
+from datetime import timedelta
 
 from django.conf import settings
+from django.db.models import Sum, Count, Q
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -305,3 +308,144 @@ class PaystackWebhookApi(APIView):
             logger.warning("Webhook: transaction %s has no linked order or appointment", reference)
 
         return build_success_response("Webhook processed", {})
+
+
+ADMIN_ROLES = {'ADMIN', 'SUPER_ADMIN'}
+
+
+class AdminBillingSummaryApi(APIView):
+    """
+    GET /api/v1/payments/admin/summary/
+    Returns aggregated billing stats for the admin billing dashboard.
+    Supports ?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD for date filtering.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role not in ADMIN_ROLES:
+            return build_error_response("forbidden", "Access denied", 403, "Admin access required.")
+        from .models import PaymentTransaction
+
+        qs = PaymentTransaction.objects.all()
+
+        date_from = request.query_params.get('date_from')
+        date_to   = request.query_params.get('date_to')
+        if date_from:
+            qs = qs.filter(created_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(created_at__date__lte=date_to)
+
+        successful = qs.filter(status=PaymentTransaction.Status.SUCCESS)
+        agg = successful.aggregate(
+            total_revenue=Sum('amount_kobo'),
+            appt_revenue=Sum('amount_kobo', filter=Q(appointment__isnull=False)),
+            order_revenue=Sum('amount_kobo', filter=Q(order__isnull=False)),
+        )
+
+        pending_count = qs.filter(status=PaymentTransaction.Status.INITIATED).count()
+        failed_count  = qs.filter(status__in=[
+            PaymentTransaction.Status.FAILED,
+            PaymentTransaction.Status.ABANDONED,
+        ]).count()
+
+        # Overdue: INITIATED transactions older than 24 hours
+        overdue_threshold = timezone.now() - timedelta(hours=24)
+        overdue_qs = qs.filter(
+            status=PaymentTransaction.Status.INITIATED,
+            created_at__lt=overdue_threshold,
+        )
+        overdue_agg = overdue_qs.aggregate(total=Sum('amount_kobo'))
+
+        data = {
+            'total_revenue_kobo':          agg['total_revenue'] or 0,
+            'appointment_revenue_kobo':    agg['appt_revenue'] or 0,
+            'order_revenue_kobo':          agg['order_revenue'] or 0,
+            'pending_count':               pending_count,
+            'failed_count':                failed_count,
+            'overdue_invoice_amount_kobo': overdue_agg['total'] or 0,
+        }
+        return build_success_response("Billing summary", data)
+
+
+class AdminTransactionListApi(APIView):
+    """
+    GET /api/v1/payments/admin/transactions/
+    Paginated transaction list with filters.
+    Query params: type (appointment|order|all), status, date_from, date_to, page, page_size
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role not in ADMIN_ROLES:
+            return build_error_response("forbidden", "Access denied", 403, "Admin access required.")
+        from .models import PaymentTransaction
+
+        qs = (
+            PaymentTransaction.objects
+            .select_related('user', 'appointment__service', 'order')
+            .order_by('-created_at')
+        )
+
+        txn_type  = request.query_params.get('type', 'all')
+        status    = request.query_params.get('status', '')
+        date_from = request.query_params.get('date_from', '')
+        date_to   = request.query_params.get('date_to', '')
+
+        if txn_type == 'appointment':
+            qs = qs.filter(appointment__isnull=False)
+        elif txn_type == 'order':
+            qs = qs.filter(order__isnull=False)
+
+        if status:
+            qs = qs.filter(status=status.upper())
+
+        if date_from:
+            qs = qs.filter(created_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(created_at__date__lte=date_to)
+
+        try:
+            page      = max(1, int(request.query_params.get('page', 1)))
+            page_size = max(1, min(100, int(request.query_params.get('page_size', 10))))
+        except (TypeError, ValueError):
+            page, page_size = 1, 10
+
+        total = qs.count()
+        start = (page - 1) * page_size
+        txns  = qs[start:start + page_size]
+
+        results = []
+        for txn in txns:
+            if txn.appointment:
+                type_label   = 'APPOINTMENT'
+                service_desc = txn.appointment.service.name if txn.appointment.service else '—'
+            elif txn.order:
+                type_label   = 'ORDER'
+                service_desc = f"Marketplace Order #{str(txn.order.id)[:8].upper()}"
+            else:
+                type_label   = 'OTHER'
+                service_desc = '—'
+
+            patient = txn.user
+            results.append({
+                'id':                  str(txn.id),
+                'reference':           txn.reference,
+                'patient_name':        patient.get_full_name() or patient.email,
+                'patient_email':       patient.email,
+                'type':                type_label,
+                'service_description': service_desc,
+                'insurance':           getattr(patient, 'insurance_provider', None) or '—',
+                'amount_kobo':         txn.amount_kobo,
+                'currency':            txn.currency,
+                'status':              txn.status,
+                'provider':            txn.provider,
+                'created_at':          txn.created_at.isoformat(),
+            })
+
+        return build_success_response("Transactions", {
+            'count':      total,
+            'page':       page,
+            'page_size':  page_size,
+            'total_pages': (total + page_size - 1) // page_size,
+            'results':    results,
+        })

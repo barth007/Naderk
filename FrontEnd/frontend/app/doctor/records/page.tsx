@@ -5,9 +5,10 @@ import { useSearchParams } from 'next/navigation';
 import { usePatientRecords } from '@/services/medical-records/records.hooks';
 import { PatientRecord } from '@/services/medical-records/records.types';
 import { PatientSummaryModal } from '@/components/medical-records/PatientSummaryModal';
-import { Loader2, FileText, User, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { Loader2, FileText, User, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Pagination } from '@/components/ui/pagination';
 
 export default function DoctorPatientRecordsPage() {
   const searchParams = useSearchParams();
@@ -169,51 +170,14 @@ export default function DoctorPatientRecordsPage() {
             </table>
           </div>
 
-          {/* Table Footer / Pagination */}
-          <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/30">
-            <span className="text-[11px] text-gray-400 font-semibold">
-              Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, totalItems)} of {totalItems} patients
-            </span>
-
-            {totalPages > 1 && (
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                  className="h-8 w-8 rounded-lg border-gray-250 cursor-pointer shadow-none"
-                >
-                  <ChevronLeft className="w-4 h-4 text-gray-500" />
-                </Button>
-                
-                {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((page) => (
-                  <Button
-                    key={page}
-                    variant={currentPage === page ? 'default' : 'outline'}
-                    onClick={() => setCurrentPage(page)}
-                    className={`h-8 px-3 rounded-lg text-xs font-bold shadow-none cursor-pointer ${
-                      currentPage === page 
-                        ? 'bg-[#E03E3E] text-white hover:bg-red-750' 
-                        : 'border-gray-250 text-gray-500 hover:bg-gray-50'
-                    }`}
-                  >
-                    {page}
-                  </Button>
-                ))}
-
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  className="h-8 w-8 rounded-lg border-gray-250 cursor-pointer shadow-none"
-                >
-                  <ChevronRight className="w-4 h-4 text-gray-500" />
-                </Button>
-              </div>
-            )}
-          </div>
+          <Pagination
+            page={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            shownItems={currentItems.length}
+            noun="patients"
+            onPageChange={setCurrentPage}
+          />
         </Card>
       )}
 

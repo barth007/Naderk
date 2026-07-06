@@ -1,7 +1,10 @@
+'use client'
+
 import Image from "next/image"
 import Link from "next/link"
 import { cn } from "@/lib/cn"
 import { AnimatedIcon } from "@/components/ui/AnimatedIcon"
+import { useTeamMembers } from '@/services/cms/admin-cms.hooks'
 import {
   SOCIAL_ICONS,
   TEAM_MEMBERS,
@@ -51,7 +54,51 @@ function TeamMemberCard({ member }: { member: TeamMember }) {
   )
 }
 
+function ApiTeamMemberCard({ member }: { member: { name: string; role: string; bio: string; image_url: string; twitter_url: string; linkedin_url: string; instagram_url: string } }) {
+  const socials: SocialLink[] = [
+    ...(member.twitter_url ? [{ platform: 'twitter' as const, href: member.twitter_url }] : []),
+    ...(member.linkedin_url ? [{ platform: 'linkedin' as const, href: member.linkedin_url }] : []),
+    ...(member.instagram_url ? [{ platform: 'website' as const, href: member.instagram_url }] : []),
+  ];
+
+  return (
+    <article className="rounded-xl bg-transparent p-1">
+      <div className="mb-4 h-20 w-20 overflow-hidden rounded-full bg-card ring-4 ring-background shadow-sm">
+        {member.image_url ? (
+          <Image
+            src={member.image_url}
+            alt={`${member.name} portrait`}
+            width={80}
+            height={80}
+            className="h-full w-full object-cover"
+            unoptimized
+          />
+        ) : (
+          <div className="w-full h-full bg-red-50 flex items-center justify-center text-[#E03E3E] font-bold text-xl">
+            {member.name.charAt(0)}
+          </div>
+        )}
+      </div>
+
+      <h3 className="text-base font-bold text-foreground">{member.name}</h3>
+      <p className="mt-1 text-sm font-medium text-[var(--destructive)]">{member.role}</p>
+      {member.bio && <p className="mt-2 text-xs leading-relaxed text-muted-foreground line-clamp-3">{member.bio}</p>}
+
+      {socials.length > 0 && (
+        <div className="mt-3 flex items-center gap-1">
+          {socials.map((social, index) => (
+            <TeamSocialLink key={`${member.name}-${social.platform}-${index}`} social={social} />
+          ))}
+        </div>
+      )}
+    </article>
+  )
+}
+
 export function TeamSection() {
+  const { data: apiMembers } = useTeamMembers();
+  const useApi = apiMembers && apiMembers.length > 0;
+
   return (
     <section className="bg-background py-12 sm:py-14 lg:py-16" aria-labelledby="team-section-title">
       <div className="mx-auto grid w-full max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:gap-10 lg:px-8">
@@ -63,10 +110,11 @@ export function TeamSection() {
           <p className="mt-2 max-w-md text-sm text-muted-foreground">{TEAM_SECTION_DESCRIPTION}</p>
         </header>
 
-        <div className={cn("grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3")}> 
-          {TEAM_MEMBERS.map((member) => (
-            <TeamMemberCard key={member.name} member={member} />
-          ))}
+        <div className={cn("grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3")}>
+          {useApi
+            ? apiMembers.map(member => <ApiTeamMemberCard key={member.id} member={member} />)
+            : TEAM_MEMBERS.map(member => <TeamMemberCard key={member.name} member={member} />)
+          }
         </div>
       </div>
     </section>

@@ -7,9 +7,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 env = environ.Env(
     DEBUG=(bool, False)
 )
-_env_file = BASE_DIR / '.env'
-if _env_file.exists():
-    environ.Env.read_env(_env_file)
+environ.Env.read_env(BASE_DIR / '.env')
 
 # Quick-start development settings - unsuitable for production
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-zag5^3^$t8gv$$%#cq(+msitais0*h$pz(!g9(9_(b5b%ass$l')
@@ -86,7 +84,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database
 DATABASES = {
-    'default': env.db('DATABASE_URL', default=f'sqlite:///{BASE_DIR}/db.sqlite3')
+    'default': env.db('DATABASE_URL')
 }
 
 # Password validation

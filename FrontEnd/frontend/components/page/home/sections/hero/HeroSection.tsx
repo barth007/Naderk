@@ -1,12 +1,20 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Badge, Button } from "@/components/ui"
 import { CAROUSEL_SLIDES } from "./carousel.constants"
+import { useHeroSlides } from "@/services/cms/admin-cms.hooks"
 import { cn } from "@/lib/cn"
+
+const DEFAULT_BG = [
+  "linear-gradient(135deg, #fdf8f5 0%, #faeae1 100%)",
+  "linear-gradient(135deg, #f0f7ff 0%, #e0effe 100%)",
+  "linear-gradient(135deg, #fff5f5 0%, #ffe3e3 100%)",
+  "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
+]
 
 const slideVariants = {
   enter: (direction: number) => ({
@@ -31,15 +39,37 @@ export function HeroSection() {
   const [direction, setDirection] = useState(1) // 1 = forward, -1 = backward
   const [isHovered, setIsHovered] = useState(false)
 
+  const { data: apiSlides } = useHeroSlides()
+
+  const slides = useMemo(() => {
+    if (apiSlides && apiSlides.length > 0) {
+      return apiSlides.map((s, i) => ({
+        id: String(s.id),
+        title: s.title,
+        subtitle: s.subtitle,
+        description: s.description,
+        image: s.image_url,
+        mobileImage: s.image_url,
+        badge: s.badge_text,
+        discount: s.discount_text,
+        ctaText: s.cta_primary_text,
+        ctaLink: s.cta_primary_link,
+        backgroundColor: DEFAULT_BG[i % DEFAULT_BG.length],
+        theme: s.theme.toLowerCase() as "light" | "dark",
+      }))
+    }
+    return CAROUSEL_SLIDES
+  }, [apiSlides])
+
   const handleNext = useCallback(() => {
     setDirection(1)
-    setCurrentIndex((prev) => (prev + 1) % CAROUSEL_SLIDES.length)
-  }, [])
+    setCurrentIndex((prev) => (prev + 1) % slides.length)
+  }, [slides.length])
 
   const handlePrev = useCallback(() => {
     setDirection(-1)
-    setCurrentIndex((prev) => (prev - 1 + CAROUSEL_SLIDES.length) % CAROUSEL_SLIDES.length)
-  }, [])
+    setCurrentIndex((prev) => (prev - 1 + slides.length) % slides.length)
+  }, [slides.length])
 
   const handleDotClick = (index: number) => {
     if (index === currentIndex) return
@@ -69,7 +99,7 @@ export function HeroSection() {
     return () => clearInterval(timer)
   }, [currentIndex, isHovered, handleNext])
 
-  const currentSlide = CAROUSEL_SLIDES[currentIndex]
+  const currentSlide = slides[currentIndex] ?? slides[0]
   const isDark = currentSlide.theme === "dark"
 
   return (
@@ -258,7 +288,7 @@ export function HeroSection() {
 
       {/* Bottom Page Indicator Dots */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex gap-2.5 items-center">
-        {CAROUSEL_SLIDES.map((slide, index) => {
+        {slides.map((slide, index) => {
           const isActive = index === currentIndex
           return (
             <button

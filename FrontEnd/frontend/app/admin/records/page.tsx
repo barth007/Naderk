@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { format, subDays, subMonths, subWeeks, subYears, isAfter } from 'date-fns';
-import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Users, FileText, Droplets } from 'lucide-react';
+import { Calendar, ChevronDown, Users, FileText, Droplets } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Avatar } from '@/components/ui/avatar';
 import {
@@ -15,6 +15,7 @@ import {
   Th,
   Td,
 } from '@/components/ui/table';
+import { Pagination } from '@/components/ui/pagination';
 import {
   usePatientRecords,
   useMedicalRecordsOverview,
@@ -474,50 +475,15 @@ export default function AdminRecordsPage() {
               </TableBody>
             </Table>
 
-            {/* Pagination footer */}
-            {!isLoading && filteredPatients.length > 0 && (
-              <div className="flex items-center justify-between px-4 py-3.5 border-t border-gray-100 bg-white">
-                <span className="text-xs text-gray-500">
-                  Showing {paginatedPatients.length} of {filteredPatients.length} patients
-                </span>
-                <div className="flex items-center gap-1">
-                  {/* Prev */}
-                  <button
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={safePage === 1}
-                    className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-
-                  {/* Page numbers */}
-                  {Array.from({ length: totalPages }).map((_, i) => {
-                    const p = i + 1;
-                    return (
-                      <button
-                        key={p}
-                        onClick={() => setPage(p)}
-                        className={`w-8 h-8 text-xs rounded-md font-medium border transition-colors ${
-                          safePage === p
-                            ? 'bg-[#E03E3E] text-white border-[#E03E3E]'
-                            : 'text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    );
-                  })}
-
-                  {/* Next */}
-                  <button
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={safePage === totalPages}
-                    className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+            {!isLoading && (
+              <Pagination
+                page={safePage}
+                totalPages={totalPages}
+                totalItems={filteredPatients.length}
+                shownItems={paginatedPatients.length}
+                noun="records"
+                onPageChange={setPage}
+              />
             )}
           </TableContainer>
         </div>

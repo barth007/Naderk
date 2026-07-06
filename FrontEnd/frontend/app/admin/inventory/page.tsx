@@ -4,7 +4,7 @@ import React, { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import {
-  AlertTriangle, ChevronLeft, ChevronRight, Glasses, Droplets,
+  AlertTriangle, ChevronRight, Glasses, Droplets,
   Plus, Zap, Package, ShoppingCart, BarChart2, Boxes,
   History, RotateCcw, Trophy, Download, X, TrendingUp,
   Pencil, Trash2, Eye, CheckCircle2, AlertCircle, Loader2,
@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/card';
 import {
   TableContainer, Table, TableHead, TableBody, TableRow, Th, Td,
 } from '@/components/ui/table';
+import { Pagination } from '@/components/ui/pagination';
 import {
   useAdminInventorySummary,
   useAdminAllOrders,
@@ -1173,26 +1174,15 @@ export default function AdminInventoryPage() {
             </Table>
             </div>
 
-            {!productsLoading && filtered.length > 0 && (
-              <div className="flex items-center justify-between px-4 py-3.5 border-t border-gray-100 bg-white">
-                <span className="text-xs text-gray-500">
-                  Showing {paginatedProducts.length} of {filtered.length} products
-                </span>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1} className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  {Array.from({ length: totalPages }).map((_, i) => {
-                    const p = i + 1;
-                    return (
-                      <button key={p} onClick={() => setPage(p)} className={`w-8 h-8 text-xs rounded-md font-medium border transition-colors ${safePage === p ? 'bg-[#E03E3E] text-white border-[#E03E3E]' : 'text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>{p}</button>
-                    );
-                  })}
-                  <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+            {!productsLoading && (
+              <Pagination
+                page={safePage}
+                totalPages={totalPages}
+                totalItems={filtered.length}
+                shownItems={paginatedProducts.length}
+                noun="products"
+                onPageChange={setPage}
+              />
             )}
           </TableContainer>
       </div>
