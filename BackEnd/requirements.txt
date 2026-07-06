@@ -31,8 +31,7 @@ daphne==4.1.2
 channels==4.1.0
 channels-redis==4.2.1
 livekit-api
-cloudinary
-django-cloudinary-storage
+boto3
 reportlab
 requests
 

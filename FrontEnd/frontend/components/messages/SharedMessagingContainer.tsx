@@ -220,7 +220,7 @@ export function SharedMessagingContainer() {
               <div className="flex-grow flex flex-col h-full overflow-hidden relative">
                 
                 {/* Agent Triage Control Panel (Agent/Admin Triage Workspace) */}
-                {isAgent && (
+                {(isAgent || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
                   <div className="border-b border-gray-100 bg-white px-5 py-3.5 flex flex-col gap-3 shadow-[0_2px_10px_rgba(0,0,0,0.01)] shrink-0 transition-all">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">

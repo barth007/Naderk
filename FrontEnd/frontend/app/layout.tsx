@@ -96,6 +96,7 @@ export const metadata: Metadata = {
 };
 
 import QueryProvider from "@/components/providers/QueryProvider";
+import { DynamicFavicon } from "@/components/layout/DynamicFavicon";
 import Script from "next/script";
 
 export default function RootLayout({
@@ -108,6 +109,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <Script src="https://js.paystack.co/v1/inline.js" strategy="beforeInteractive" />
         <QueryProvider>
+          <DynamicFavicon />
           <ConditionalWrapper>
             <Navbar />
           </ConditionalWrapper>

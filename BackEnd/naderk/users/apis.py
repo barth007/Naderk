@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework import serializers
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
-import cloudinary.uploader
+from naderk.common.storage.service import storage_service
 
 from naderk.common.responses.builders import build_success_response
 from naderk.common.exceptions.auth import ValidationFailedException
@@ -177,15 +177,10 @@ class UploadImageAPI(APIView):
         if not file:
             raise ValidationFailedException(errors={"file": ["No file provided."]})
 
-        result = cloudinary.uploader.upload(
-            file,
-            folder="profile_images",
-            resource_type="image",
-        )
-        url = result.get("secure_url")
+        result = storage_service.upload_file(file, bucket_type='public', prefix='avatars', uploaded_by=request.user)
         return build_success_response(
             message="Image uploaded successfully.",
-            data={"url": url},
+            data={"url": result.url},
             status_code=200,
         )
 

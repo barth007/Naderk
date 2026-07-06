@@ -1,6 +1,9 @@
+'use client'
+
 import Image from "next/image"
 import Link from "next/link"
 import { DEFAULT_NAV_ITEMS } from "@/components/layout/navbar/navbar.constants"
+import { useBrand, useSiteSettings } from "@/services/cms/admin-cms.hooks"
 
 const servicesLinks =
   DEFAULT_NAV_ITEMS.find((item) => item.label === "Services")?.dropdown?.map((item) => ({
@@ -17,6 +20,12 @@ const infoLinks = [
 
 export function Footer() {
   const year = new Date().getFullYear()
+  const brand = useBrand()
+  const { data: settings } = useSiteSettings()
+
+  const logoSrc = brand.logoUrl ?? '/naderk_logo.png'
+  const address = settings?.address || 'Abuja, Nigeria'
+  const email = settings?.email_general || settings?.email_support || 'info@naderkeye.com'
 
   return (
     <footer className="bg-[#1F2933B2] text-white/80">
@@ -25,16 +34,17 @@ export function Footer() {
           <aside className="max-w-xl">
             <Link href="/" aria-label="Go to homepage" className="inline-flex items-center">
               <Image
-                src="/naderk_logo.png"
-                alt="Naderk Eye Clinic"
-                width={75}
-                height={50}
+                src={logoSrc}
+                alt={brand.name}
+                width={110}
+                height={70}
                 loading="eager"
                 className="object-contain"
+                unoptimized={!!brand.logoUrl}
               />
             </Link>
             <p className="mt-6 text-md leading-relaxed text-white/80 sm:text-md">
-              At NaderkEye Clinic, we are committed to providing high-quality eye care services using advanced technology and experienced specialists.
+              At {brand.name}, we are committed to providing high-quality eye care services using advanced technology and experienced specialists.
             </p>
           </aside>
 
@@ -90,11 +100,11 @@ export function Footer() {
                   <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1118 0z" />
                   <circle cx="12" cy="10" r="3" />
                 </svg>
-                <span>Abuja, Nigeria</span>
+                <span>{address}</span>
               </p>
 
               <a
-                href="mailto:info@cga.com"
+                href={`mailto:${email}`}
                 className="inline-flex items-center gap-2 text-md text-white/80 transition-colors hover:text-white"
               >
                 <svg
@@ -110,7 +120,7 @@ export function Footer() {
                   <path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z" />
                   <path d="M22 7l-10 7L2 7" />
                 </svg>
-                <span>info@cga.com</span>
+                <span>{email}</span>
               </a>
             </address>
           </section>
@@ -118,7 +128,7 @@ export function Footer() {
 
         <div className="mt-12 border-t border-white/60 pt-7">
           <div className="flex flex-col items-start justify-between gap-4 text-md text-white/80 sm:flex-row sm:items-center">
-            <small>© {year} NaderkEye Care. All rights reserved.</small>
+            <small>© {year} {brand.name}. All rights reserved.</small>
             <nav aria-label="Legal links">
               <ul className="flex items-center gap-8">
                 <li>

@@ -1,12 +1,13 @@
 from django import forms
 from django.contrib import admin
-import cloudinary.uploader
+from naderk.common.storage.service import storage_service
 from ..models import BlogPost
+
 
 class BlogPostForm(forms.ModelForm):
     image_upload = forms.FileField(
-        required=False, 
-        help_text="Upload an image directly to Cloudinary. This will overwrite the current image URL."
+        required=False,
+        help_text="Upload an image to storage. This will overwrite the current image URL."
     )
 
     class Meta:
@@ -16,12 +17,12 @@ class BlogPostForm(forms.ModelForm):
     def save(self, commit=True):
         instance = super().save(commit=False)
         image_upload = self.cleaned_data.get('image_upload')
-        
+
         if image_upload:
-            upload_data = cloudinary.uploader.upload(image_upload)
-            instance.image_url = upload_data.get('secure_url')
-            instance.image_public_id = upload_data.get('public_id')
-            
+            result = storage_service.upload_file(image_upload, bucket_type='public', prefix='blog')
+            instance.image_url = result.url
+            instance.image_public_id = result.object_key
+
         if commit:
             instance.save()
         return instance

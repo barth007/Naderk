@@ -1,12 +1,20 @@
+'use client'
+
+import { useFAQs } from '@/services/cms/admin-cms.hooks'
 import { FAQAccordionItem } from "./FAQAccordionItem";
 import { FAQS } from "./faq.constants";
 
 export function FAQSection() {
+  const { data: apiFaqs } = useFAQs();
+  const faqs = apiFaqs && apiFaqs.length > 0
+    ? apiFaqs.map(f => ({ question: f.question, answer: f.answer }))
+    : FAQS;
+
   return (
     <section className="bg-background py-16 md:py-24">
       <div className="container mx-auto px-4 md:px-6 max-w-7xl">
         <div className="grid gap-16 lg:grid-cols-12 lg:gap-8 items-center">
-          
+
           {/* Left Column */}
           <div className="flex flex-col items-start gap-4 lg:col-span-5">
             <span className="text-sm font-semibold text-[#E53E3E]">
@@ -23,11 +31,11 @@ export function FAQSection() {
           {/* Right Column: Accordion */}
           <div className="flex flex-col lg:col-span-7">
             <div className="flex flex-col w-full">
-              {FAQS.map((faq, idx) => (
-                <FAQAccordionItem 
-                  key={idx} 
-                  faq={faq} 
-                  defaultOpen={idx === 0} 
+              {faqs.map((faq, idx) => (
+                <FAQAccordionItem
+                  key={idx}
+                  faq={faq}
+                  defaultOpen={idx === 0}
                 />
               ))}
             </div>

@@ -251,8 +251,8 @@ class AttachmentUploadApi(APIView):
             return build_success_response("File uploaded successfully", {"url": url})
         except Exception as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/cloudinary-error",
-                title="Cloudinary Upload Error",
+                type_uri="https://api.naderkeye.com/problems/storage-error",
+                title="Storage Upload Error",
                 status_code=500,
                 detail=str(e),
                 instance=request.path
@@ -262,12 +262,13 @@ class ConversationAssignApi(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request, pk):
-        if request.user.role != User.Role.MEDICAL_AGENT:
+        TRIAGE_ROLES = {User.Role.MEDICAL_AGENT, User.Role.AGENT, User.Role.ADMIN, User.Role.SUPER_ADMIN}
+        if request.user.role not in TRIAGE_ROLES:
             return build_error_response(
                 type_uri="https://api.naderkeye.com/problems/forbidden",
                 title="Access Denied",
                 status_code=403,
-                detail="Only medical agents can assign conversations.",
+                detail="Only clinical staff can assign conversations.",
                 instance=request.path
             )
             

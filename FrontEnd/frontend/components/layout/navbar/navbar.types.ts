@@ -62,4 +62,6 @@ export interface MobileNavProps {
   activePath: string
   isOpen: boolean
   onClose: () => void
+  logoSrc?: string
+  logoAlt?: string
 }
