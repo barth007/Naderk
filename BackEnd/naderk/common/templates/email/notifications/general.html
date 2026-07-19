@@ -1,0 +1,14 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="text-main" style="margin:0 0 8px; font-size:22px; font-weight:700; color:#111827;">
+  {{ title }}
+</h2>
+<p class="text-muted" style="margin:0 0 24px; font-size:15px; color:#6b7280; line-height:1.6;">
+  {{ message }}
+</p>
+
+{% if action_url and action_label %}
+{% include "email/partials/button.html" with url=action_url label=action_label %}
+{% endif %}
+{% endblock %}

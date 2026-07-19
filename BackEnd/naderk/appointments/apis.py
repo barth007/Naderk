@@ -188,7 +188,7 @@ class CreateAppointmentApi(APIView):
         except DuplicateAppointmentError as e:
             from rest_framework.response import Response
             return Response({
-                "type": "https://api.naderkeye.com/problems/duplicate-booking",
+                "type": _problems_url("duplicate-booking"),
                 "title": "Duplicate appointment",
                 "status": 409,
                 "detail": str(e),
@@ -197,7 +197,7 @@ class CreateAppointmentApi(APIView):
         except OverlappingAppointmentError as e:
             from rest_framework.response import Response
             return Response({
-                "type": "https://api.naderkeye.com/problems/overlapping-booking",
+                "type": _problems_url("overlapping-booking"),
                 "title": "Overlapping appointment",
                 "status": 409,
                 "detail": str(e),
@@ -362,7 +362,7 @@ class RescheduleAppointmentApi(APIView):
         except OverlappingAppointmentError as e:
             from rest_framework.response import Response
             return Response({
-                "type": "https://api.naderkeye.com/problems/overlapping-booking",
+                "type": _problems_url("overlapping-booking"),
                 "title": "Overlapping appointment",
                 "status": 409,
                 "detail": str(e),

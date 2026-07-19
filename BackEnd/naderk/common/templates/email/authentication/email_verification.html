@@ -1,0 +1,18 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="text-main" style="margin:0 0 8px; font-size:22px; font-weight:700; color:#111827;">
+  Verify your email address
+</h2>
+<p class="text-muted" style="margin:0 0 24px; font-size:15px; color:#6b7280; line-height:1.6;">
+  Click the button below to verify <strong style="color:#111827;">{{ email }}</strong>
+  and activate your account. The link expires in
+  <strong style="color:#111827;">{{ expires_minutes|default:"24" }} hours</strong>.
+</p>
+
+{% include "email/partials/button.html" with url=verification_url label="Verify Email Address" %}
+
+<p style="margin:0; font-size:13px; color:#9ca3af; text-align:center;">
+  If you didn't create a {{ brand_name }} account, you can safely ignore this email.
+</p>
+{% endblock %}

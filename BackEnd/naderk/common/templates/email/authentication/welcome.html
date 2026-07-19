@@ -1,0 +1,39 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="text-main" style="margin:0 0 8px; font-size:22px; font-weight:700; color:#111827;">
+  Welcome to {{ brand_name }}, {{ first_name }}!
+</h2>
+<p class="text-muted" style="margin:0 0 24px; font-size:15px; color:#6b7280; line-height:1.6;">
+  Your account is verified and ready. Here's what you can do:
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0"
+       style="background:#f9fafb; border-radius:8px; margin-bottom:28px;">
+  {% for item in features %}
+  <tr>
+    <td style="padding:14px 20px; {% if not forloop.first %}border-top:1px solid #e5e7eb;{% endif %}">
+      <span style="font-size:18px; margin-right:10px;">{{ item.icon }}</span>
+      <span style="font-size:14px; font-weight:600; color:#111827;">{{ item.title }}</span>
+      <span style="display:block; margin-top:2px; font-size:13px; color:#6b7280; padding-left:28px;">
+        {{ item.description }}
+      </span>
+    </td>
+  </tr>
+  {% empty %}
+  <tr>
+    <td style="padding:14px 20px;">
+      <p style="margin:0; font-size:14px; color:#6b7280;">
+        Book appointments, access medical records, and manage your health — all in one place.
+      </p>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+{% include "email/partials/button.html" with url=login_url label="Go to your Dashboard" %}
+
+<p style="margin:0; font-size:13px; color:#9ca3af; text-align:center;">
+  We're glad to have you with us.
+</p>
+{% endblock %}

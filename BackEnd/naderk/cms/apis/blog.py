@@ -131,7 +131,7 @@ class BlogCategoryCreateAPI(APIView):
     def post(self, request):
         if request.user.role not in ADMIN_ROLES:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden", status_code=403,
                 detail="Only admins can manage categories.",
                 instance=request.path,
@@ -140,13 +140,13 @@ class BlogCategoryCreateAPI(APIView):
         description = str(request.data.get('description', '')).strip()
         if not name:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error", status_code=400,
                 detail="name is required.", instance=request.path,
             )
         if BlogCategory.objects.filter(name__iexact=name).exists():
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/conflict",
+                type_uri=_problems_url('conflict'),
                 title="Conflict", status_code=409,
                 detail="A category with this name already exists.", instance=request.path,
             )
@@ -165,7 +165,7 @@ class BlogCategoryDetailAPI(APIView):
     def _get_or_404(self, pk, request):
         if request.user.role not in ADMIN_ROLES:
             return None, build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden", status_code=403,
                 detail="Only admins can manage categories.", instance=request.path,
             )
@@ -173,7 +173,7 @@ class BlogCategoryDetailAPI(APIView):
             return BlogCategory.objects.get(pk=pk), None
         except BlogCategory.DoesNotExist:
             return None, build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found", status_code=404,
                 detail="Category not found.", instance=request.path,
             )
@@ -186,7 +186,7 @@ class BlogCategoryDetailAPI(APIView):
         description = str(request.data.get('description', category.description)).strip()
         if BlogCategory.objects.filter(name__iexact=name).exclude(pk=pk).exists():
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/conflict",
+                type_uri=_problems_url('conflict'),
                 title="Conflict", status_code=409,
                 detail="A category with this name already exists.", instance=request.path,
             )
@@ -213,7 +213,7 @@ class BlogCreateAPI(APIView):
     def post(self, request):
         if request.user.role not in BLOG_AUTHOR_ROLES:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden",
                 status_code=403,
                 detail="Only doctors and admins can create blog posts.",
@@ -225,7 +225,7 @@ class BlogCreateAPI(APIView):
         content = str(data.get('content', '')).strip()
         if not title or not content:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="title and content are required.",
@@ -239,7 +239,7 @@ class BlogCreateAPI(APIView):
                 category = BlogCategory.objects.get(id=category_id)
             except BlogCategory.DoesNotExist:
                 return build_error_response(
-                    type_uri="https://api.naderkeye.com/problems/not-found",
+                    type_uri=_problems_url('not-found'),
                     title="Not Found",
                     status_code=404,
                     detail="Category not found.",
@@ -280,7 +280,7 @@ class MyBlogListAPI(APIView):
     def get(self, request):
         if request.user.role not in BLOG_AUTHOR_ROLES:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden",
                 status_code=403,
                 detail="Only doctors and admins can access this endpoint.",
@@ -300,7 +300,7 @@ class AllBlogListAPI(APIView):
     def get(self, request):
         if request.user.role not in ADMIN_ROLES:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden",
                 status_code=403,
                 detail="Admin access required.",
@@ -320,7 +320,7 @@ class BlogUpdateDeleteAPI(APIView):
     def _get_blog_or_403(self, request, pk):
         if request.user.role not in BLOG_AUTHOR_ROLES:
             return None, build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden", status_code=403,
                 detail="Only doctors and admins can manage blog posts.",
                 instance=request.path,
@@ -329,14 +329,14 @@ class BlogUpdateDeleteAPI(APIView):
             blog = BlogPost.objects.select_related('category', 'author').get(pk=pk)
         except BlogPost.DoesNotExist:
             return None, build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found", status_code=404,
                 detail="Blog post not found.",
                 instance=request.path,
             )
         if request.user.role not in ADMIN_ROLES and blog.author_id != request.user.id:
             return None, build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden", status_code=403,
                 detail="You can only edit your own blog posts.",
                 instance=request.path,
@@ -394,7 +394,7 @@ class BlogPublishAPI(APIView):
     def post(self, request, pk):
         if request.user.role not in BLOG_AUTHOR_ROLES:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden", status_code=403,
                 detail="Only doctors and admins can publish blog posts.",
                 instance=request.path,
@@ -403,13 +403,13 @@ class BlogPublishAPI(APIView):
             blog = BlogPost.objects.get(pk=pk)
         except BlogPost.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found", status_code=404,
                 detail="Blog post not found.", instance=request.path,
             )
         if request.user.role not in ADMIN_ROLES and blog.author_id != request.user.id:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden", status_code=403,
                 detail="You can only publish your own blog posts.", instance=request.path,
             )
@@ -427,7 +427,7 @@ class BlogDraftAPI(APIView):
     def post(self, request, pk):
         if request.user.role not in BLOG_AUTHOR_ROLES:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden", status_code=403,
                 detail="Only doctors and admins can manage blog posts.",
                 instance=request.path,
@@ -436,13 +436,13 @@ class BlogDraftAPI(APIView):
             blog = BlogPost.objects.get(pk=pk)
         except BlogPost.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found", status_code=404,
                 detail="Blog post not found.", instance=request.path,
             )
         if request.user.role not in ADMIN_ROLES and blog.author_id != request.user.id:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden", status_code=403,
                 detail="You can only manage your own blog posts.", instance=request.path,
             )

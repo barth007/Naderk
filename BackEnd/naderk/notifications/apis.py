@@ -35,7 +35,7 @@ class NotificationReadApi(APIView):
             return build_success_response("Notification marked as read", NotificationSerializer(notification).data)
         except Notification.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Notification not found",

@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 
 
 class SiteSettings(models.Model):
-    company_name = models.CharField(max_length=150, default='NaderkEye Care')
+    company_name = models.CharField(max_length=150, default='Naderkela')
     logo_url = models.URLField(max_length=1000, blank=True)
     favicon_url = models.URLField(max_length=1000, blank=True)
     phone_primary = models.CharField(max_length=30, blank=True)

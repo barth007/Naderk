@@ -63,7 +63,7 @@ class ProductDetailApi(APIView):
             return build_success_response("Product details retrieved successfully", serializer.data)
         except Product.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Product not found",
@@ -92,7 +92,7 @@ class FrameDetailApi(APIView):
             return build_success_response("Frame details retrieved successfully", serializer.data)
         except Frame.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Frame not found",
@@ -140,7 +140,7 @@ class PrescriptionListCreateApi(APIView):
         serializer = PrescriptionSerializer(data=request.data)
         if not serializer.is_valid():
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="Prescription validation failed",
@@ -158,7 +158,7 @@ class PrescriptionListCreateApi(APIView):
                     target_patient = User.objects.get(id=patient_id, role=User.Role.PATIENT)
                 except User.DoesNotExist:
                     return build_error_response(
-                        type_uri="https://api.naderkeye.com/problems/not-found",
+                        type_uri=_problems_url('not-found'),
                         title="Not Found",
                         status_code=404,
                         detail="Patient not found",
@@ -190,7 +190,7 @@ class PrescriptionListCreateApi(APIView):
             return build_success_response("Prescription submitted", res_serializer.data, status_code=201)
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -231,7 +231,7 @@ class PrescriptionDetailApi(APIView):
             return build_success_response("Prescription retrieved successfully", serializer.data)
         except Prescription.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Prescription not found",
@@ -245,7 +245,7 @@ class PrescriptionReviewQueueApi(APIView):
     def get(self, request):
         if not request.user.is_staff and request.user.role not in ['ADMIN', 'DOCTOR']:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden",
                 status_code=403,
                 detail="Only staff, doctors, or administrators can view the review queue",
@@ -263,7 +263,7 @@ class PrescriptionReviewActionApi(APIView):
     def post(self, request, pk):
         if not request.user.is_staff and request.user.role not in ['ADMIN', 'DOCTOR']:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden",
                 status_code=403,
                 detail="Only staff, doctors, or administrators can review prescriptions",
@@ -274,7 +274,7 @@ class PrescriptionReviewActionApi(APIView):
             prescription = Prescription.objects.get(id=pk)
         except Prescription.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Prescription not found",
@@ -286,7 +286,7 @@ class PrescriptionReviewActionApi(APIView):
         
         if not status:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="Review status is required",
@@ -307,7 +307,7 @@ class PrescriptionReviewActionApi(APIView):
             return build_success_response("Prescription review updated successfully", serializer.data)
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -331,7 +331,7 @@ class CartAddItemApi(APIView):
         serializer = AddToCartSerializer(data=request.data)
         if not serializer.is_valid():
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="Invalid fields for cart addition",
@@ -354,7 +354,7 @@ class CartAddItemApi(APIView):
             return build_success_response("Item added to cart successfully", CartSerializer(cart).data)
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -371,7 +371,7 @@ class CartUpdateQuantityApi(APIView):
         
         if not item_id or quantity is None:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="item_id and quantity are required parameters",
@@ -388,7 +388,7 @@ class CartUpdateQuantityApi(APIView):
             return build_success_response("Cart item quantity updated successfully", CartSerializer(cart).data)
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -403,7 +403,7 @@ class CartRemoveItemApi(APIView):
         item_id = request.data.get('item_id')
         if not item_id:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="item_id is required to remove an item",
@@ -451,7 +451,7 @@ class WishlistToggleItemApi(APIView):
             return build_success_response(message, WishlistSerializer(wishlist).data)
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -466,7 +466,7 @@ class CheckoutApi(APIView):
         serializer = CheckoutSerializer(data=request.data)
         if not serializer.is_valid():
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="Checkout validation failed",
@@ -487,7 +487,7 @@ class CheckoutApi(APIView):
             )
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -513,7 +513,7 @@ class OrderDetailApi(APIView):
             # Users can see their own orders, staff/admin/doctors can see all
             if not request.user.is_staff and request.user.role not in ['ADMIN', 'DOCTOR'] and order.user != request.user:
                 return build_error_response(
-                    type_uri="https://api.naderkeye.com/problems/forbidden",
+                    type_uri=_problems_url('forbidden'),
                     title="Forbidden",
                     status_code=403,
                     detail="You do not have permission to view this order",
@@ -523,7 +523,7 @@ class OrderDetailApi(APIView):
             return build_success_response("Order details retrieved successfully", serializer.data)
         except Order.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Order not found",
@@ -538,7 +538,7 @@ class OrderPaymentApi(APIView):
         payment_reference = request.data.get('payment_reference')
         if not payment_reference:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="payment_reference is required",
@@ -549,7 +549,7 @@ class OrderPaymentApi(APIView):
             order = Order.objects.get(id=pk)
             if not request.user.is_staff and request.user.role not in ['ADMIN', 'DOCTOR'] and order.user != request.user:
                 return build_error_response(
-                    type_uri="https://api.naderkeye.com/problems/forbidden",
+                    type_uri=_problems_url('forbidden'),
                     title="Forbidden",
                     status_code=403,
                     detail="You do not have permission to process payment for this order",
@@ -564,7 +564,7 @@ class OrderPaymentApi(APIView):
             return build_success_response("Payment completed successfully", OrderSerializer(order).data)
         except Order.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Order not found",
@@ -572,7 +572,7 @@ class OrderPaymentApi(APIView):
             )
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
