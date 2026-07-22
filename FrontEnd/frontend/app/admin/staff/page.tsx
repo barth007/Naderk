@@ -192,7 +192,7 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
   const { data: departments = [] } = useAdminDepartments();
   const [form, setForm] = useState({
     first_name: '', last_name: '', email: '', phone_number: '',
-    role: '', department: '', employee_id: '',
+    role: '', department: '',
   });
   const [error, setError] = useState('');
 
@@ -213,7 +213,6 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
         phone_number: form.phone_number.trim() || undefined,
         role: form.role,
         department: form.department || undefined,
-        employee_id: form.employee_id.trim() || undefined,
       },
       {
         onSuccess: () => { onSuccess('Staff member added successfully!'); onClose(); },
@@ -278,10 +277,6 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
                   <option key={d.id} value={d.name}>{d.name}</option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-700 block mb-1">Employee ID</label>
-              <input value={form.employee_id} onChange={(e) => set('employee_id', e.target.value)} className={inputCls} placeholder="e.g. NDK001" />
             </div>
           </div>
           {error && <p className="text-xs text-red-500">{error}</p>}
