@@ -56,7 +56,7 @@ function ForgotPasswordForm() {
     setError,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ 
-    resolver: zodResolver(activeSchema) 
+    resolver: zodResolver(activeSchema) as any
   });
 
   const onSubmit = async (data: FormValues) => {
