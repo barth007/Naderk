@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Pencil, Power, Loader2, X, CheckCircle2, AlertCircle, Clock, Stethoscope, UserCheck, FlaskConical } from 'lucide-react';
+import { Plus, Pencil, Power, Loader2, X, CheckCircle2, AlertCircle, Clock, Stethoscope, UserCheck, FlaskConical, Video } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import {
   useAdminServices,
@@ -49,6 +49,7 @@ const EMPTY_FORM: CreateServicePayload & { id?: string } = {
   name: '',
   description: '',
   requires_doctor: true,
+  available_online: false,
   required_specialization: '',
   duration_minutes: 30,
   buffer_time_before: 0,
@@ -82,6 +83,7 @@ function ServiceFormModal({
           name: initial.name,
           description: initial.description,
           requires_doctor: initial.requires_doctor,
+          available_online: initial.available_online,
           required_specialization: initial.required_specialization ?? '',
           duration_minutes: initial.duration_minutes,
           buffer_time_before: initial.buffer_time_before,
@@ -205,7 +207,7 @@ function ServiceFormModal({
                   type="radio"
                   name="requires_doctor"
                   checked={!form.requires_doctor}
-                  onChange={() => { setF('requires_doctor', false); setF('required_specialization', ''); }}
+                  onChange={() => { setF('requires_doctor', false); setF('available_online', false); setF('required_specialization', ''); }}
                   className="accent-[#E03E3E]"
                 />
                 <FlaskConical className="w-4 h-4 text-amber-600" />
@@ -216,6 +218,24 @@ function ServiceFormModal({
               </label>
             </div>
           </div>
+
+          {/* Online availability — only when requires_doctor */}
+          {form.requires_doctor && (
+            <div>
+              <label className="flex items-center gap-3 border border-gray-200 rounded-md px-3 py-2.5 cursor-pointer hover:border-gray-300 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={!!form.available_online}
+                  onChange={(e) => setF('available_online', e.target.checked)}
+                  className="w-4 h-4 accent-[#E03E3E] rounded"
+                />
+                <div>
+                  <p className="text-xs font-semibold text-gray-800">Also available online (Telehealth)</p>
+                  <p className="text-xs text-gray-400">Patients can choose between physical visit or video call</p>
+                </div>
+              </label>
+            </div>
+          )}
 
           {/* Specialization — only shown when requires_doctor */}
           {form.requires_doctor && (
@@ -356,6 +376,12 @@ function ServiceCard({
               <span className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">
                 <FlaskConical className="w-3 h-3" />
                 Facility-based
+              </span>
+            )}
+            {service.requires_doctor && service.available_online && (
+              <span className="inline-flex items-center gap-1 text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-medium">
+                <Video className="w-3 h-3" />
+                Online available
               </span>
             )}
             <span className="inline-flex items-center gap-1 text-xs bg-gray-50 text-gray-600 px-2 py-0.5 rounded-full font-medium">

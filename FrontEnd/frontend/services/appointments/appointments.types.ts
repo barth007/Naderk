@@ -6,6 +6,7 @@ export interface MedicalService {
   slug: string;
   description: string | null;
   requires_doctor: boolean;
+  available_online: boolean;
   required_specialization: string | null;
   duration_minutes: number;
   fee: string;

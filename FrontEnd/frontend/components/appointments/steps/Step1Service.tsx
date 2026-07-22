@@ -10,8 +10,8 @@ export default function Step1Service() {
 
   const handleSelectService = (svc: MedicalService) => {
     setService(svc);
-    // On-site services are always physical — lock the type immediately
-    if (!svc.requires_doctor) {
+    // Lock to PHYSICAL when service doesn't support telehealth
+    if (!svc.requires_doctor || !svc.available_online) {
       setAppointmentDetails('PHYSICAL', notes);
     }
   };
@@ -20,9 +20,9 @@ export default function Step1Service() {
     setAppointmentDetails(type, notes);
   };
 
-  // Keep type locked to PHYSICAL if the selected service doesn't require a doctor
+  // Keep type locked to PHYSICAL if the service doesn't support telehealth
   useEffect(() => {
-    if (selectedService && !selectedService.requires_doctor && appointmentType !== 'PHYSICAL') {
+    if (selectedService && (!selectedService.requires_doctor || !selectedService.available_online) && appointmentType !== 'PHYSICAL') {
       setAppointmentDetails('PHYSICAL', notes);
     }
   }, [selectedService]);
@@ -79,18 +79,31 @@ export default function Step1Service() {
         </div>
       </div>
 
-      {/* On-site services are always physical — no choice needed */}
+      {/* Consultation type section — varies by service delivery mode */}
       {selectedService && !selectedService.requires_doctor ? (
+        // Case 1: Facility-based on-site only — no choice, just a notice
         <div className="mt-10 flex items-center gap-3 bg-amber-50 border border-amber-100 rounded-[14px] px-5 py-4">
           <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
             <MapPin className="w-4 h-4" />
           </div>
           <div>
             <p className="text-[13px] font-bold text-gray-900">Physical Visit (On-site)</p>
-            <p className="text-[12px] text-gray-500 mt-0.5">This service is performed at one of our facilities. No doctor consultation is required.</p>
+            <p className="text-[12px] text-gray-500 mt-0.5">This service is performed at one of our facilities. No doctor consultation required.</p>
           </div>
         </div>
-      ) : (
+      ) : selectedService && selectedService.requires_doctor && !selectedService.available_online ? (
+        // Case 2: Doctor required, physical only — auto-select Physical, no telehealth option
+        <div className="mt-10 flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-[14px] px-5 py-4">
+          <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+            <MapPin className="w-4 h-4" />
+          </div>
+          <div>
+            <p className="text-[13px] font-bold text-gray-900">Physical Visit</p>
+            <p className="text-[12px] text-gray-500 mt-0.5">This service requires an in-person visit with a specialist.</p>
+          </div>
+        </div>
+      ) : selectedService && selectedService.requires_doctor && selectedService.available_online ? (
+        // Case 3: Doctor required, both physical and telehealth available — let patient choose
         <div className="mt-10 space-y-5">
           <h2 className="text-[15px] font-bold text-gray-700">2. Consultation Type</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -129,7 +142,7 @@ export default function Step1Service() {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

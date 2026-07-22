@@ -18,6 +18,10 @@ class MedicalService(models.Model):
         default=True,
         help_text="If False, service is facility-based (e.g. lab test) and does not require a doctor"
     )
+    available_online = models.BooleanField(
+        default=False,
+        help_text="If True and requires_doctor is True, patients can choose physical or telehealth. Ignored for facility-based services."
+    )
     required_specialization = models.CharField(
         max_length=50, choices=DoctorProfile.Specialization.choices,
         blank=True, null=True,
