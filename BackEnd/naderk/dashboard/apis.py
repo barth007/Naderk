@@ -1298,9 +1298,17 @@ class AdminStaffListAPI(APIView):
         department = (request.data.get('department') or '').strip()
         employee_id = (request.data.get('employee_id') or '').strip()
 
+        specialization = (request.data.get('specialization') or '').strip()
+
+        ALLOWED_ROLES = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'ADMIN']
         if not all([first_name, email, role]):
             return build_success_response(
                 message="first_name, email, and role are required.",
+                data={}, status_code=400, success=False
+            )
+        if role not in ALLOWED_ROLES:
+            return build_success_response(
+                message=f"Invalid role. Must be one of: {', '.join(ALLOWED_ROLES)}",
                 data={}, status_code=400, success=False
             )
         if User.objects.filter(email=email).exists():
@@ -1318,14 +1326,20 @@ class AdminStaffListAPI(APIView):
         if phone:
             user.phone_number = phone
         user.set_password(temp_password)
-        user.username = email
         user.save()
+        # Signal auto-creates StaffProfile/DoctorProfile on save; update with
+        # any admin-supplied overrides.
+        if hasattr(user, 'staff_profile'):
+            sp = user.staff_profile
+            if employee_id:
+                sp.employee_id = employee_id
+            if department:
+                sp.department = department
+            sp.save(update_fields=['employee_id', 'department'])
 
-        StaffProfile.objects.create(
-            user=user,
-            employee_id=employee_id or f"NDK{str(user.id).replace('-','')[:5].upper()}",
-            department=department,
-        )
+        if role == 'DOCTOR' and specialization and hasattr(user, 'doctor_profile'):
+            user.doctor_profile.specialization = specialization
+            user.doctor_profile.save(update_fields=['specialization'])
 
         return build_success_response(
             message="Staff member created.",
