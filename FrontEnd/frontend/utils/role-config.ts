@@ -26,6 +26,7 @@ export const ROLE_CONFIGS: Record<string, RoleConfig> = {
     sidebarItems: [
       { name: 'Dashboard', href: '/dashboard', iconName: 'LayoutGrid' },
       { name: 'Appointments', href: '/dashboard/appointments', iconName: 'Calendar' },
+      { name: 'Services', href: '/dashboard/services', iconName: 'Stethoscope' },
       { name: 'Medical Records', href: '/dashboard/records', iconName: 'FileText' },
       { name: 'Messages', href: '/dashboard/messages', iconName: 'MessageSquare' },
       { name: 'Telehealth', href: '/dashboard/telehealth', iconName: 'Video' },
@@ -105,6 +106,7 @@ export const ROLE_CONFIGS: Record<string, RoleConfig> = {
       { name: 'Order Book', href: '/admin/orders', iconName: 'BookOpen' },
       { name: 'Billing', href: '/admin/billing', iconName: 'CreditCard' },
       { name: 'Staff Management', href: '/admin/staff', iconName: 'Users' },
+      { name: 'Services', href: '/admin/services', iconName: 'Stethoscope' },
       { name: 'Messages', href: '/admin/messages', iconName: 'MessageSquare' },
       { name: 'CMS', href: '/admin/cms', iconName: 'Globe' },
       { name: 'Settings', href: '/profile', iconName: 'Settings' },
@@ -128,6 +130,7 @@ export const ROLE_CONFIGS: Record<string, RoleConfig> = {
       { name: 'Order Book', href: '/admin/orders', iconName: 'BookOpen' },
       { name: 'Billing', href: '/admin/billing', iconName: 'CreditCard' },
       { name: 'Staff Management', href: '/admin/staff', iconName: 'Users' },
+      { name: 'Services', href: '/admin/services', iconName: 'Stethoscope' },
       { name: 'Messages', href: '/admin/messages', iconName: 'MessageSquare' },
       { name: 'CMS', href: '/admin/cms', iconName: 'Globe' },
       { name: 'Settings', href: '/profile', iconName: 'Settings' },
