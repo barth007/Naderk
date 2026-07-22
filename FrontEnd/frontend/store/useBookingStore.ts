@@ -46,10 +46,17 @@ export const useBookingStore = create<BookingState>()(
       nextStep: () => set((state) => ({ currentStep: Math.min(state.currentStep + 1, 6) })),
       prevStep: () => set((state) => ({ currentStep: Math.max(state.currentStep - 1, 1) })),
       
-      setService: (service) => set({ service }),
+      setService: (service) => set({ service, doctor: null, date: null, time: null, consultationFee: '0.00', isConsultationValid: false }),
       setDoctor: (doctor) => set({ doctor }),
       setDateTime: (date, time) => set({ date, time }),
-      setAppointmentDetails: (type, notes) => set({ appointmentType: type, notes }),
+      setAppointmentDetails: (type, notes) => set((state) => ({
+        appointmentType: type,
+        notes,
+        // Re-assign doctor when consultation type changes so Step2 re-fires
+        doctor: state.appointmentType !== type ? null : state.doctor,
+        date: state.appointmentType !== type ? null : state.date,
+        time: state.appointmentType !== type ? null : state.time,
+      })),
       setConsultationInfo: (fee, isValid) => set({ consultationFee: fee, isConsultationValid: isValid }),
       setReservation: (id) => set({ reservationId: id }),
       
