@@ -1286,69 +1286,133 @@ class AdminStaffListAPI(APIView):
         if _admin_only(request):
             return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
 
+        from django.db import transaction
+        from django.conf import settings
+        from django.template.loader import render_to_string
         from naderk.core.models import User
-        from naderk.users.models import StaffProfile
+        from naderk.authentication.models import PasswordResetToken
+        from naderk.common.email._provider_registry import get_provider
+        from naderk.common.email.providers.base import EmailMessage
+        from naderk.common.email.exceptions import EmailError
         import secrets
+        import datetime
 
         first_name = (request.data.get('first_name') or '').strip()
-        last_name = (request.data.get('last_name') or '').strip()
-        email = (request.data.get('email') or '').strip().lower()
-        role = (request.data.get('role') or '').strip()
-        phone = (request.data.get('phone_number') or '').strip()
-        department = (request.data.get('department') or '').strip()
-        employee_id = (request.data.get('employee_id') or '').strip()
-
+        last_name  = (request.data.get('last_name')  or '').strip()
+        email      = (request.data.get('email')       or '').strip().lower()
+        role       = (request.data.get('role')        or '').strip()
+        phone      = (request.data.get('phone_number') or '').strip()
+        department = (request.data.get('department')  or '').strip()
         specialization = (request.data.get('specialization') or '').strip()
 
         ALLOWED_ROLES = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'ADMIN']
         if not all([first_name, email, role]):
             return build_success_response(
                 message="first_name, email, and role are required.",
-                data={}, status_code=400, success=False
+                data={}, status_code=400, success=False,
             )
         if role not in ALLOWED_ROLES:
             return build_success_response(
                 message=f"Invalid role. Must be one of: {', '.join(ALLOWED_ROLES)}",
-                data={}, status_code=400, success=False
+                data={}, status_code=400, success=False,
             )
         if User.objects.filter(email=email).exists():
-            return build_success_response(message="A user with this email already exists.", data={}, status_code=400, success=False)
+            return build_success_response(
+                message="A user with this email already exists.",
+                data={}, status_code=400, success=False,
+            )
 
-        temp_password = secrets.token_urlsafe(12)
-        user = User(
-            email=email,
-            first_name=first_name,
-            last_name=last_name,
-            role=role,
-            is_active=True,
-            is_verified=True,
-        )
-        if phone:
-            user.phone_number = phone
-        user.set_password(temp_password)
-        user.save()
-        # Signal auto-creates StaffProfile/DoctorProfile on save; update with
-        # any admin-supplied overrides.
-        if hasattr(user, 'staff_profile'):
-            sp = user.staff_profile
-            if employee_id:
-                sp.employee_id = employee_id
-            if department:
-                sp.department = department
-            sp.save(update_fields=['employee_id', 'department'])
+        ROLE_DISPLAY = {
+            'DOCTOR': 'Doctor',
+            'OPTICIAN': 'Optician',
+            'MEDICAL_AGENT': 'Medical Agent',
+            'ADMIN': 'Administrator',
+        }
 
-        if role == 'DOCTOR' and specialization and hasattr(user, 'doctor_profile'):
-            user.doctor_profile.specialization = specialization
-            user.doctor_profile.save(update_fields=['specialization'])
+        try:
+            with transaction.atomic():
+                # Create user with an unusable password — staff must set their
+                # own via the invite link.
+                user = User(
+                    email=email,
+                    first_name=first_name,
+                    last_name=last_name,
+                    role=role,
+                    is_active=True,
+                    is_verified=True,
+                    otp_verified=True,
+                )
+                if phone:
+                    user.phone_number = phone
+                user.set_unusable_password()
+                user.save()
+                # Signal auto-creates StaffProfile / DoctorProfile.
+                # Apply department override if provided.
+                if department and hasattr(user, 'staff_profile'):
+                    user.staff_profile.department = department
+                    user.staff_profile.save(update_fields=['department'])
 
+                if role == 'DOCTOR' and specialization and hasattr(user, 'doctor_profile'):
+                    user.doctor_profile.specialization = specialization
+                    user.doctor_profile.save(update_fields=['specialization'])
+
+                # Create a 24-hour invite token (reuses PasswordResetToken).
+                token = secrets.token_urlsafe(32)
+                expires_at = timezone.now() + datetime.timedelta(hours=24)
+                PasswordResetToken.objects.create(
+                    user=user, token=token, expires_at=expires_at,
+                )
+
+                # Build the invite URL pointing at the frontend reset-password page.
+                frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')
+                invite_url = f"{frontend_url}/reset-password?token={token}"
+                brand = getattr(settings, 'BRAND_NAME', 'Naderkela')
+
+                html = render_to_string('email/authentication/staff_invite.html', {
+                    'brand_name': brand,
+                    'brand_logo_url': getattr(settings, 'BRAND_LOGO_URL', ''),
+                    'first_name': first_name,
+                    'email': email,
+                    'role_display': ROLE_DISPLAY.get(role, role.title()),
+                    'invite_url': invite_url,
+                    'expires_minutes': 1440,
+                })
+
+                # Send synchronously — failure rolls back the user row.
+                provider = get_provider()
+                provider.send(EmailMessage(
+                    to=[email],
+                    subject=f"You've been invited to {brand}",
+                    html_body=html,
+                    text_body=(
+                        f"Hi {first_name},\n\n"
+                        f"You've been added to {brand} as {ROLE_DISPLAY.get(role, role)}.\n\n"
+                        f"Set your password here (expires in 24 hours):\n{invite_url}\n\n"
+                        f"Your login email: {email}"
+                    ),
+                    tags=['staff-invite'],
+                ))
+
+        except EmailError as exc:
+            return build_success_response(
+                message="Could not send the invite email. Please check the email address and try again.",
+                data={'error': str(exc)},
+                status_code=400,
+                success=False,
+            )
+
+        employee_id = getattr(getattr(user, 'staff_profile', None), 'employee_id', '')
         return build_success_response(
-            message="Staff member created.",
+            message="Staff member created and invite email sent.",
             data={
                 'id': str(user.id),
                 'name': f"{user.first_name} {user.last_name}".strip(),
-                'temp_password': temp_password,
+                'email': user.email,
+                'role': user.role,
+                'employee_id': employee_id,
+                'email_sent': True,
             },
-            status_code=201
+            status_code=201,
         )
 
 
