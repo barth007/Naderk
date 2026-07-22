@@ -194,17 +194,20 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
     first_name: '', last_name: '', email: '', phone_number: '',
     role: '', department: '',
   });
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   function set(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
+    if (errors[field]) setErrors((prev) => { const e = { ...prev }; delete e[field]; return e; });
   }
 
   function handleSubmit() {
-    if (!form.first_name.trim()) { setError('First name is required.'); return; }
-    if (!form.email.trim()) { setError('Email is required.'); return; }
-    if (!form.role) { setError('Please select a role.'); return; }
-    setError('');
+    const newErrors: Record<string, string> = {};
+    if (!form.first_name.trim()) newErrors.first_name = 'First name is required.';
+    if (!form.email.trim()) newErrors.email = 'Email is required.';
+    if (!form.role) newErrors.role = 'Please select a role.';
+    if (Object.keys(newErrors).length) { setErrors(newErrors); return; }
+    setErrors({});
     createStaff(
       {
         first_name: form.first_name.trim(),
@@ -218,7 +221,7 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
         onSuccess: () => { onSuccess('Staff member added successfully!'); onClose(); },
         onError: (err: unknown) => {
           const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-          setError(msg || 'Failed to create staff member.');
+          setErrors({ _form: msg || 'Failed to create staff member.' });
         },
       }
     );
@@ -247,6 +250,7 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
             <div>
               <label className="text-xs font-semibold text-gray-700 block mb-1">First Name *</label>
               <input value={form.first_name} onChange={(e) => set('first_name', e.target.value)} className={inputCls} placeholder="e.g. Sarah" />
+              {errors.first_name && <p className="text-xs text-red-500 mt-1">{errors.first_name}</p>}
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-700 block mb-1">Last Name</label>
@@ -256,6 +260,7 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
           <div>
             <label className="text-xs font-semibold text-gray-700 block mb-1">Email Address *</label>
             <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} className={inputCls} placeholder="sarah.doe@naderk.com" />
+            {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-700 block mb-1">Phone Number</label>
@@ -267,6 +272,7 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
               <option value="">Select a role</option>
               {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
+            {errors.role && <p className="text-xs text-red-500 mt-1">{errors.role}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -279,7 +285,7 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
               </select>
             </div>
           </div>
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          {errors._form && <p className="text-xs text-red-500">{errors._form}</p>}
         </div>
 
         <div className="flex gap-2 mt-5 pt-4 border-t border-gray-100">
