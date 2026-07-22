@@ -3,7 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.db.models import Sum, Count, Q, F
 from django.db.models.functions import TruncMonth, TruncDate
-from naderk.common.responses.builders import build_success_response
+from naderk.common.responses.builders import build_success_response, build_error_response
 from naderk.appointments.models import Appointment
 from naderk.users.models import DoctorNote
 from naderk.messaging.models import Conversation, ConversationStatus
@@ -1307,19 +1307,19 @@ class AdminStaffListAPI(APIView):
 
         ALLOWED_ROLES = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'ADMIN']
         if not all([first_name, email, role]):
-            return build_success_response(
-                message="first_name, email, and role are required.",
-                data={}, status_code=400, success=False,
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail="first_name, email, and role are required.",
             )
         if role not in ALLOWED_ROLES:
-            return build_success_response(
-                message=f"Invalid role. Must be one of: {', '.join(ALLOWED_ROLES)}",
-                data={}, status_code=400, success=False,
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail=f"Invalid role. Must be one of: {', '.join(ALLOWED_ROLES)}",
             )
         if User.objects.filter(email=email).exists():
-            return build_success_response(
-                message="A user with this email already exists.",
-                data={}, status_code=400, success=False,
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail="A user with this email already exists.",
             )
 
         ROLE_DISPLAY = {
@@ -1394,11 +1394,9 @@ class AdminStaffListAPI(APIView):
                 ))
 
         except EmailError as exc:
-            return build_success_response(
-                message="Could not send the invite email. Please check the email address and try again.",
-                data={'error': str(exc)},
-                status_code=400,
-                success=False,
+            return build_error_response(
+                type_uri='email-error', title='Email Error', status_code=400,
+                detail="Could not send the invite email. Please check the email address and try again.",
             )
 
         employee_id = getattr(getattr(user, 'staff_profile', None), 'employee_id', '')
