@@ -179,6 +179,46 @@ class MeAPI(APIView):
         )
 
 
+class ForgotPasswordAPI(APIView):
+    """
+    POST /auth/forgot-password/
+    Sends a password reset email. Always returns 200 (no enumeration).
+    """
+    def post(self, request):
+        email = request.data.get('email', '').strip()
+        if not email:
+            raise ValidationFailedException(errors={"email": ["Email is required."]})
+        services.request_password_reset(email=email)
+        return build_success_response(
+            message="If that email is registered, a reset link has been sent.",
+            status_code=200,
+        )
+
+
+class ResetPasswordAPI(APIView):
+    """
+    POST /auth/reset-password/
+    Consumes the token and sets a new password.
+    """
+    def post(self, request):
+        token = request.data.get('token', '').strip()
+        new_password = request.data.get('new_password', '')
+        confirm_password = request.data.get('confirm_password', '')
+
+        if not token:
+            raise ValidationFailedException(errors={"token": ["Reset token is required."]})
+        if not new_password:
+            raise ValidationFailedException(errors={"new_password": ["New password is required."]})
+        if new_password != confirm_password:
+            raise ValidationFailedException(errors={"confirm_password": ["Passwords do not match."]})
+
+        services.reset_password(token=token, new_password=new_password)
+        return build_success_response(
+            message="Password reset successfully. You can now log in.",
+            status_code=200,
+        )
+
+
 class ChangePasswordAPI(APIView):
     """
     POST /auth/change-password/

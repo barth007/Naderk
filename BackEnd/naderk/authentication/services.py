@@ -5,11 +5,12 @@ from django.db import transaction
 from rest_framework_simplejwt.tokens import RefreshToken
 import random
 import datetime
+import secrets
 
 from naderk.common.exceptions.auth import InvalidOTPException, AuthenticationRequiredException, ValidationFailedException
 from naderk.common.email.services import email_service
 from naderk.common.email.exceptions import EmailError
-from .models import OTPVerification, LoginAttempt
+from .models import OTPVerification, LoginAttempt, PasswordResetToken
 
 User = get_user_model()
 
@@ -162,3 +163,52 @@ def _get_tokens_for_user(user: User) -> dict:
             'profile_completion_status': user.profile_completion_status,
         }
     }
+
+
+def request_password_reset(*, email: str) -> None:
+    """
+    Generates a secure reset token and emails a reset link.
+    Always returns success to prevent email enumeration.
+    """
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return
+
+    # Invalidate any previous unused tokens
+    PasswordResetToken.objects.filter(user=user, is_used=False).update(is_used=True)
+
+    token = secrets.token_urlsafe(32)
+    expires_at = timezone.now() + datetime.timedelta(minutes=30)
+    PasswordResetToken.objects.create(user=user, token=token, expires_at=expires_at)
+
+    from django.conf import settings
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')
+    reset_url = f"{frontend_url}/reset-password?token={token}"
+
+    try:
+        email_service.send_password_reset(user=user, reset_url=reset_url, expires_minutes=30)
+    except EmailError:
+        pass
+
+
+def reset_password(*, token: str, new_password: str) -> None:
+    """
+    Validates the reset token and sets the new password.
+    """
+    try:
+        record = PasswordResetToken.objects.select_related('user').get(token=token)
+    except PasswordResetToken.DoesNotExist:
+        raise ValidationFailedException(errors={"token": ["Invalid or expired reset link."]})
+
+    if not record.is_valid():
+        raise ValidationFailedException(errors={"token": ["This reset link has expired or already been used."]})
+
+    if len(new_password) < 8:
+        raise ValidationFailedException(errors={"new_password": ["Password must be at least 8 characters."]})
+
+    with transaction.atomic():
+        record.is_used = True
+        record.save(update_fields=['is_used'])
+        record.user.set_password(new_password)
+        record.user.save(update_fields=['password'])
