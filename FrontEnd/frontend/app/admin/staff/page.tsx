@@ -273,7 +273,7 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
               <label className="text-xs font-semibold text-gray-700 block mb-1">Department</label>
               <select value={form.department} onChange={(e) => set('department', e.target.value)} className={`${inputCls} bg-white`}>
                 <option value="">Select department</option>
-                {departments.filter(d => d.is_active).map((d) => (
+                {departments.map((d) => (
                   <option key={d.id} value={d.name}>{d.name}</option>
                 ))}
               </select>
