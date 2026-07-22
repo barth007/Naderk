@@ -20,7 +20,8 @@ export default function Step2Specialist() {
     });
   }, [service, selectedDate]); // Re-run when date changes so doctor matches actual availability
 
-  if (!service) return null;
+  // On-site services don't need a specialist — skip this step entirely
+  if (!service || !service.requires_doctor) return null;
 
   return (
     <div className="space-y-5">

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useMedicalServices } from '@/services/appointments/appointments.hooks';
 import { useBookingStore } from '@/store/useBookingStore';
 import { MedicalService, AppointmentType } from '@/services/appointments/appointments.types';
@@ -8,13 +8,24 @@ export default function Step1Service() {
   const { data: services, isLoading, isError } = useMedicalServices();
   const { service: selectedService, setService, appointmentType, setAppointmentDetails, notes } = useBookingStore();
 
-  const handleSelectService = (service: MedicalService) => {
-    setService(service);
+  const handleSelectService = (svc: MedicalService) => {
+    setService(svc);
+    // On-site services are always physical — lock the type immediately
+    if (!svc.requires_doctor) {
+      setAppointmentDetails('PHYSICAL', notes);
+    }
   };
 
   const handleSelectType = (type: AppointmentType) => {
     setAppointmentDetails(type, notes);
   };
+
+  // Keep type locked to PHYSICAL if the selected service doesn't require a doctor
+  useEffect(() => {
+    if (selectedService && !selectedService.requires_doctor && appointmentType !== 'PHYSICAL') {
+      setAppointmentDetails('PHYSICAL', notes);
+    }
+  }, [selectedService]);
 
   if (isLoading) {
     return (
@@ -68,44 +79,57 @@ export default function Step1Service() {
         </div>
       </div>
 
-      <div className="mt-10 space-y-5">
-        <h2 className="text-[15px] font-bold text-gray-700">2. Consultation Type</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div 
-            onClick={() => handleSelectType('PHYSICAL')}
-            className={`cursor-pointer rounded-[14px] p-5 border transition-all duration-200 flex items-center gap-4 bg-white shadow-sm
-              ${appointmentType === 'PHYSICAL' 
-                ? 'border-red-200 ring-1 ring-red-50 bg-red-50/10' 
-                : 'border-gray-100 hover:border-red-100'
-              }`}
-          >
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${appointmentType === 'PHYSICAL' ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-400'}`}>
-               <MapPin className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-900 text-[14px] mb-0.5">Physical Visit</h3>
-              <p className="text-gray-500 text-[12px]">In-person clinic consultation</p>
-            </div>
+      {/* On-site services are always physical — no choice needed */}
+      {selectedService && !selectedService.requires_doctor ? (
+        <div className="mt-10 flex items-center gap-3 bg-amber-50 border border-amber-100 rounded-[14px] px-5 py-4">
+          <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+            <MapPin className="w-4 h-4" />
           </div>
-
-          <div 
-            onClick={() => handleSelectType('TELEHEALTH')}
-            className={`cursor-pointer rounded-[14px] p-5 border transition-all duration-200 flex items-center gap-4 bg-white shadow-sm
-              ${appointmentType === 'TELEHEALTH' 
-                ? 'border-red-200 ring-1 ring-red-50 bg-red-50/10' 
-                : 'border-gray-100 hover:border-red-100'
-              }`}
-          >
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${appointmentType === 'TELEHEALTH' ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-400'}`}>
-               <Video className="w-5 h-5" />
+          <div>
+            <p className="text-[13px] font-bold text-gray-900">Physical Visit (On-site)</p>
+            <p className="text-[12px] text-gray-500 mt-0.5">This service is performed at one of our facilities. No doctor consultation is required.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-10 space-y-5">
+          <h2 className="text-[15px] font-bold text-gray-700">2. Consultation Type</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div
+              onClick={() => handleSelectType('PHYSICAL')}
+              className={`cursor-pointer rounded-[14px] p-5 border transition-all duration-200 flex items-center gap-4 bg-white shadow-sm
+                ${appointmentType === 'PHYSICAL'
+                  ? 'border-red-200 ring-1 ring-red-50 bg-red-50/10'
+                  : 'border-gray-100 hover:border-red-100'
+                }`}
+            >
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${appointmentType === 'PHYSICAL' ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-400'}`}>
+                <MapPin className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-[14px] mb-0.5">Physical Visit</h3>
+                <p className="text-gray-500 text-[12px]">In-person clinic consultation</p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-gray-900 text-[14px] mb-0.5">Telehealth</h3>
-              <p className="text-gray-500 text-[12px]">Online secure video call</p>
+
+            <div
+              onClick={() => handleSelectType('TELEHEALTH')}
+              className={`cursor-pointer rounded-[14px] p-5 border transition-all duration-200 flex items-center gap-4 bg-white shadow-sm
+                ${appointmentType === 'TELEHEALTH'
+                  ? 'border-red-200 ring-1 ring-red-50 bg-red-50/10'
+                  : 'border-gray-100 hover:border-red-100'
+                }`}
+            >
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${appointmentType === 'TELEHEALTH' ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-400'}`}>
+                <Video className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-[14px] mb-0.5">Telehealth</h3>
+                <p className="text-gray-500 text-[12px]">Online secure video call</p>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
