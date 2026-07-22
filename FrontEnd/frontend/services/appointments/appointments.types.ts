@@ -5,7 +5,8 @@ export interface MedicalService {
   name: string;
   slug: string;
   description: string | null;
-  required_specialization: string;
+  requires_doctor: boolean;
+  required_specialization: string | null;
   duration_minutes: number;
   fee: string;
   billing_type: BillingType;

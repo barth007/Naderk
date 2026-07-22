@@ -1657,6 +1657,7 @@ class AdminServiceListAPI(APIView):
             'name': s.name,
             'slug': s.slug,
             'description': s.description or '',
+            'requires_doctor': s.requires_doctor,
             'required_specialization': s.required_specialization,
             'duration_minutes': s.duration_minutes,
             'buffer_time_before': s.buffer_time_before,
@@ -1684,16 +1685,17 @@ class AdminServiceListAPI(APIView):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.appointments.models import MedicalService
         from django.utils.text import slugify
-        import re
 
         name = (request.data.get('name') or '').strip()
         billing_type = (request.data.get('billing_type') or 'PER_VISIT').strip()
-        specialization = (request.data.get('required_specialization') or '').strip()
+        requires_doctor = bool(request.data.get('requires_doctor', True))
+        specialization = (request.data.get('required_specialization') or '').strip() or None
 
         if not name:
             return build_error_response('validation-error', 'Validation Error', 400, 'name is required.')
-        if not specialization:
-            return build_error_response('validation-error', 'Validation Error', 400, 'required_specialization is required.')
+        if requires_doctor and not specialization:
+            return build_error_response('validation-error', 'Validation Error', 400,
+                                        'required_specialization is required when requires_doctor is true.')
 
         VALID_BILLING = ['PER_VISIT', 'MONTHLY', 'SESSION_PACK']
         if billing_type not in VALID_BILLING:
@@ -1727,6 +1729,7 @@ class AdminServiceListAPI(APIView):
             name=name,
             slug=slug,
             description=(request.data.get('description') or '').strip() or None,
+            requires_doctor=requires_doctor,
             required_specialization=specialization,
             duration_minutes=int(request.data.get('duration_minutes') or 30),
             buffer_time_before=int(request.data.get('buffer_time_before') or 0),
@@ -1764,6 +1767,7 @@ class AdminServiceDetailAPI(APIView):
             'name': s.name,
             'slug': s.slug,
             'description': s.description or '',
+            'requires_doctor': s.requires_doctor,
             'required_specialization': s.required_specialization,
             'duration_minutes': s.duration_minutes,
             'buffer_time_before': s.buffer_time_before,
@@ -1791,11 +1795,15 @@ class AdminServiceDetailAPI(APIView):
             return build_error_response('not-found', 'Not Found', 404, 'Service not found.')
 
         VALID_BILLING = ['PER_VISIT', 'MONTHLY', 'SESSION_PACK']
-        fields = ['name', 'description', 'required_specialization', 'duration_minutes',
-                  'buffer_time_before', 'buffer_time_after', 'is_active']
+        fields = ['name', 'description', 'requires_doctor', 'required_specialization',
+                  'duration_minutes', 'buffer_time_before', 'buffer_time_after', 'is_active']
         for f in fields:
             if f in request.data:
                 setattr(service, f, request.data[f])
+
+        # Clear specialization if requires_doctor was just set to false
+        if 'requires_doctor' in request.data and not request.data['requires_doctor']:
+            service.required_specialization = None
 
         if 'fee' in request.data:
             try:

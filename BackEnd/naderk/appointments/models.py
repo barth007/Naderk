@@ -14,7 +14,15 @@ class MedicalService(models.Model):
     name = models.CharField(max_length=150)
     slug = models.SlugField(max_length=150, unique=True)
     description = models.TextField(blank=True, null=True)
-    required_specialization = models.CharField(max_length=50, choices=DoctorProfile.Specialization.choices)
+    requires_doctor = models.BooleanField(
+        default=True,
+        help_text="If False, service is facility-based (e.g. lab test) and does not require a doctor"
+    )
+    required_specialization = models.CharField(
+        max_length=50, choices=DoctorProfile.Specialization.choices,
+        blank=True, null=True,
+        help_text="Only relevant when requires_doctor is True"
+    )
     duration_minutes = models.PositiveIntegerField(default=30)
     buffer_time_before = models.PositiveIntegerField(default=0, help_text="Minutes before appointment")
     buffer_time_after = models.PositiveIntegerField(default=5, help_text="Minutes after appointment")

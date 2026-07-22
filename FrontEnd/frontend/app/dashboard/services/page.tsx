@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Clock, ChevronRight, Loader2, Stethoscope, Search } from 'lucide-react';
+import { Clock, ChevronRight, Loader2, Stethoscope, Search, UserCheck, FlaskConical } from 'lucide-react';
 import { useMedicalServices } from '@/services/appointments/appointments.hooks';
 import { MedicalService, BillingType } from '@/services/appointments/appointments.types';
 
@@ -39,9 +39,11 @@ function ServiceCard({ service, onBook }: { service: MedicalService; onBook: () 
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-bold text-gray-900 leading-snug">{service.name}</h3>
-          <p className="text-xs text-gray-400 mt-0.5 capitalize">
-            {service.required_specialization.toLowerCase().replace('_', ' ')}
-          </p>
+          {service.required_specialization && (
+            <p className="text-xs text-gray-400 mt-0.5 capitalize">
+              {service.required_specialization.toLowerCase().replace(/_/g, ' ')}
+            </p>
+          )}
         </div>
       </div>
 
@@ -59,6 +61,17 @@ function ServiceCard({ service, onBook }: { service: MedicalService; onBook: () 
           <Clock className="w-3 h-3" />
           {service.duration_minutes} min
         </span>
+        {service.requires_doctor ? (
+          <span className="flex items-center gap-1 text-xs text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full font-medium">
+            <UserCheck className="w-3 h-3" />
+            Doctor consult
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full font-medium">
+            <FlaskConical className="w-3 h-3" />
+            On-site
+          </span>
+        )}
       </div>
 
       {/* Price + CTA */}

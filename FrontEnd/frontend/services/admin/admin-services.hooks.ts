@@ -14,7 +14,8 @@ export interface AdminService {
   name: string;
   slug: string;
   description: string;
-  required_specialization: string;
+  requires_doctor: boolean;
+  required_specialization: string | null;
   duration_minutes: number;
   buffer_time_before: number;
   buffer_time_after: number;
@@ -28,7 +29,8 @@ export interface AdminService {
 export interface CreateServicePayload {
   name: string;
   description?: string;
-  required_specialization: string;
+  requires_doctor: boolean;
+  required_specialization?: string;
   duration_minutes?: number;
   buffer_time_before?: number;
   buffer_time_after?: number;

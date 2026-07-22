@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Pencil, Power, Loader2, X, CheckCircle2, AlertCircle, Clock, Stethoscope } from 'lucide-react';
+import { Plus, Pencil, Power, Loader2, X, CheckCircle2, AlertCircle, Clock, Stethoscope, UserCheck, FlaskConical } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import {
   useAdminServices,
@@ -17,8 +17,26 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SPECIALIZATIONS = [
-  { value: 'OPHTHALMOLOGIST', label: 'Ophthalmologist' },
-  { value: 'OPTOMETRIST',     label: 'Optometrist' },
+  { value: 'GENERAL_PRACTICE',       label: 'General Practice' },
+  { value: 'PEDIATRICS',             label: 'Pediatrics' },
+  { value: 'CARDIOLOGY',             label: 'Cardiology' },
+  { value: 'DERMATOLOGY',            label: 'Dermatology' },
+  { value: 'NEUROLOGY',              label: 'Neurology' },
+  { value: 'ONCOLOGY',               label: 'Oncology' },
+  { value: 'ORTHOPEDICS',            label: 'Orthopedics' },
+  { value: 'PSYCHIATRY',             label: 'Psychiatry' },
+  { value: 'RADIOLOGY',              label: 'Radiology' },
+  { value: 'SURGERY',                label: 'Surgery' },
+  { value: 'UROLOGY',                label: 'Urology' },
+  { value: 'OPHTHALMOLOGY',          label: 'Ophthalmology' },
+  { value: 'OPTOMETRY',              label: 'Optometry' },
+  { value: 'EMERGENCY_MEDICINE',     label: 'Emergency Medicine' },
+  { value: 'INTERNAL_MEDICINE',      label: 'Internal Medicine' },
+  { value: 'OBSTETRICS_GYNECOLOGY',  label: 'Obstetrics & Gynecology' },
+  { value: 'ANESTHESIOLOGY',         label: 'Anesthesiology' },
+  { value: 'PATHOLOGY',              label: 'Pathology' },
+  { value: 'PHYSIOTHERAPY',          label: 'Physiotherapy' },
+  { value: 'LABORATORY_MEDICINE',    label: 'Laboratory Medicine' },
 ];
 
 const BILLING_OPTIONS: { value: BillingType; label: string; hint: string }[] = [
@@ -30,6 +48,7 @@ const BILLING_OPTIONS: { value: BillingType; label: string; hint: string }[] = [
 const EMPTY_FORM: CreateServicePayload & { id?: string } = {
   name: '',
   description: '',
+  requires_doctor: true,
   required_specialization: '',
   duration_minutes: 30,
   buffer_time_before: 0,
@@ -39,16 +58,6 @@ const EMPTY_FORM: CreateServicePayload & { id?: string } = {
   sessions_included: undefined,
   is_active: true,
 };
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatFee(fee: string, billing_type: BillingType, sessions: number | null) {
-  const amount = `₦${parseFloat(fee).toLocaleString()}`;
-  if (billing_type === 'PER_VISIT')    return `${amount} / visit`;
-  if (billing_type === 'MONTHLY')      return `${amount} / month`;
-  if (billing_type === 'SESSION_PACK') return `${amount} for ${sessions ?? '?'} sessions`;
-  return amount;
-}
 
 // ─── Service Form Modal ───────────────────────────────────────────────────────
 
@@ -72,7 +81,8 @@ function ServiceFormModal({
           id: initial.id,
           name: initial.name,
           description: initial.description,
-          required_specialization: initial.required_specialization,
+          requires_doctor: initial.requires_doctor,
+          required_specialization: initial.required_specialization ?? '',
           duration_minutes: initial.duration_minutes,
           buffer_time_before: initial.buffer_time_before,
           buffer_time_after: initial.buffer_time_after,
@@ -87,15 +97,16 @@ function ServiceFormModal({
 
   function setF<K extends keyof typeof form>(key: K, value: typeof form[K]) {
     setForm((p) => ({ ...p, [key]: value }));
-    if (errors[key]) setErrors((p) => { const e = { ...p }; delete e[key]; return e; });
+    if (errors[key as string]) setErrors((p) => { const e = { ...p }; delete e[key as string]; return e; });
   }
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!form.name.trim())                    e.name = 'Service name is required.';
-    if (!form.required_specialization)        e.required_specialization = 'Specialization is required.';
-    if (!form.fee || isNaN(parseFloat(form.fee))) e.fee = 'Valid fee is required.';
-    if (!form.billing_type)                   e.billing_type = 'Billing type is required.';
+    if (!form.name.trim()) e.name = 'Service name is required.';
+    if (form.requires_doctor && !form.required_specialization)
+      e.required_specialization = 'Specialization is required when a doctor is needed.';
+    if (!form.fee || isNaN(parseFloat(form.fee as string))) e.fee = 'Valid fee is required.';
+    if (!form.billing_type) e.billing_type = 'Billing type is required.';
     if (form.billing_type === 'SESSION_PACK' && (!form.sessions_included || form.sessions_included < 1))
       e.sessions_included = 'Number of sessions is required for Session Pack.';
     return e;
@@ -105,7 +116,10 @@ function ServiceFormModal({
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
 
-    const payload = { ...form };
+    const payload: CreateServicePayload & { id?: string } = {
+      ...form,
+      required_specialization: form.requires_doctor ? (form.required_specialization || undefined) : undefined,
+    };
     if (payload.billing_type !== 'SESSION_PACK') delete payload.sessions_included;
 
     if (isEdit && form.id) {
@@ -168,15 +182,52 @@ function ServiceFormModal({
             />
           </div>
 
-          {/* Specialization */}
+          {/* Requires Doctor toggle */}
           <div>
-            <label className="text-xs font-semibold text-gray-700 block mb-1">Required Specialization *</label>
-            <select value={form.required_specialization} onChange={(e) => setF('required_specialization', e.target.value)} className={`${inputCls} bg-white`}>
-              <option value="">Select specialization</option>
-              {SPECIALIZATIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-            {errors.required_specialization && <p className="text-xs text-red-500 mt-1">{errors.required_specialization}</p>}
+            <label className="text-xs font-semibold text-gray-700 block mb-2">Service Type *</label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className={`flex items-center gap-2.5 border rounded-md px-3 py-2.5 cursor-pointer transition-colors ${form.requires_doctor ? 'border-[#E03E3E] bg-red-50/40' : 'border-gray-200 hover:border-gray-300'}`}>
+                <input
+                  type="radio"
+                  name="requires_doctor"
+                  checked={!!form.requires_doctor}
+                  onChange={() => setF('requires_doctor', true)}
+                  className="accent-[#E03E3E]"
+                />
+                <UserCheck className="w-4 h-4 text-[#E03E3E]" />
+                <div>
+                  <p className="text-xs font-semibold text-gray-800">Requires Doctor</p>
+                  <p className="text-xs text-gray-400">Consultation, exam, etc.</p>
+                </div>
+              </label>
+              <label className={`flex items-center gap-2.5 border rounded-md px-3 py-2.5 cursor-pointer transition-colors ${!form.requires_doctor ? 'border-[#E03E3E] bg-red-50/40' : 'border-gray-200 hover:border-gray-300'}`}>
+                <input
+                  type="radio"
+                  name="requires_doctor"
+                  checked={!form.requires_doctor}
+                  onChange={() => { setF('requires_doctor', false); setF('required_specialization', ''); }}
+                  className="accent-[#E03E3E]"
+                />
+                <FlaskConical className="w-4 h-4 text-amber-600" />
+                <div>
+                  <p className="text-xs font-semibold text-gray-800">Facility-Based</p>
+                  <p className="text-xs text-gray-400">Lab test, imaging, etc.</p>
+                </div>
+              </label>
+            </div>
           </div>
+
+          {/* Specialization — only shown when requires_doctor */}
+          {form.requires_doctor && (
+            <div>
+              <label className="text-xs font-semibold text-gray-700 block mb-1">Required Specialization *</label>
+              <select value={form.required_specialization ?? ''} onChange={(e) => setF('required_specialization', e.target.value)} className={`${inputCls} bg-white`}>
+                <option value="">Select specialization</option>
+                {SPECIALIZATIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+              {errors.required_specialization && <p className="text-xs text-red-500 mt-1">{errors.required_specialization}</p>}
+            </div>
+          )}
 
           {/* Duration + Buffer */}
           <div className="grid grid-cols-3 gap-3">
@@ -294,15 +345,24 @@ function ServiceCard({
             <p className="text-xs text-gray-500 mb-2 line-clamp-2">{service.description}</p>
           )}
           <div className="flex flex-wrap gap-2 mt-2">
-            <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-              <Stethoscope className="w-3 h-3" />
-              {service.required_specialization.charAt(0) + service.required_specialization.slice(1).toLowerCase()}
-            </span>
+            {service.requires_doctor ? (
+              <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                <UserCheck className="w-3 h-3" />
+                {service.required_specialization
+                  ? service.required_specialization.charAt(0) + service.required_specialization.slice(1).toLowerCase().replace(/_/g, ' ')
+                  : 'Doctor required'}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                <FlaskConical className="w-3 h-3" />
+                Facility-based
+              </span>
+            )}
             <span className="inline-flex items-center gap-1 text-xs bg-gray-50 text-gray-600 px-2 py-0.5 rounded-full font-medium">
               <Clock className="w-3 h-3" />
               {service.duration_minutes} min
             </span>
-            <span className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+            <span className="inline-flex items-center gap-1 text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-medium">
               {BILLING_LABELS[service.billing_type]}
             </span>
           </div>
