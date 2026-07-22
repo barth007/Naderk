@@ -1,3 +1,5 @@
+export type BillingType = 'PER_VISIT' | 'MONTHLY' | 'SESSION_PACK';
+
 export interface MedicalService {
   id: string;
   name: string;
@@ -5,6 +7,9 @@ export interface MedicalService {
   description: string | null;
   required_specialization: string;
   duration_minutes: number;
+  fee: string;
+  billing_type: BillingType;
+  sessions_included: number | null;
 }
 
 export interface DoctorProfile {

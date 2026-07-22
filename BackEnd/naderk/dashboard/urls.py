@@ -41,4 +41,7 @@ urlpatterns = [
     path('admin/departments/<uuid:pk>/', apis.AdminDepartmentDetailAPI.as_view(), name='admin-department-detail'),
     # Permissions
     path('admin/permissions/', apis.AdminPermissionsAPI.as_view(), name='admin-permissions'),
+    # Medical Services
+    path('admin/services/', apis.AdminServiceListAPI.as_view(), name='admin-services'),
+    path('admin/services/<uuid:pk>/', apis.AdminServiceDetailAPI.as_view(), name='admin-service-detail'),
 ]

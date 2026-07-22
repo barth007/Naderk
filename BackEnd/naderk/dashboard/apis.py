@@ -1640,3 +1640,191 @@ class AdminPermissionsAPI(APIView):
         config.permissions = clean_perms
         config.save()
         return build_success_response(message="Permissions updated.", data={'role': role, 'permissions': clean_perms}, status_code=200)
+
+
+# ─── Admin Medical Services ───────────────────────────────────────────────────
+
+class AdminServiceListAPI(APIView):
+    """
+    GET  /dashboard/admin/services/        — list all services (active + inactive)
+    POST /dashboard/admin/services/        — create a service
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _serialize(self, s):
+        return {
+            'id': str(s.id),
+            'name': s.name,
+            'slug': s.slug,
+            'description': s.description or '',
+            'required_specialization': s.required_specialization,
+            'duration_minutes': s.duration_minutes,
+            'buffer_time_before': s.buffer_time_before,
+            'buffer_time_after': s.buffer_time_after,
+            'fee': str(s.fee),
+            'billing_type': s.billing_type,
+            'sessions_included': s.sessions_included,
+            'is_active': s.is_active,
+            'created_at': s.created_at.isoformat(),
+        }
+
+    def get(self, request):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        from naderk.appointments.models import MedicalService
+        services = MedicalService.objects.all().order_by('name')
+        return build_success_response(
+            message="Services retrieved.",
+            data=[self._serialize(s) for s in services],
+            status_code=200,
+        )
+
+    def post(self, request):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        from naderk.appointments.models import MedicalService
+        from django.utils.text import slugify
+        import re
+
+        name = (request.data.get('name') or '').strip()
+        billing_type = (request.data.get('billing_type') or 'PER_VISIT').strip()
+        specialization = (request.data.get('required_specialization') or '').strip()
+
+        if not name:
+            return build_error_response('validation-error', 'Validation Error', 400, 'name is required.')
+        if not specialization:
+            return build_error_response('validation-error', 'Validation Error', 400, 'required_specialization is required.')
+
+        VALID_BILLING = ['PER_VISIT', 'MONTHLY', 'SESSION_PACK']
+        if billing_type not in VALID_BILLING:
+            return build_error_response('validation-error', 'Validation Error', 400,
+                                        f'billing_type must be one of: {", ".join(VALID_BILLING)}')
+
+        # Unique slug
+        base_slug = slugify(name)
+        slug = base_slug
+        counter = 1
+        while MedicalService.objects.filter(slug=slug).exists():
+            slug = f"{base_slug}-{counter}"
+            counter += 1
+
+        sessions_included = None
+        if billing_type == 'SESSION_PACK':
+            try:
+                sessions_included = int(request.data.get('sessions_included') or 0)
+                if sessions_included < 1:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return build_error_response('validation-error', 'Validation Error', 400,
+                                            'sessions_included must be a positive integer for SESSION_PACK.')
+
+        try:
+            fee = float(request.data.get('fee') or 0)
+        except (TypeError, ValueError):
+            return build_error_response('validation-error', 'Validation Error', 400, 'fee must be a number.')
+
+        service = MedicalService.objects.create(
+            name=name,
+            slug=slug,
+            description=(request.data.get('description') or '').strip() or None,
+            required_specialization=specialization,
+            duration_minutes=int(request.data.get('duration_minutes') or 30),
+            buffer_time_before=int(request.data.get('buffer_time_before') or 0),
+            buffer_time_after=int(request.data.get('buffer_time_after') or 5),
+            fee=fee,
+            billing_type=billing_type,
+            sessions_included=sessions_included,
+            is_active=bool(request.data.get('is_active', True)),
+        )
+        return build_success_response(
+            message="Service created.",
+            data=self._serialize(service),
+            status_code=201,
+        )
+
+
+class AdminServiceDetailAPI(APIView):
+    """
+    GET    /dashboard/admin/services/<pk>/   — retrieve one service
+    PATCH  /dashboard/admin/services/<pk>/   — update fields
+    DELETE /dashboard/admin/services/<pk>/   — soft-delete (is_active=False)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get(self, pk):
+        from naderk.appointments.models import MedicalService
+        try:
+            return MedicalService.objects.get(id=pk)
+        except MedicalService.DoesNotExist:
+            return None
+
+    def _serialize(self, s):
+        return {
+            'id': str(s.id),
+            'name': s.name,
+            'slug': s.slug,
+            'description': s.description or '',
+            'required_specialization': s.required_specialization,
+            'duration_minutes': s.duration_minutes,
+            'buffer_time_before': s.buffer_time_before,
+            'buffer_time_after': s.buffer_time_after,
+            'fee': str(s.fee),
+            'billing_type': s.billing_type,
+            'sessions_included': s.sessions_included,
+            'is_active': s.is_active,
+            'created_at': s.created_at.isoformat(),
+        }
+
+    def get(self, request, pk):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        service = self._get(pk)
+        if not service:
+            return build_error_response('not-found', 'Not Found', 404, 'Service not found.')
+        return build_success_response(message="Service retrieved.", data=self._serialize(service), status_code=200)
+
+    def patch(self, request, pk):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        service = self._get(pk)
+        if not service:
+            return build_error_response('not-found', 'Not Found', 404, 'Service not found.')
+
+        VALID_BILLING = ['PER_VISIT', 'MONTHLY', 'SESSION_PACK']
+        fields = ['name', 'description', 'required_specialization', 'duration_minutes',
+                  'buffer_time_before', 'buffer_time_after', 'is_active']
+        for f in fields:
+            if f in request.data:
+                setattr(service, f, request.data[f])
+
+        if 'fee' in request.data:
+            try:
+                service.fee = float(request.data['fee'])
+            except (TypeError, ValueError):
+                return build_error_response('validation-error', 'Validation Error', 400, 'fee must be a number.')
+
+        if 'billing_type' in request.data:
+            bt = request.data['billing_type']
+            if bt not in VALID_BILLING:
+                return build_error_response('validation-error', 'Validation Error', 400,
+                                            f'billing_type must be one of: {", ".join(VALID_BILLING)}')
+            service.billing_type = bt
+
+        if 'sessions_included' in request.data:
+            try:
+                service.sessions_included = int(request.data['sessions_included']) or None
+            except (TypeError, ValueError):
+                service.sessions_included = None
+
+        service.save()
+        return build_success_response(message="Service updated.", data=self._serialize(service), status_code=200)
+
+    def delete(self, request, pk):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        service = self._get(pk)
+        if not service:
+            return build_error_response('not-found', 'Not Found', 404, 'Service not found.')
+        service.is_active = False
+        service.save(update_fields=['is_active'])
+        return build_success_response(message="Service deactivated.", data={}, status_code=200)

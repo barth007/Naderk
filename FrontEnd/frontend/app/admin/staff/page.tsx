@@ -95,9 +95,9 @@ function Avatar({ name, src, size = 'md', colorIndex = 0 }: { name: string; src?
 
 function StatusBadge({ status }: { status: StaffMember['status'] }) {
   const cfg = {
-    ONLINE:     { label: 'Online',     dot: 'bg-green-500', text: 'text-green-700' },
-    IN_SESSION: { label: 'In session', dot: 'bg-blue-500',  text: 'text-blue-700' },
-    OFFLINE:    { label: 'Offline',    dot: 'bg-gray-400',  text: 'text-gray-500' },
+    ONLINE: { label: 'Online', dot: 'bg-green-500', text: 'text-green-700' },
+    IN_SESSION: { label: 'In session', dot: 'bg-blue-500', text: 'text-blue-700' },
+    OFFLINE: { label: 'Offline', dot: 'bg-gray-400', text: 'text-gray-500' },
   }[status];
   return (
     <span className={`flex items-center gap-1.5 text-sm font-semibold ${cfg.text}`}>
@@ -220,8 +220,28 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
       {
         onSuccess: () => { onSuccess('Staff member added successfully!'); onClose(); },
         onError: (err: unknown) => {
-          const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-          setErrors({ _form: msg || 'Failed to create staff member.' });
+          const resData = (err as { response?: { data?: { detail?: string; message?: string; errors?: Record<string, string[]> } } })?.response?.data;
+          
+          if (resData?.errors) {
+            const fieldErrors: Record<string, string> = {};
+            Object.entries(resData.errors).forEach(([field, msgs]) => {
+              fieldErrors[field] = Array.isArray(msgs) ? msgs[0] : String(msgs);
+            });
+            setErrors((prev) => ({ ...prev, ...fieldErrors }));
+          } else {
+            const errorMsg = resData?.detail || resData?.message || 'Failed to add staff member.';
+            const lowerMsg = errorMsg.toLowerCase();
+            
+            if (lowerMsg.includes('email')) {
+              setErrors((prev) => ({ ...prev, email: errorMsg }));
+            } else if (lowerMsg.includes('first name') || lowerMsg.includes('first_name')) {
+              setErrors((prev) => ({ ...prev, first_name: errorMsg }));
+            } else if (lowerMsg.includes('role')) {
+              setErrors((prev) => ({ ...prev, role: errorMsg }));
+            } else {
+              setErrors((prev) => ({ ...prev, _form: errorMsg }));
+            }
+          }
         },
       }
     );
@@ -285,7 +305,12 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
               </select>
             </div>
           </div>
-          {errors._form && <p className="text-xs text-red-500">{errors._form}</p>}
+          {errors._form && (
+            <div className="p-3 rounded-md bg-red-50 border border-red-100 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-red-700 font-medium leading-snug">{errors._form}</p>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2 mt-5 pt-4 border-t border-gray-100">
@@ -557,11 +582,10 @@ function ManagePermissionsModal({ onClose, showToast }: { onClose: () => void; s
             <button
               key={role}
               onClick={() => setSelectedRole(role)}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                selectedRole === role
-                  ? 'bg-[#E03E3E] text-white'
-                  : 'text-gray-500 hover:bg-gray-50 border border-gray-200'
-              }`}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${selectedRole === role
+                ? 'bg-[#E03E3E] text-white'
+                : 'text-gray-500 hover:bg-gray-50 border border-gray-200'
+                }`}
             >
               {ROLE_LABELS[role] ?? role}
             </button>
@@ -584,9 +608,8 @@ function ManagePermissionsModal({ onClose, showToast }: { onClose: () => void; s
                     return (
                       <label
                         key={perm.key}
-                        className={`flex items-start gap-2.5 p-2.5 rounded-md border cursor-pointer transition-colors ${
-                          checked ? 'border-[#E03E3E]/30 bg-red-50/40' : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50/50'
-                        }`}
+                        className={`flex items-start gap-2.5 p-2.5 rounded-md border cursor-pointer transition-colors ${checked ? 'border-[#E03E3E]/30 bg-red-50/40' : 'border-gray-100 hover:border-gray-200 hover:bg-gray-50/50'
+                          }`}
                       >
                         <input
                           type="checkbox"
@@ -643,11 +666,11 @@ export default function AdminStaffPage() {
 
   const filtered = search.trim()
     ? staff.filter((s) =>
-        s.name.toLowerCase().includes(search.toLowerCase()) ||
-        s.department.toLowerCase().includes(search.toLowerCase()) ||
-        s.role.toLowerCase().includes(search.toLowerCase()) ||
-        s.employee_id.toLowerCase().includes(search.toLowerCase())
-      )
+      s.name.toLowerCase().includes(search.toLowerCase()) ||
+      s.department.toLowerCase().includes(search.toLowerCase()) ||
+      s.role.toLowerCase().includes(search.toLowerCase()) ||
+      s.employee_id.toLowerCase().includes(search.toLowerCase())
+    )
     : staff;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
