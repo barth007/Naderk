@@ -18,9 +18,9 @@ export default function Step1Service() {
     setAppointmentDetails(type, notes);
   };
 
-  // If the current appointmentType is TELEHEALTH but the service no longer supports it, reset
+  // If the current appointmentType is TELEHEALTH but the service is on-site only, reset
   useEffect(() => {
-    if (selectedService && !selectedService.available_online && appointmentType === 'TELEHEALTH') {
+    if (selectedService && !selectedService.requires_doctor && appointmentType === 'TELEHEALTH') {
       setAppointmentDetails('PHYSICAL', notes);
     }
   }, [selectedService]);
@@ -42,10 +42,9 @@ export default function Step1Service() {
     return <div className="text-red-500">Failed to load services. Please try again later.</div>;
   }
 
-  // Determine what consultation options the selected service supports
+  // On-site = no doctor required. All doctor-required services support both physical and telehealth.
   const isOnSite = selectedService && !selectedService.requires_doctor;
-  const isPhysicalOnly = selectedService && selectedService.requires_doctor && !selectedService.available_online;
-  const showConsultationType = !!selectedService; // show section as soon as any service is selected
+  const showConsultationType = !!selectedService;
 
   return (
     <div>
@@ -116,8 +115,8 @@ export default function Step1Service() {
               </div>
             </div>
 
-            {/* Telehealth card — shown only when service supports online */}
-            {!isOnSite && !isPhysicalOnly ? (
+            {/* Telehealth card — active for all doctor-required services, greyed out for on-site only */}
+            {!isOnSite ? (
               <div
                 onClick={() => handleSelectType('TELEHEALTH')}
                 className={`cursor-pointer rounded-[14px] p-5 border transition-all duration-200 flex items-center gap-4 bg-white shadow-sm
@@ -136,7 +135,6 @@ export default function Step1Service() {
                 </div>
               </div>
             ) : (
-              /* Greyed-out Telehealth card when service doesn't support it */
               <div className="rounded-[14px] p-5 border border-gray-100 flex items-center gap-4 bg-gray-50 shadow-sm opacity-40 cursor-not-allowed">
                 <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-gray-100 text-gray-400">
                   <Video className="w-5 h-5" />
