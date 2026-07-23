@@ -192,8 +192,40 @@ class AppointmentSlotService:
                     slots.append(slot_time.strftime('%H:%M'))
                     
                 current_time += datetime.timedelta(minutes=avail.slot_duration)
-                
+
         return sorted(slots)
+
+    # Standard facility operating hours for on-site services that don't need a doctor.
+    FACILITY_OPEN_HOUR = 8    # 08:00
+    FACILITY_CLOSE_HOUR = 17  # 17:00
+
+    @staticmethod
+    def generate_facility_slots(service, requested_date):
+        """
+        Slots for facility-based services (no doctor). Uses standard operating hours
+        and the service duration as the slot interval. Facilities can handle parallel
+        patients, so slots are only removed when THIS patient already booked that time.
+        """
+        slots = []
+        now = timezone.now()
+        is_today = requested_date == now.date()
+        step = max(service.duration_minutes, 15)
+
+        current_time = timezone.make_aware(
+            datetime.datetime.combine(requested_date,
+                                      datetime.time(AppointmentSlotService.FACILITY_OPEN_HOUR, 0))
+        )
+        end_datetime = timezone.make_aware(
+            datetime.datetime.combine(requested_date,
+                                      datetime.time(AppointmentSlotService.FACILITY_CLOSE_HOUR, 0))
+        )
+
+        while current_time + datetime.timedelta(minutes=service.duration_minutes) <= end_datetime:
+            if not (is_today and current_time < now + datetime.timedelta(minutes=30)):
+                slots.append(current_time.time().strftime('%H:%M'))
+            current_time += datetime.timedelta(minutes=step)
+
+        return slots
 
 class DuplicateAppointmentError(Exception):
     pass

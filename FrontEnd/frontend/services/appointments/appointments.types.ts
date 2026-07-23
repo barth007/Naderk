@@ -30,7 +30,7 @@ export type AppointmentStatus = 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'IN_PRO
 export interface Appointment {
   id: string;
   service: MedicalService;
-  doctor: DoctorProfile;
+  doctor: DoctorProfile | null;
   appointment_date: string;
   appointment_time: string;
   appointment_type: AppointmentType;

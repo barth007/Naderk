@@ -71,7 +71,7 @@ class Appointment(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='appointments_as_patient')
-    doctor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='appointments_as_doctor')
+    doctor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='appointments_as_doctor', null=True, blank=True)
     service = models.ForeignKey(MedicalService, on_delete=models.PROTECT)
     
     appointment_date = models.DateField()
@@ -162,7 +162,7 @@ class AppointmentSlotReservation(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reservations_as_patient')
-    doctor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reservations_as_doctor')
+    doctor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reservations_as_doctor', null=True, blank=True)
     slot_datetime = models.DateTimeField()
     expires_at = models.DateTimeField()
     status = models.CharField(max_length=50, choices=Status.choices, default=Status.RESERVED)

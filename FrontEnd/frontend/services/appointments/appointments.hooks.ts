@@ -28,14 +28,22 @@ export const useAssignSpecialist = () => {
   });
 };
 
-export const useAvailableSlots = (doctorId: string | undefined, date: string | undefined) => {
+export const useAvailableSlots = (
+  doctorId: string | undefined,
+  date: string | undefined,
+  serviceId?: string | undefined,
+) => {
   return useQuery({
-    queryKey: ['available-slots', doctorId, date],
+    queryKey: ['available-slots', doctorId, serviceId, date],
     queryFn: async () => {
-      const response = await api.get(`/appointments/available-slots/?doctor_id=${doctorId}&date=${date}`);
+      // Facility (no-doctor) services query by service_id; doctor services by doctor_id
+      const params = doctorId
+        ? `doctor_id=${doctorId}&date=${date}`
+        : `service_id=${serviceId}&date=${date}`;
+      const response = await api.get(`/appointments/available-slots/?${params}`);
       return response.data.data.slots as string[];
     },
-    enabled: !!doctorId && !!date
+    enabled: (!!doctorId || !!serviceId) && !!date,
   });
 };
 
@@ -51,7 +59,7 @@ export const useReserveSlot = () => {
 export const useCreateAppointment = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { service_id: string; doctor_id: string; date: string; time: string; appointment_type: string; notes?: string }) => {
+    mutationFn: async (data: { service_id: string; doctor_id?: string | null; date: string; time: string; appointment_type: string; notes?: string }) => {
       const response = await api.post('/appointments/create/', data);
       return response.data.data as Appointment;
     },

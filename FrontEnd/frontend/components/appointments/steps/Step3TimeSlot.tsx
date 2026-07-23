@@ -26,9 +26,16 @@ export default function Step3TimeSlot() {
         {isOnSite ? '2. Preferred Time Slot' : '3. Preferred Time Slot'}
       </h2>
 
+      {isOnSite && (
+        <p className="text-xs text-gray-500 -mt-2">
+          Choose any available time within our facility operating hours (8:00 AM – 5:00 PM).
+        </p>
+      )}
+
       <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4 sm:p-6">
         <CalendarTimeSlotPicker
           doctorId={doctor?.id}
+          serviceId={isOnSite ? service?.id : undefined}
           selectedDate={selectedDate}
           onDateSelect={handleDateSelect}
           selectedTime={selectedTime}

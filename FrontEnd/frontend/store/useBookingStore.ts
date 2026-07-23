@@ -49,14 +49,10 @@ export const useBookingStore = create<BookingState>()(
       setService: (service) => set({ service, doctor: null, date: null, time: null, consultationFee: '0.00', isConsultationValid: false }),
       setDoctor: (doctor) => set({ doctor }),
       setDateTime: (date, time) => set({ date, time }),
-      setAppointmentDetails: (type, notes) => set((state) => ({
-        appointmentType: type,
-        notes,
-        // Re-assign doctor when consultation type changes so Step2 re-fires
-        doctor: state.appointmentType !== type ? null : state.doctor,
-        date: state.appointmentType !== type ? null : state.date,
-        time: state.appointmentType !== type ? null : state.time,
-      })),
+      // Consultation type does NOT affect the recommended doctor (doctor depends on
+      // service + date only), so we must not clear the doctor here — doing so left
+      // Step2 with a null doctor that never re-fetched.
+      setAppointmentDetails: (type, notes) => set({ appointmentType: type, notes }),
       setConsultationInfo: (fee, isValid) => set({ consultationFee: fee, isConsultationValid: isValid }),
       setReservation: (id) => set({ reservationId: id }),
       

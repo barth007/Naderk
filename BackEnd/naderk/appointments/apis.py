@@ -73,16 +73,26 @@ class AvailableSlotsApi(APIView):
         if not serializer.is_valid():
             return build_error_response("validation-error", "Invalid parameters", 400, "Validation failed", errors=serializer.errors)
             
-        doctor_id = serializer.validated_data['doctor_id']
+        doctor_id = serializer.validated_data.get('doctor_id')
+        service_id = serializer.validated_data.get('service_id')
         date = serializer.validated_data['date']
-        
+
+        # Facility (no-doctor) service: generate slots from standard operating hours
+        if not doctor_id and service_id:
+            try:
+                service = MedicalService.objects.get(id=service_id, is_active=True)
+            except MedicalService.DoesNotExist:
+                return build_error_response("not-found", "Service not found", 404, "Invalid service ID")
+            slots = AppointmentSlotService.generate_facility_slots(service, date)
+            return build_success_response("Slots retrieved", {"slots": slots})
+
         try:
             doctor = User.objects.get(id=doctor_id, role=User.Role.DOCTOR)
         except User.DoesNotExist:
             return build_error_response("not-found", "Doctor not found", 404, "Invalid doctor ID")
-            
+
         slots = AppointmentSlotService.generate_available_slots(doctor, date)
-        
+
         return build_success_response("Slots retrieved", {"slots": slots})
 
 class ReserveSlotApi(APIView):
@@ -148,16 +158,26 @@ class CreateAppointmentApi(APIView):
             return build_error_response("validation-error", "Invalid Data", 400, "Validation failed", errors=serializer.errors)
             
         service_id = serializer.validated_data['service_id']
-        doctor_id = serializer.validated_data['doctor_id']
+        doctor_id = serializer.validated_data.get('doctor_id')
         date = serializer.validated_data['date']
         time = serializer.validated_data['time']
-        
+
         try:
             service = MedicalService.objects.get(id=service_id)
-            doctor = User.objects.get(id=doctor_id)
-        except (MedicalService.DoesNotExist, User.DoesNotExist):
-            return build_error_response("not-found", "Resource not found", 404, "Invalid service or doctor ID")
-            
+        except MedicalService.DoesNotExist:
+            return build_error_response("not-found", "Resource not found", 404, "Invalid service ID")
+
+        # Facility-based services have no doctor
+        is_facility = not service.requires_doctor
+        doctor = None
+        if not is_facility:
+            if not doctor_id:
+                return build_error_response("validation-error", "Doctor required", 400, "doctor_id is required for this service")
+            try:
+                doctor = User.objects.get(id=doctor_id)
+            except User.DoesNotExist:
+                return build_error_response("not-found", "Resource not found", 404, "Invalid doctor ID")
+
         slot_datetime = timezone.make_aware(datetime.datetime.combine(date, time))
         
         # Idempotency: if the patient already has a PENDING (unpaid) appointment
@@ -205,29 +225,32 @@ class CreateAppointmentApi(APIView):
             }, status=409)
         
         with transaction.atomic():
-            # Verify reservation (optional but good for strict locking)
-            reservation = AppointmentSlotReservation.objects.select_for_update().filter(
-                patient=request.user,
-                doctor=doctor,
-                slot_datetime=slot_datetime,
-                status=AppointmentSlotReservation.Status.RESERVED,
-                expires_at__gt=timezone.now()
-            ).first()
-            
-            if not reservation:
-                # Check if it's available anyway before allowing booking
-                if Appointment.objects.filter(doctor=doctor, appointment_date=date, appointment_time=time, status__in=[Appointment.Status.CONFIRMED, Appointment.Status.PENDING]).exists():
-                     return build_error_response("conflict", "Slot unavailable", 409, "This slot is already booked")
-                     
-                active_res = AppointmentSlotReservation.objects.select_for_update().filter(
+            reservation = None
+            # Facilities handle parallel patients, so no doctor-slot locking is needed.
+            if not is_facility:
+                # Verify reservation (optional but good for strict locking)
+                reservation = AppointmentSlotReservation.objects.select_for_update().filter(
+                    patient=request.user,
                     doctor=doctor,
                     slot_datetime=slot_datetime,
                     status=AppointmentSlotReservation.Status.RESERVED,
                     expires_at__gt=timezone.now()
-                )
-                if active_res.exists():
-                    return build_error_response("conflict", "Slot reserved", 409, "This slot is currently reserved by another user")
-    
+                ).first()
+
+                if not reservation:
+                    # Check if it's available anyway before allowing booking
+                    if Appointment.objects.filter(doctor=doctor, appointment_date=date, appointment_time=time, status__in=[Appointment.Status.CONFIRMED, Appointment.Status.PENDING]).exists():
+                         return build_error_response("conflict", "Slot unavailable", 409, "This slot is already booked")
+
+                    active_res = AppointmentSlotReservation.objects.select_for_update().filter(
+                        doctor=doctor,
+                        slot_datetime=slot_datetime,
+                        status=AppointmentSlotReservation.Status.RESERVED,
+                        expires_at__gt=timezone.now()
+                    )
+                    if active_res.exists():
+                        return build_error_response("conflict", "Slot reserved", 409, "This slot is currently reserved by another user")
+
             fee = ConsultationService.calculate_fee(request.user, service)
             
             # Mock telehealth link

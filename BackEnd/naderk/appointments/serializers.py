@@ -49,6 +49,8 @@ class AppointmentSerializer(serializers.ModelSerializer):
         ]
         
     def get_doctor(self, obj):
+        if obj.doctor is None:
+            return None
         try:
             profile = obj.doctor.doctor_profile
             return DoctorProfileSerializer(profile).data
@@ -85,8 +87,14 @@ class AssignSpecialistRequestSerializer(serializers.Serializer):
     date = serializers.DateField()
 
 class AvailableSlotsRequestSerializer(serializers.Serializer):
-    doctor_id = serializers.UUIDField()
+    doctor_id = serializers.UUIDField(required=False, allow_null=True)
+    service_id = serializers.UUIDField(required=False, allow_null=True)
     date = serializers.DateField()
+
+    def validate(self, attrs):
+        if not attrs.get('doctor_id') and not attrs.get('service_id'):
+            raise serializers.ValidationError("Either doctor_id or service_id is required.")
+        return attrs
 
 class ReserveSlotRequestSerializer(serializers.Serializer):
     doctor_id = serializers.UUIDField()
@@ -95,7 +103,7 @@ class ReserveSlotRequestSerializer(serializers.Serializer):
 
 class CreateAppointmentRequestSerializer(serializers.Serializer):
     service_id = serializers.UUIDField()
-    doctor_id = serializers.UUIDField()
+    doctor_id = serializers.UUIDField(required=False, allow_null=True)
     date = serializers.DateField()
     time = serializers.TimeField()
     appointment_type = serializers.ChoiceField(choices=Appointment.AppointmentType.choices)

@@ -55,8 +55,12 @@ export default function AppointmentHistoryTable({ history }: AppointmentHistoryT
                         </div>
                       )}
                       <div>
-                        <p className="font-bold text-gray-900 leading-tight">Dr. {apt.doctor?.last_name || 'N/A'}</p>
-                        <p className="text-[11px] text-gray-500">{apt.doctor?.specialization?.replace('_', ' ') || 'Specialist'}</p>
+                        <p className="font-bold text-gray-900 leading-tight">
+                          {apt.doctor ? `Dr. ${apt.doctor.last_name}` : 'On-Site Service'}
+                        </p>
+                        <p className="text-[11px] text-gray-500">
+                          {apt.doctor ? (apt.doctor.specialization?.replace('_', ' ') || 'Specialist') : 'No doctor required'}
+                        </p>
                       </div>
                     </div>
                   </td>
