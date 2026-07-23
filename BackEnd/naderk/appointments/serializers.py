@@ -6,8 +6,8 @@ from naderk.core.models import User
 class MedicalServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = MedicalService
-        fields = ['id', 'name', 'slug', 'description', 'required_specialization',
-                  'duration_minutes', 'fee', 'billing_type', 'sessions_included']
+        fields = ['id', 'name', 'slug', 'description', 'requires_doctor', 'available_online',
+                  'required_specialization', 'duration_minutes', 'fee', 'billing_type', 'sessions_included']
 
 class DoctorProfileSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(source='user.id')
