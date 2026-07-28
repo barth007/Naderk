@@ -1,5 +1,6 @@
 from decimal import Decimal
 from django.db import models
+from django.db.models.functions import Lower
 from django.conf import settings
 from naderk.users.models import DoctorProfile
 import uuid
@@ -41,6 +42,11 @@ class MedicalService(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(Lower('name'), name='unique_medicalservice_name_ci'),
+        ]
 
     def __str__(self):
         return self.name

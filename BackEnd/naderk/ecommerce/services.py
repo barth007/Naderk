@@ -115,13 +115,16 @@ def cart_add_item(*, user: User, product_id: Optional[str] = None, product_varia
             
     elif frame_variant_id:
         frame_variant = FrameVariant.objects.get(id=frame_variant_id)
-        lens_type = LensType.objects.get(id=lens_type_id)
+        # Lens is optional — a patient can buy a frame on its own (frame-only purchase)
+        lens_type = LensType.objects.get(id=lens_type_id) if lens_type_id else None
         prescription = None
         if prescription_id:
             prescription = Prescription.objects.get(id=prescription_id)
-            
-        # Base Price
-        price = frame_variant.frame.base_price + lens_type.price_modifier
+
+        # Base Price (+ lens modifier only when a lens was chosen)
+        price = frame_variant.frame.base_price
+        if lens_type:
+            price += lens_type.price_modifier
         
         # We need to construct or get the CartItem
         # Note: multiple items of the exact same glasses config can be grouped.
@@ -394,3 +397,149 @@ def order_process_payment(*, order: Order, actor: User, payment_reference: str, 
     )
 
     return order
+
+
+# --- Glasses Builder: prescription-driven lens recommendation engine ---
+
+from decimal import Decimal, InvalidOperation
+from naderk.ecommerce.models import LensRecommendationRule
+
+
+def _to_decimal(value):
+    if value is None or value == '':
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def compute_prescription_metrics(values: dict) -> dict:
+    """
+    From raw builder prescription input, derive the per-metric value used by rules.
+    SPH/CYL/ADD use the strongest (max absolute) of the two eyes; PD is a single value.
+    Returns {metric: Decimal | None}.
+    """
+    def strongest(a, b):
+        da, db = _to_decimal(a), _to_decimal(b)
+        vals = [v for v in (da, db) if v is not None]
+        if not vals:
+            return None
+        return max(vals, key=lambda v: abs(v))
+
+    metrics = {
+        'SPH': strongest(values.get('right_sph'), values.get('left_sph')),
+        'CYL': strongest(values.get('right_cyl'), values.get('left_cyl')),
+        'ADD': strongest(values.get('right_add'), values.get('left_add')),
+        'PD':  _to_decimal(values.get('pupillary_distance')),
+    }
+    # Custom admin-defined fields (keyed by field_key), numeric ones become rule-testable
+    extra = values.get('extra') or {}
+    if isinstance(extra, dict):
+        for key, val in extra.items():
+            metrics[key] = _to_decimal(val)
+    return metrics
+
+
+def _rule_matches(rule: LensRecommendationRule, metric_value) -> bool:
+    if metric_value is None:
+        return False
+    v = abs(metric_value) if rule.use_absolute else metric_value
+    t = rule.threshold
+    op = rule.operator
+    if op == LensRecommendationRule.Operator.GTE:
+        return v >= t
+    if op == LensRecommendationRule.Operator.LTE:
+        return v <= t
+    if op == LensRecommendationRule.Operator.GT:
+        return v > t
+    if op == LensRecommendationRule.Operator.LT:
+        return v < t
+    if op == LensRecommendationRule.Operator.EQ:
+        return v == t
+    if op == LensRecommendationRule.Operator.BETWEEN:
+        if rule.threshold_max is None:
+            return False
+        return t <= v <= rule.threshold_max
+    return False
+
+
+def evaluate_lens_recommendations(values: dict) -> dict:
+    """
+    Evaluate all active rules against the given prescription values.
+    Returns the sets the client uses to highlight/restrict/hide lenses.
+    """
+    metrics = compute_prescription_metrics(values)
+
+    recommended_types, recommended_options = set(), set()
+    hidden_types, hidden_options = set(), set()
+    restrict_types_matched, restrict_options_matched = set(), set()
+    any_type_restrict = False
+    any_option_restrict = False
+    messages = []
+
+    rules = (LensRecommendationRule.objects
+             .filter(is_active=True)
+             .prefetch_related('target_lens_types', 'target_lens_options'))
+
+    for rule in rules:
+        if not _rule_matches(rule, metrics.get(rule.metric)):
+            continue
+
+        type_ids = [str(t.id) for t in rule.target_lens_types.all()]
+        option_ids = [str(o.id) for o in rule.target_lens_options.all()]
+
+        if rule.action == LensRecommendationRule.Action.RECOMMEND:
+            recommended_types.update(type_ids)
+            recommended_options.update(option_ids)
+        elif rule.action == LensRecommendationRule.Action.HIDE:
+            hidden_types.update(type_ids)
+            hidden_options.update(option_ids)
+        elif rule.action == LensRecommendationRule.Action.RESTRICT:
+            if type_ids:
+                any_type_restrict = True
+                restrict_types_matched.update(type_ids)
+            if option_ids:
+                any_option_restrict = True
+                restrict_options_matched.update(option_ids)
+
+        if rule.message:
+            messages.append(rule.message)
+
+    return {
+        'metrics': {k: (str(v) if v is not None else None) for k, v in metrics.items()},
+        'recommended_lens_type_ids': sorted(recommended_types),
+        'recommended_lens_option_ids': sorted(recommended_options),
+        'hidden_lens_type_ids': sorted(hidden_types),
+        'hidden_lens_option_ids': sorted(hidden_options),
+        # When any RESTRICT rule matched, only these ids are allowed (others disabled).
+        'allowed_lens_type_ids': sorted(restrict_types_matched) if any_type_restrict else None,
+        'allowed_lens_option_ids': sorted(restrict_options_matched) if any_option_restrict else None,
+        'messages': messages,
+    }
+
+
+DEFAULT_BUILDER_FIELDS = [
+    ('SPH', 'Sphere (SPH)', True, True, '-20', '20', 'Lens power for nearsighted/farsighted correction.'),
+    ('CYL', 'Cylinder (CYL)', True, False, '-10', '10', 'Corrects astigmatism.'),
+    ('AXIS', 'Axis', True, False, '0', '180', 'Orientation of the cylinder correction (0–180°).'),
+    ('ADD', 'Addition (ADD)', True, False, '0', '4', 'Reading addition for progressive/bifocal lenses.'),
+    ('PUPILLARY_DISTANCE', 'Pupillary Distance (PD)', True, True, '40', '80', 'Distance between pupils in mm.'),
+    ('NEAR_PD', 'Near PD', False, False, '40', '80', 'Near pupillary distance.'),
+    ('SEGMENT_HEIGHT', 'Segment Height', False, False, '0', '40', 'For bifocal/progressive fitting.'),
+    ('FITTING_HEIGHT', 'Fitting Height', False, False, '0', '40', 'For progressive fitting.'),
+]
+
+
+def ensure_default_builder_fields():
+    """Seed the default field config rows once (idempotent)."""
+    from naderk.ecommerce.models import BuilderFieldConfig
+    for order, (key, label, vis, req, mn, mx, help_text) in enumerate(DEFAULT_BUILDER_FIELDS):
+        BuilderFieldConfig.objects.get_or_create(
+            field_key=key,
+            defaults={
+                'label': label, 'is_visible': vis, 'is_required': req,
+                'min_value': Decimal(mn), 'max_value': Decimal(mx),
+                'help_text': help_text, 'order': order,
+            },
+        )

@@ -16,27 +16,13 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+// Must match DoctorProfile.Specialization on the backend (naderk/users/models.py),
+// otherwise a service's required_specialization will never match any doctor.
 const SPECIALIZATIONS = [
-  { value: 'GENERAL_PRACTICE',       label: 'General Practice' },
-  { value: 'PEDIATRICS',             label: 'Pediatrics' },
-  { value: 'CARDIOLOGY',             label: 'Cardiology' },
-  { value: 'DERMATOLOGY',            label: 'Dermatology' },
-  { value: 'NEUROLOGY',              label: 'Neurology' },
-  { value: 'ONCOLOGY',               label: 'Oncology' },
-  { value: 'ORTHOPEDICS',            label: 'Orthopedics' },
-  { value: 'PSYCHIATRY',             label: 'Psychiatry' },
-  { value: 'RADIOLOGY',              label: 'Radiology' },
-  { value: 'SURGERY',                label: 'Surgery' },
-  { value: 'UROLOGY',                label: 'Urology' },
-  { value: 'OPHTHALMOLOGY',          label: 'Ophthalmology' },
-  { value: 'OPTOMETRY',              label: 'Optometry' },
-  { value: 'EMERGENCY_MEDICINE',     label: 'Emergency Medicine' },
-  { value: 'INTERNAL_MEDICINE',      label: 'Internal Medicine' },
-  { value: 'OBSTETRICS_GYNECOLOGY',  label: 'Obstetrics & Gynecology' },
-  { value: 'ANESTHESIOLOGY',         label: 'Anesthesiology' },
-  { value: 'PATHOLOGY',              label: 'Pathology' },
-  { value: 'PHYSIOTHERAPY',          label: 'Physiotherapy' },
-  { value: 'LABORATORY_MEDICINE',    label: 'Laboratory Medicine' },
+  { value: 'GENERAL_PRACTITIONER', label: 'General Practitioner' },
+  { value: 'OPTOMETRIST',          label: 'Optometrist' },
+  { value: 'OPHTHALMOLOGIST',      label: 'Ophthalmologist' },
+  { value: 'ENT',                  label: 'ENT Specialist' },
 ];
 
 const BILLING_OPTIONS: { value: BillingType; label: string; hint: string }[] = [
@@ -124,24 +110,33 @@ function ServiceFormModal({
     };
     if (payload.billing_type !== 'SESSION_PACK') delete payload.sessions_included;
 
+    // Map an API error onto per-field errors when the backend tags them, else a form-level error
+    const applyApiError = (err: unknown, fallback: string) => {
+      const res = (err as { response?: { data?: { detail?: string; errors?: Record<string, string[]> } } })?.response?.data;
+      const fieldErrors = res?.errors;
+      if (fieldErrors && Object.keys(fieldErrors).length) {
+        const mapped: Record<string, string> = {};
+        for (const [key, msgs] of Object.entries(fieldErrors)) {
+          mapped[key] = Array.isArray(msgs) ? msgs[0] : String(msgs);
+        }
+        setErrors(mapped);
+      } else {
+        setErrors({ _form: res?.detail || fallback });
+      }
+    };
+
     if (isEdit && form.id) {
       update(
         { id: form.id, ...payload },
         {
           onSuccess: () => { onSaved('Service updated successfully.'); onClose(); },
-          onError: (err: unknown) => {
-            const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-            setErrors({ _form: msg || 'Failed to update service.' });
-          },
+          onError: (err: unknown) => applyApiError(err, 'Failed to update service.'),
         },
       );
     } else {
       create(payload, {
         onSuccess: () => { onSaved('Service created successfully.'); onClose(); },
-        onError: (err: unknown) => {
-          const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-          setErrors({ _form: msg || 'Failed to create service.' });
-        },
+        onError: (err: unknown) => applyApiError(err, 'Failed to create service.'),
       });
     }
   }

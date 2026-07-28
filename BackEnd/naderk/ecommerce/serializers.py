@@ -72,12 +72,18 @@ class FrameVariantSerializer(serializers.ModelSerializer):
 
 class FrameSerializer(serializers.ModelSerializer):
     variants = FrameVariantSerializer(many=True, read_only=True)
+    gender_display = serializers.CharField(source='get_gender_display', read_only=True)
+    rim_type_display = serializers.CharField(source='get_rim_type_display', read_only=True)
+    size_category_display = serializers.CharField(source='get_size_category_display', read_only=True)
 
     class Meta:
         model = Frame
         fields = [
             'id', 'name', 'brand', 'style', 'material', 'base_price',
-            'front_image', 'transparent_overlay_png', 'is_active', 'variants',
+            'gender', 'gender_display', 'rim_type', 'rim_type_display',
+            'size_category', 'size_category_display', 'description', 'features',
+            'lens_width', 'bridge_width', 'temple_length', 'lens_height', 'total_width', 'weight_grams',
+            'front_image', 'images', 'transparent_overlay_png', 'is_active', 'variants',
             'created_at', 'updated_at'
         ]
 
@@ -119,6 +125,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
             'right_sph', 'right_cyl', 'right_axis', 'right_add',
             'left_sph', 'left_cyl', 'left_axis', 'left_add',
             'pupillary_distance', 'near_pd', 'segment_height', 'fitting_height',
+            'extra_measurements',
             'prescription_file', 'status', 'status_display', 'expires_at', 'is_expired',
             'created_at', 'updated_at'
         ]
@@ -329,3 +336,85 @@ class OrderSerializer(serializers.ModelSerializer):
 class CheckoutSerializer(serializers.Serializer):
     shipping_address = serializers.CharField(required=True)
     payment_reference = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+# --- Glasses Builder Configuration ---
+
+from .models import BuilderFieldConfig, LensRecommendationRule
+
+
+class BuilderFieldConfigSerializer(serializers.ModelSerializer):
+    field_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BuilderFieldConfig
+        fields = [
+            'id', 'field_key', 'field_label', 'label', 'is_custom', 'input_type',
+            'select_options', 'is_visible', 'is_required',
+            'min_value', 'max_value', 'help_text', 'order',
+        ]
+        read_only_fields = ['id', 'field_label', 'is_custom']
+
+    def get_field_label(self, obj):
+        # Built-in fields have a friendly enum label; custom fields use their label/key
+        builtin = dict(BuilderFieldConfig.Field.choices)
+        return builtin.get(obj.field_key) or obj.label or obj.field_key
+
+
+class LensRecommendationRuleSerializer(serializers.ModelSerializer):
+    metric_display = serializers.CharField(source='get_metric_display', read_only=True)
+    operator_display = serializers.CharField(source='get_operator_display', read_only=True)
+    action_display = serializers.CharField(source='get_action_display', read_only=True)
+    target_lens_type_ids = serializers.PrimaryKeyRelatedField(
+        source='target_lens_types', many=True, queryset=LensType.objects.all(), required=False
+    )
+    target_lens_option_ids = serializers.PrimaryKeyRelatedField(
+        source='target_lens_options', many=True, queryset=LensOption.objects.all(), required=False
+    )
+    target_lens_type_names = serializers.SerializerMethodField()
+    target_lens_option_names = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LensRecommendationRule
+        fields = [
+            'id', 'name', 'metric', 'metric_display', 'operator', 'operator_display',
+            'use_absolute', 'threshold', 'threshold_max', 'action', 'action_display',
+            'target_lens_type_ids', 'target_lens_option_ids',
+            'target_lens_type_names', 'target_lens_option_names',
+            'message', 'priority', 'is_active', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+    def get_target_lens_type_names(self, obj):
+        return [t.name for t in obj.target_lens_types.all()]
+
+    def get_target_lens_option_names(self, obj):
+        return [o.name for o in obj.target_lens_options.all()]
+
+    def validate(self, attrs):
+        op = attrs.get('operator', getattr(self.instance, 'operator', None))
+        if op == LensRecommendationRule.Operator.BETWEEN and attrs.get('threshold_max') is None \
+                and getattr(self.instance, 'threshold_max', None) is None:
+            raise serializers.ValidationError({'threshold_max': 'Required when operator is "between".'})
+        return attrs
+
+
+class RecommendationRequestSerializer(serializers.Serializer):
+    right_sph = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    right_cyl = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    right_add = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    left_sph = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    left_cyl = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    left_add = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    pupillary_distance = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    extra = serializers.DictField(required=False)
+
+
+class BuilderFieldCreateSerializer(serializers.Serializer):
+    label = serializers.CharField(max_length=120)
+    input_type = serializers.ChoiceField(choices=BuilderFieldConfig.InputType.choices, default='NUMBER')
+    select_options = serializers.ListField(child=serializers.CharField(), required=False, default=list)
+    is_required = serializers.BooleanField(default=False)
+    min_value = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
+    max_value = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
+    help_text = serializers.CharField(max_length=255, required=False, allow_blank=True)

@@ -632,3 +632,152 @@ class OrderPrescriptionReviewApi(APIView):
             metadata={'reviewed_by': str(request.user.id), 'notes': notes}
         )
         return build_success_response("Order review complete", OrderSerializer(order).data)
+
+
+# --- Glasses Builder Configuration (admin + client) ---
+
+from naderk.ecommerce.models import BuilderFieldConfig, LensRecommendationRule
+from naderk.ecommerce.serializers import (
+    BuilderFieldConfigSerializer, LensRecommendationRuleSerializer,
+    RecommendationRequestSerializer, BuilderFieldCreateSerializer,
+)
+from naderk.ecommerce.services import evaluate_lens_recommendations, ensure_default_builder_fields
+
+
+def _is_admin(request):
+    return getattr(request.user, 'role', None) in ('ADMIN', 'SUPER_ADMIN')
+
+
+class BuilderFieldConfigApi(APIView):
+    """GET (client + admin) list field config. PUT (admin) bulk-update field config rows."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        ensure_default_builder_fields()
+        qs = BuilderFieldConfig.objects.all()
+        # Patients only see visible fields; admins see everything
+        if not _is_admin(request):
+            qs = qs.filter(is_visible=True)
+        return build_success_response("Builder fields retrieved", BuilderFieldConfigSerializer(qs, many=True).data)
+
+    def put(self, request):
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        ensure_default_builder_fields()
+        updates = request.data if isinstance(request.data, list) else request.data.get('fields', [])
+        for row in updates:
+            try:
+                cfg = BuilderFieldConfig.objects.get(id=row.get('id'))
+            except BuilderFieldConfig.DoesNotExist:
+                continue
+            ser = BuilderFieldConfigSerializer(cfg, data=row, partial=True)
+            ser.is_valid(raise_exception=True)
+            ser.save()
+        qs = BuilderFieldConfig.objects.all()
+        return build_success_response("Builder fields updated", BuilderFieldConfigSerializer(qs, many=True).data)
+
+    def post(self, request):
+        """Create a new custom prescription field."""
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        import re
+        ser = BuilderFieldCreateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+
+        # Generate a unique field_key from the label
+        base = re.sub(r'[^A-Z0-9]+', '_', data['label'].upper()).strip('_') or 'FIELD'
+        key = f'CUSTOM_{base}'
+        n = 1
+        while BuilderFieldConfig.objects.filter(field_key=key).exists():
+            n += 1
+            key = f'CUSTOM_{base}_{n}'
+
+        max_order = BuilderFieldConfig.objects.count()
+        cfg = BuilderFieldConfig.objects.create(
+            field_key=key, label=data['label'], is_custom=True,
+            input_type=data.get('input_type', 'NUMBER'),
+            select_options=data.get('select_options', []),
+            is_required=data.get('is_required', False),
+            min_value=data.get('min_value'), max_value=data.get('max_value'),
+            help_text=data.get('help_text', ''), order=max_order,
+        )
+        return build_success_response("Field created", BuilderFieldConfigSerializer(cfg).data, status_code=201)
+
+
+class BuilderFieldDeleteApi(APIView):
+    """DELETE a custom builder field (built-in fields cannot be deleted)."""
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        try:
+            cfg = BuilderFieldConfig.objects.get(id=pk)
+        except BuilderFieldConfig.DoesNotExist:
+            return build_error_response("not-found", "Not Found", 404, "Field not found.")
+        if not cfg.is_custom:
+            return build_error_response("forbidden", "Forbidden", 400, "Built-in fields cannot be deleted — hide them instead.")
+        cfg.delete()
+        return build_success_response("Field deleted", {"id": str(pk)})
+
+
+class LensRuleListApi(APIView):
+    """GET list rules (admin), POST create rule (admin)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        rules = LensRecommendationRule.objects.prefetch_related('target_lens_types', 'target_lens_options').all()
+        return build_success_response("Rules retrieved", LensRecommendationRuleSerializer(rules, many=True).data)
+
+    def post(self, request):
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        ser = LensRecommendationRuleSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return build_success_response("Rule created", ser.data, status_code=201)
+
+
+class LensRuleDetailApi(APIView):
+    """GET, PATCH, DELETE a single rule (admin)."""
+    permission_classes = [IsAuthenticated]
+
+    def _get(self, pk):
+        try:
+            return LensRecommendationRule.objects.get(id=pk)
+        except LensRecommendationRule.DoesNotExist:
+            return None
+
+    def patch(self, request, pk):
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        rule = self._get(pk)
+        if not rule:
+            return build_error_response("not-found", "Not Found", 404, "Rule not found.")
+        ser = LensRecommendationRuleSerializer(rule, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return build_success_response("Rule updated", ser.data)
+
+    def delete(self, request, pk):
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        rule = self._get(pk)
+        if not rule:
+            return build_error_response("not-found", "Not Found", 404, "Rule not found.")
+        rule.delete()
+        return build_success_response("Rule deleted", {"id": str(pk)})
+
+
+class LensRecommendationApi(APIView):
+    """POST prescription values → recommended/restricted/hidden lens sets (client)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ser = RecommendationRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        result = evaluate_lens_recommendations(ser.validated_data)
+        return build_success_response("Recommendations computed", result)

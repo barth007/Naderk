@@ -41,6 +41,10 @@ urlpatterns = [
     path('admin/departments/<uuid:pk>/', apis.AdminDepartmentDetailAPI.as_view(), name='admin-department-detail'),
     # Permissions
     path('admin/permissions/', apis.AdminPermissionsAPI.as_view(), name='admin-permissions'),
+    # Frame Management
+    path('admin/frames/', apis.AdminFrameListAPI.as_view(), name='admin-frames'),
+    path('admin/frames/<uuid:pk>/', apis.AdminFrameDetailAPI.as_view(), name='admin-frame-detail'),
+    path('admin/frames/<uuid:pk>/toggle/', apis.AdminFrameToggleAPI.as_view(), name='admin-frame-toggle'),
     # Medical Services
     path('admin/services/', apis.AdminServiceListAPI.as_view(), name='admin-services'),
     path('admin/services/<uuid:pk>/', apis.AdminServiceDetailAPI.as_view(), name='admin-service-detail'),

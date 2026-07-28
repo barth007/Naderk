@@ -118,6 +118,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # MinIO / S3-compatible Storage
 STORAGE = {
     'ENDPOINT':        env('MINIO_ENDPOINT', default='http://localhost:9000'),
+    # Browser-reachable base URL for public objects. In Docker, ENDPOINT is an
+    # internal hostname (e.g. http://minio:9000) that clients cannot reach, so
+    # this MUST be set to a public URL (e.g. https://media.naderkela.com).
+    'PUBLIC_ENDPOINT': env('MINIO_PUBLIC_ENDPOINT', default=env('MINIO_ENDPOINT', default='http://localhost:9000')),
     'ACCESS_KEY':      env('MINIO_ACCESS_KEY', default='minioadmin'),
     'SECRET_KEY':      env('MINIO_SECRET_KEY', default='minioadmin123'),
     'USE_SSL':         env.bool('MINIO_USE_SSL', default=False),

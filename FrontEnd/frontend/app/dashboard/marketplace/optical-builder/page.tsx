@@ -22,7 +22,9 @@ import {
   useReusablePrescriptions,
   useSubmitPrescription,
   useAddToCart,
-
+  useBuilderFields,
+  useLensRecommendations,
+  LensRecommendationResult,
 } from '@/services/marketplace/marketplace.hooks';
 import { Frame, FrameVariant, LensType, LensOption, Prescription } from '@/services/marketplace/marketplace.types';
 import { toast } from 'sonner';
@@ -83,12 +85,85 @@ export default function OpticalBuilderPage() {
   const submitPrescriptionMutation = useSubmitPrescription();
   const addToCartMutation = useAddToCart();
 
-  // Reset variables when frame changes
+  // Admin-driven builder config + prescription-based lens recommendations
+  const { data: fieldConfigs = [] } = useBuilderFields();
+  const recommendationMutation = useLensRecommendations();
+  const [recommendation, setRecommendation] = useState<LensRecommendationResult | null>(null);
+
+  const fieldCfg = (key: string) => fieldConfigs.find(f => f.field_key === key);
+  const isFieldVisible = (key: string) => { const c = fieldCfg(key); return c ? c.is_visible : true; };
+
+  // Admin-defined custom fields + their captured values
+  const customFields = fieldConfigs.filter(f => f.is_custom && f.is_visible);
+  const [extraValues, setExtraValues] = useState<Record<string, string>>({});
+  const setExtra = (key: string, val: string) => setExtraValues(p => ({ ...p, [key]: val }));
+
+  // Build the prescription values used for recommendations, from whichever input method is active
+  const collectRxValues = (): Record<string, string | null> => {
+    if (prescriptionOption === 'existing' && selectedPrescription) {
+      const p: any = selectedPrescription;
+      return {
+        right_sph: p.right_sph ?? null, right_cyl: p.right_cyl ?? null, right_add: p.right_add ?? null,
+        left_sph: p.left_sph ?? null, left_cyl: p.left_cyl ?? null, left_add: p.left_add ?? null,
+        pupillary_distance: p.pupillary_distance ?? null,
+      };
+    }
+    // Manual and Upload both collect the numeric values (upload = transcribed from the file)
+    if (prescriptionOption === 'manual' || prescriptionOption === 'upload') {
+      return {
+        right_sph: rightSph, right_cyl: rightCyl, right_add: rightAdd,
+        left_sph: leftSph, left_cyl: leftCyl, left_add: leftAdd,
+        pupillary_distance: pupillaryDistance,
+        extra: extraValues as any,
+      };
+    }
+    return {};
+  };
+
+  // Recompute recommendations whenever we reach the lens step (step 3)
+  useEffect(() => {
+    if (step !== 3) return;
+    const values = collectRxValues();
+    if (Object.keys(values).length === 0) { setRecommendation(null); return; }
+    recommendationMutation.mutate(values, { onSuccess: (data) => setRecommendation(data) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  // If a rule now restricts/hides the currently-selected lens, clear it
+  useEffect(() => {
+    if (!recommendation || !selectedLensType) return;
+    const hidden = recommendation.hidden_lens_type_ids.includes(selectedLensType.id);
+    const allowed = recommendation.allowed_lens_type_ids;
+    const restricted = allowed != null && !allowed.includes(selectedLensType.id);
+    if (hidden || restricted) setSelectedLensType(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recommendation]);
+
+  // Default to the first variant when a frame is chosen — but keep an already-selected
+  // variant if it belongs to this frame (e.g. one carried in from the frame detail page).
   useEffect(() => {
     if (selectedFrame && selectedFrame.variants.length > 0) {
-      setSelectedFrameVariant(selectedFrame.variants[0]);
+      const belongs = selectedFrameVariant && selectedFrame.variants.some(v => v.id === selectedFrameVariant.id);
+      if (!belongs) setSelectedFrameVariant(selectedFrame.variants[0]);
     }
   }, [selectedFrame]);
+
+  // Pre-select a frame + variant carried over from the frame detail page
+  useEffect(() => {
+    if (!frames.length) return;
+    const fid = typeof window !== 'undefined' ? sessionStorage.getItem('builderPreselectFrameId') : null;
+    if (!fid) return;
+    const f = frames.find(x => x.id === fid);
+    if (f) {
+      setSelectedFrame(f);
+      const vid = sessionStorage.getItem('builderPreselectVariantId');
+      const v = vid ? f.variants.find(x => x.id === vid) : null;
+      if (v) setSelectedFrameVariant(v);
+      toast.success('Frame carried over from catalogue — review and continue.');
+    }
+    sessionStorage.removeItem('builderPreselectFrameId');
+    sessionStorage.removeItem('builderPreselectVariantId');
+  }, [frames]);
 
   // Calculate live total price
   const calculateTotal = () => {
@@ -137,11 +212,7 @@ export default function OpticalBuilderPage() {
       toast.error("Please select a frame and color/size variant first.");
       return;
     }
-    if (step === 2 && !selectedLensType) {
-      toast.error("Please select a lens type first.");
-      return;
-    }
-    if (step === 4) {
+    if (step === 2) {
       if (prescriptionOption === 'existing' && !selectedPrescription) {
         toast.error("Please select an approved prescription, or enter manual values.");
         return;
@@ -150,13 +221,22 @@ export default function OpticalBuilderPage() {
         toast.error("Please upload your prescription PDF or image.");
         return;
       }
-      if (prescriptionOption === 'manual') {
+      // Upload and Manual both require the transcribed values (SPH + valid PD)
+      if (prescriptionOption === 'manual' || prescriptionOption === 'upload') {
+        if (!rightSph.trim() && !leftSph.trim()) {
+          toast.error("Please enter the Sphere (SPH) value for at least one eye.");
+          return;
+        }
         const pd = parseFloat(pupillaryDistance);
         if (isNaN(pd) || pd < 40 || pd > 80) {
           toast.error("Pupillary Distance must be between 40 and 80 mm.");
           return;
         }
       }
+    }
+    if (step === 3 && !selectedLensType) {
+      toast.error("Please select a lens type first.");
+      return;
     }
     setStep(prev => prev + 1);
   };
@@ -188,18 +268,20 @@ export default function OpticalBuilderPage() {
     const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
     const int = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
 
+    // Both manual and upload save the transcribed values; upload additionally keeps the file
+    payload.right_sph  = num(rightSph);
+    payload.right_cyl  = num(rightCyl);
+    payload.right_axis = int(rightAxis);
+    payload.right_add  = num(rightAdd);
+    payload.left_sph   = num(leftSph);
+    payload.left_cyl   = num(leftCyl);
+    payload.left_axis  = int(leftAxis);
+    payload.left_add   = num(leftAdd);
     if (prescriptionOption === 'upload') {
       payload.prescription_file = fileUrl || null;
-    } else {
-      payload.right_sph  = num(rightSph);
-      payload.right_cyl  = num(rightCyl);
-      payload.right_axis = int(rightAxis);
-      payload.right_add  = num(rightAdd);
-      payload.left_sph   = num(leftSph);
-      payload.left_cyl   = num(leftCyl);
-      payload.left_axis  = int(leftAxis);
-      payload.left_add   = num(leftAdd);
     }
+
+    if (Object.keys(extraValues).length) payload.extra_measurements = extraValues;
 
     submitPrescriptionMutation.mutate(payload, {
       onSuccess: (newRx) => {
@@ -235,7 +317,7 @@ export default function OpticalBuilderPage() {
     });
   };
 
-const stepNames = ["Choose Frame", "Select Lens", "Upgrades", "Prescription", "Submit & Checkout"];
+const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "Submit & Checkout"];
 
   return (
     <div className="w-full bg-[#f8f9fc] min-h-screen text-[#1f2937]">
@@ -262,11 +344,11 @@ const stepNames = ["Choose Frame", "Select Lens", "Upgrades", "Prescription", "S
       </div>
 
       {step <= 6 && (
-        <div className="mb-8 bg-white p-5 rounded-2xl border border-gray-100">
+        <div className="mb-8 bg-white p-5 md:pb-10 rounded-2xl border border-gray-100">
           {/* Stepper bar */}
           <div className="flex items-center justify-between relative max-w-3xl mx-auto">
             <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-gray-100 z-0"></div>
-            <div 
+            <div
               className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-[#ff052f] z-0 transition-all duration-300"
               style={{ width: `${((step - 1) / (stepNames.length - 1)) * 100}%` }}
             ></div>
@@ -274,20 +356,28 @@ const stepNames = ["Choose Frame", "Select Lens", "Upgrades", "Prescription", "S
             {stepNames.map((name, idx) => {
               const active = idx + 1 <= step;
               const current = idx + 1 === step;
+              const isPrevious = idx + 1 < step; // completed steps you can jump back to
               return (
                 <div key={name} className="relative z-10 flex flex-col items-center">
-                  <div 
+                  <button
+                    type="button"
+                    onClick={() => { if (isPrevious) setStep(idx + 1); }}
+                    disabled={!isPrevious}
+                    title={isPrevious ? `Go back to ${name}` : undefined}
                     className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs transition duration-300 border-2 ${
-                      current 
-                        ? 'bg-white border-[#ff052f] text-[#ff052f] shadow-sm' 
-                        : active 
-                        ? 'bg-[#ff052f] border-[#ff052f] text-white' 
+                      current
+                        ? 'bg-white border-[#ff052f] text-[#ff052f] shadow-sm'
+                        : active
+                        ? 'bg-[#ff052f] border-[#ff052f] text-white'
                         : 'bg-white border-gray-200 text-gray-400'
-                    }`}
+                    } ${isPrevious ? 'cursor-pointer hover:scale-110' : 'cursor-default'}`}
                   >
                     {active && idx + 1 < step ? <Check className="w-3.5 h-3.5" /> : idx + 1}
-                  </div>
-                  <span className="hidden md:block text-[9px] uppercase font-bold tracking-wider mt-2 text-gray-500">
+                  </button>
+                  <span
+                    onClick={() => { if (isPrevious) setStep(idx + 1); }}
+                    className={`hidden md:block absolute top-full mt-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] uppercase font-bold tracking-wider text-gray-500 ${isPrevious ? 'cursor-pointer hover:text-[#ff052f]' : ''}`}
+                  >
                     {name}
                   </span>
                 </div>
@@ -378,6 +468,15 @@ const stepNames = ["Choose Frame", "Select Lens", "Upgrades", "Prescription", "S
                           <h3 className="font-bold text-gray-900 text-xs md:text-sm leading-tight">{frame.name}</h3>
                           <p className="text-[10px] text-gray-400 mt-1">{frame.material} &bull; {frame.style}</p>
                           <span className="font-extrabold text-gray-900 text-sm mt-2 block">₦{Number(frame.base_price).toLocaleString()}</span>
+                          <a
+                            href={`/dashboard/marketplace/frame/${frame.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-block text-[10px] font-bold text-[#ff052f] hover:underline mt-2"
+                          >
+                            View details &rarr;
+                          </a>
                         </div>
                       </div>
                     ))}
@@ -412,40 +511,69 @@ const stepNames = ["Choose Frame", "Select Lens", "Upgrades", "Prescription", "S
               </motion.div>
             )}
 
-            {/* Step 2: Select Lens Type */}
-            {step === 2 && (
+            {/* Step 3: Select Lens Type */}
+            {step === 3 && (
               <motion.div
-                key="step2"
+                key="step-lens"
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 10 }}
                 className="space-y-6"
               >
                 <div>
-                  <h2 className="text-lg font-bold text-[#1f2937]">Step 2: Choose Vision Lens Type</h2>
+                  <h2 className="text-lg font-bold text-[#1f2937]">Step 3: Choose Vision Lens Type</h2>
                   <p className="text-gray-400 text-xs mt-1">Select lens options according to your daily vision needs.</p>
                 </div>
+
+                {/* Prescription-based guidance from admin rules */}
+                {recommendation && recommendation.messages.length > 0 && (
+                  <div className="bg-[#fff5f6] border border-[#ffccd3] rounded-xl p-4 flex gap-3 text-xs text-[#a0001a] leading-relaxed">
+                    <Sparkles className="w-4 h-4 text-[#ff052f] shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <span className="font-bold block">Based on your prescription:</span>
+                      {recommendation.messages.map((m, i) => <p key={i}>{m}</p>)}
+                    </div>
+                  </div>
+                )}
 
                 {loadingLensTypes ? (
                   <div className="py-20 flex justify-center"><RefreshCw className="animate-spin text-[#ff052f]" /></div>
                 ) : (
                   <div className="space-y-3">
                     {lensTypes.map((lens) => {
-                      const compatible = isLensCompatible(lens.id);
+                      // Apply admin recommendation rules
+                      const hidden = recommendation?.hidden_lens_type_ids.includes(lens.id) ?? false;
+                      const allowed = recommendation?.allowed_lens_type_ids;
+                      const restricted = allowed != null && !allowed.includes(lens.id);
+                      const recommended = recommendation?.recommended_lens_type_ids.includes(lens.id) ?? false;
+                      const selectable = !hidden && !restricted;
+
+                      if (hidden) return null; // HIDE action removes the lens entirely
+
                       return (
                         <div
                           key={lens.id}
-                          onClick={() => compatible && setSelectedLensType(lens)}
-                          className={`p-4 rounded-xl border transition duration-300 flex justify-between items-center ${
-                            !compatible 
-                              ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50' 
+                          onClick={() => selectable && setSelectedLensType(lens)}
+                          className={`relative p-4 rounded-xl border transition duration-300 flex justify-between items-center ${
+                            restricted
+                              ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50'
                               : selectedLensType?.id === lens.id
                               ? 'border-[#ff052f] bg-[#fff5f6] cursor-pointer'
+                              : recommended
+                              ? 'border-[#ff052f]/50 bg-[#fff5f6]/40 cursor-pointer hover:border-[#ff052f]'
                               : 'border-gray-100 hover:border-gray-200 cursor-pointer'
                           }`}
                         >
                           <div className="flex-1 pr-4">
-                            <h3 className="font-bold text-gray-900 text-xs md:text-sm">{lens.name}</h3>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-bold text-gray-900 text-xs md:text-sm">{lens.name}</h3>
+                              {recommended && (
+                                <span className="text-[8px] font-extrabold uppercase tracking-wider bg-[#ff052f] text-white px-1.5 py-0.5 rounded-full">Recommended</span>
+                              )}
+                              {restricted && (
+                                <span className="text-[8px] font-extrabold uppercase tracking-wider bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full">Not suitable</span>
+                              )}
+                            </div>
                             <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">{lens.description}</p>
                           </div>
                           <div className="text-right">
@@ -462,17 +590,17 @@ const stepNames = ["Choose Frame", "Select Lens", "Upgrades", "Prescription", "S
               </motion.div>
             )}
 
-            {/* Step 3: Upgrades */}
-            {step === 3 && (
+            {/* Step 4: Upgrades */}
+            {step === 4 && (
               <motion.div
-                key="step3"
+                key="step-upgrades"
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 10 }}
                 className="space-y-6"
               >
                 <div>
-                  <h2 className="text-lg font-bold text-[#1f2937]">Step 3: Vision Lens Upgrades</h2>
+                  <h2 className="text-lg font-bold text-[#1f2937]">Step 4: Vision Lens Upgrades</h2>
                   <p className="text-gray-400 text-xs mt-1">Add protective coatings or light transition modifications.</p>
                 </div>
 
@@ -482,24 +610,37 @@ const stepNames = ["Choose Frame", "Select Lens", "Upgrades", "Prescription", "S
                   <div className="space-y-3">
                     {lensOptions.map((opt) => {
                       const isSelected = selectedLensOptions.some(o => o.id === opt.id);
+                      const hidden = recommendation?.hidden_lens_option_ids.includes(opt.id) ?? false;
+                      const allowed = recommendation?.allowed_lens_option_ids;
+                      const restricted = allowed != null && !allowed.includes(opt.id);
+                      const recommended = recommendation?.recommended_lens_option_ids.includes(opt.id) ?? false;
+                      if (hidden) return null;
                       return (
                         <div
                           key={opt.id}
                           onClick={() => {
+                            if (restricted) return;
                             if (isSelected) {
                               setSelectedLensOptions(selectedLensOptions.filter(o => o.id !== opt.id));
                             } else {
                               setSelectedLensOptions([...selectedLensOptions, opt]);
                             }
                           }}
-                          className={`p-4 rounded-xl border cursor-pointer transition duration-300 flex justify-between items-center ${
-                            isSelected
-                              ? 'border-[#ff052f] bg-[#fff5f6]'
-                              : 'border-gray-100 hover:border-gray-200'
+                          className={`p-4 rounded-xl border transition duration-300 flex justify-between items-center ${
+                            restricted
+                              ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50'
+                              : isSelected
+                              ? 'border-[#ff052f] bg-[#fff5f6] cursor-pointer'
+                              : 'border-gray-100 hover:border-gray-200 cursor-pointer'
                           }`}
                         >
                           <div>
-                            <h3 className="font-bold text-gray-900 text-xs md:text-sm">{opt.name}</h3>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-bold text-gray-900 text-xs md:text-sm">{opt.name}</h3>
+                              {recommended && (
+                                <span className="text-[8px] font-extrabold uppercase tracking-wider bg-[#ff052f] text-white px-1.5 py-0.5 rounded-full">Recommended</span>
+                              )}
+                            </div>
                             <p className="text-[11px] text-gray-400 mt-1">Enhance your eyeglasses with high performance filters.</p>
                           </div>
                           <div className="flex items-center gap-3">
@@ -518,17 +659,17 @@ const stepNames = ["Choose Frame", "Select Lens", "Upgrades", "Prescription", "S
               </motion.div>
             )}
 
-            {/* Step 4: Prescription Setup */}
-            {step === 4 && (
+            {/* Step 2: Prescription Setup */}
+            {step === 2 && (
               <motion.div
-                key="step4"
+                key="step-prescription"
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 10 }}
                 className="space-y-6"
               >
                 <div>
-                  <h2 className="text-lg font-bold text-[#1f2937]">Step 4: Prescription Credentials</h2>
+                  <h2 className="text-lg font-bold text-[#1f2937]">Step 2: Prescription Credentials</h2>
                   <p className="text-gray-400 text-xs mt-1">Select an existing verified prescription or input custom optometry metrics.</p>
                 </div>
 
@@ -634,23 +775,22 @@ const stepNames = ["Choose Frame", "Select Lens", "Upgrades", "Prescription", "S
                       )}
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">Pupillary Distance (PD) *</label>
-                      <input 
-                        type="number" 
-                        value={pupillaryDistance} 
-                        onChange={(e) => setPupillaryDistance(e.target.value)}
-                        className="px-3 py-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-xl text-xs bg-[#f8f9fc]"
-                        placeholder="63"
-                      />
+                    <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                      <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                      <p className="text-[11px] text-blue-700 leading-relaxed">
+                        Now enter the values exactly as they appear on your uploaded prescription. We use these to
+                        recommend the right lenses — the file alone can’t be read automatically.
+                      </p>
                     </div>
                   </div>
                 )}
 
-                {prescriptionOption === 'manual' && (
+                {(prescriptionOption === 'manual' || prescriptionOption === 'upload') && (
                   <div className="space-y-4">
-                    <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Manual Optometry Form (Valid ranges apply)</p>
-                    
+                    <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">
+                      {prescriptionOption === 'upload' ? 'Enter Values From Your Prescription (Required)' : 'Manual Optometry Form (Valid ranges apply)'}
+                    </p>
+
                     {/* Right Eye */}
                     <div className="border border-gray-100 p-4 rounded-xl bg-gray-50/50 space-y-3">
                       <h4 className="font-bold text-[10px] text-gray-600 uppercase tracking-wider">Right Eye (OD)</h4>
@@ -659,18 +799,24 @@ const stepNames = ["Choose Frame", "Select Lens", "Upgrades", "Prescription", "S
                           <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">SPH</label>
                           <input type="text" value={rightSph} onChange={e => setRightSph(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
                         </div>
-                        <div>
-                          <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">CYL</label>
-                          <input type="text" value={rightCyl} onChange={e => setRightCyl(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
-                        </div>
-                        <div>
-                          <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">AXIS</label>
-                          <input type="text" value={rightAxis} onChange={e => setRightAxis(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
-                        </div>
-                        <div>
-                          <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">ADD</label>
-                          <input type="text" value={rightAdd} onChange={e => setRightAdd(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
-                        </div>
+                        {isFieldVisible('CYL') && (
+                          <div>
+                            <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">CYL</label>
+                            <input type="text" value={rightCyl} onChange={e => setRightCyl(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                          </div>
+                        )}
+                        {isFieldVisible('AXIS') && (
+                          <div>
+                            <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">AXIS</label>
+                            <input type="text" value={rightAxis} onChange={e => setRightAxis(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                          </div>
+                        )}
+                        {isFieldVisible('ADD') && (
+                          <div>
+                            <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">ADD</label>
+                            <input type="text" value={rightAdd} onChange={e => setRightAdd(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -682,32 +828,72 @@ const stepNames = ["Choose Frame", "Select Lens", "Upgrades", "Prescription", "S
                           <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">SPH</label>
                           <input type="text" value={leftSph} onChange={e => setLeftSph(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
                         </div>
-                        <div>
-                          <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">CYL</label>
-                          <input type="text" value={leftCyl} onChange={e => setLeftCyl(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
-                        </div>
-                        <div>
-                          <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">AXIS</label>
-                          <input type="text" value={leftAxis} onChange={e => setLeftAxis(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
-                        </div>
-                        <div>
-                          <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">ADD</label>
-                          <input type="text" value={leftAdd} onChange={e => setLeftAdd(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
-                        </div>
+                        {isFieldVisible('CYL') && (
+                          <div>
+                            <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">CYL</label>
+                            <input type="text" value={leftCyl} onChange={e => setLeftCyl(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                          </div>
+                        )}
+                        {isFieldVisible('AXIS') && (
+                          <div>
+                            <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">AXIS</label>
+                            <input type="text" value={leftAxis} onChange={e => setLeftAxis(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                          </div>
+                        )}
+                        {isFieldVisible('ADD') && (
+                          <div>
+                            <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">ADD</label>
+                            <input type="text" value={leftAdd} onChange={e => setLeftAdd(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     {/* Pupillary Distance */}
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">Pupillary Distance (PD) *</label>
-                      <input 
-                        type="number" 
-                        value={pupillaryDistance} 
-                        onChange={(e) => setPupillaryDistance(e.target.value)}
-                        className="px-3 py-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-xl text-xs bg-[#f8f9fc]"
-                        placeholder="63"
-                      />
-                    </div>
+                    {isFieldVisible('PUPILLARY_DISTANCE') && (
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">
+                          {fieldCfg('PUPILLARY_DISTANCE')?.label || 'Pupillary Distance (PD)'} {fieldCfg('PUPILLARY_DISTANCE')?.is_required !== false && '*'}
+                        </label>
+                        <input
+                          type="number"
+                          value={pupillaryDistance}
+                          onChange={(e) => setPupillaryDistance(e.target.value)}
+                          className="px-3 py-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-xl text-xs bg-[#f8f9fc]"
+                          placeholder="63"
+                        />
+                        {fieldCfg('PUPILLARY_DISTANCE')?.help_text && (
+                          <p className="text-[10px] text-gray-400">{fieldCfg('PUPILLARY_DISTANCE')!.help_text}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Admin-defined custom fields */}
+                    {customFields.map((cf) => (
+                      <div key={cf.id} className="space-y-2">
+                        <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">
+                          {cf.field_label}{cf.is_required && ' *'}
+                        </label>
+                        {cf.input_type === 'SELECT' ? (
+                          <select
+                            value={extraValues[cf.field_key] ?? ''}
+                            onChange={(e) => setExtra(cf.field_key, e.target.value)}
+                            className="px-3 py-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-xl text-xs bg-white"
+                          >
+                            <option value="">Select…</option>
+                            {cf.select_options.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        ) : (
+                          <input
+                            type={cf.input_type === 'NUMBER' ? 'number' : 'text'}
+                            value={extraValues[cf.field_key] ?? ''}
+                            onChange={(e) => setExtra(cf.field_key, e.target.value)}
+                            className="px-3 py-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-xl text-xs bg-[#f8f9fc]"
+                          />
+                        )}
+                        {cf.help_text && <p className="text-[10px] text-gray-400">{cf.help_text}</p>}
+                      </div>
+                    ))}
                   </div>
                 )}
               </motion.div>
@@ -723,7 +909,7 @@ const stepNames = ["Choose Frame", "Select Lens", "Upgrades", "Prescription", "S
                 className="space-y-6"
               >
                 <div>
-                  <h2 className="text-lg font-bold text-[#1f2937]">Step 6: Submission Summary</h2>
+                  <h2 className="text-lg font-bold text-[#1f2937]">Step 5: Submission Summary</h2>
                   <p className="text-gray-400 text-xs mt-1">Review your configurations before submitting to the approval queue.</p>
                 </div>
 

@@ -27,7 +27,8 @@ def _serialize_blog_with_status(blog):
         'excerpt': blog.excerpt,
         'content': blog.content,
         'image_url': blog.image_url,
-        'status': blog.status,
+        # Frontend (author + admin views) compares status in UPPER case
+        'status': (blog.status or '').upper(),
         'is_featured': blog.is_featured,
         'reading_time': blog.reading_time,
         'published_at': blog.published_at.isoformat() if blog.published_at else None,

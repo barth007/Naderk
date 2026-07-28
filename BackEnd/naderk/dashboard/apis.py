@@ -312,11 +312,12 @@ class AdminDashboardSummaryAPI(APIView):
         else:
             revenue_change = 100 if revenue_today > 0 else 0
 
-        # --- Appointment queue: today's non-cancelled confirmed+ ---
+        # --- Appointment queue: today's appointments (must match the summary count above,
+        # which counts all non-cancelled appointments, including PENDING) ---
         queue_qs = Appointment.objects.filter(
             appointment_date=today
         ).exclude(
-            status__in=[Appointment.Status.CANCELLED, Appointment.Status.PENDING]
+            status=Appointment.Status.CANCELLED
         ).order_by('appointment_time').select_related('patient', 'service')[:20]
 
         appointment_queue = []
@@ -1694,15 +1695,30 @@ class AdminServiceListAPI(APIView):
         specialization = (request.data.get('required_specialization') or '').strip() or None
 
         if not name:
-            return build_error_response('validation-error', 'Validation Error', 400, 'name is required.')
+            return build_error_response('validation-error', 'Validation Error', 400, 'name is required.',
+                                        errors={'name': ['Service name is required.']})
+        if MedicalService.objects.filter(name__iexact=name).exists():
+            msg = f'A service named "{name}" already exists.'
+            return build_error_response('validation-error', 'Validation Error', 400, msg,
+                                        errors={'name': [msg]})
         if requires_doctor and not specialization:
-            return build_error_response('validation-error', 'Validation Error', 400,
-                                        'required_specialization is required when requires_doctor is true.')
+            msg = 'Specialization is required when a doctor is needed.'
+            return build_error_response('validation-error', 'Validation Error', 400, msg,
+                                        errors={'required_specialization': [msg]})
+        # Specialization must be a real DoctorProfile choice or no doctor will ever match
+        if specialization:
+            from naderk.users.models import DoctorProfile
+            valid_specs = DoctorProfile.Specialization.values
+            if specialization not in valid_specs:
+                msg = f'Invalid specialization. Must be one of: {", ".join(valid_specs)}.'
+                return build_error_response('validation-error', 'Validation Error', 400, msg,
+                                            errors={'required_specialization': [msg]})
 
         VALID_BILLING = ['PER_VISIT', 'MONTHLY', 'SESSION_PACK']
         if billing_type not in VALID_BILLING:
-            return build_error_response('validation-error', 'Validation Error', 400,
-                                        f'billing_type must be one of: {", ".join(VALID_BILLING)}')
+            msg = f'billing_type must be one of: {", ".join(VALID_BILLING)}'
+            return build_error_response('validation-error', 'Validation Error', 400, msg,
+                                        errors={'billing_type': [msg]})
 
         # Unique slug
         base_slug = slugify(name)
@@ -1719,13 +1735,15 @@ class AdminServiceListAPI(APIView):
                 if sessions_included < 1:
                     raise ValueError
             except (TypeError, ValueError):
-                return build_error_response('validation-error', 'Validation Error', 400,
-                                            'sessions_included must be a positive integer for SESSION_PACK.')
+                msg = 'Number of sessions is required for Session Pack.'
+                return build_error_response('validation-error', 'Validation Error', 400, msg,
+                                            errors={'sessions_included': [msg]})
 
         try:
             fee = float(request.data.get('fee') or 0)
         except (TypeError, ValueError):
-            return build_error_response('validation-error', 'Validation Error', 400, 'fee must be a number.')
+            return build_error_response('validation-error', 'Validation Error', 400, 'fee must be a number.',
+                                        errors={'fee': ['Valid fee is required.']})
 
         service = MedicalService.objects.create(
             name=name,
@@ -1799,6 +1817,28 @@ class AdminServiceDetailAPI(APIView):
             return build_error_response('not-found', 'Not Found', 404, 'Service not found.')
 
         VALID_BILLING = ['PER_VISIT', 'MONTHLY', 'SESSION_PACK']
+
+        # Enforce unique service name (case-insensitive), excluding this service
+        if 'name' in request.data:
+            from naderk.appointments.models import MedicalService
+            new_name = (request.data.get('name') or '').strip()
+            if not new_name:
+                return build_error_response('validation-error', 'Validation Error', 400, 'name cannot be empty.',
+                                            errors={'name': ['Service name is required.']})
+            if MedicalService.objects.filter(name__iexact=new_name).exclude(id=pk).exists():
+                msg = f'A service named "{new_name}" already exists.'
+                return build_error_response('validation-error', 'Validation Error', 400, msg,
+                                            errors={'name': [msg]})
+
+        # Validate specialization matches a real DoctorProfile choice
+        if request.data.get('required_specialization'):
+            from naderk.users.models import DoctorProfile
+            spec = request.data['required_specialization']
+            if spec not in DoctorProfile.Specialization.values:
+                msg = f'Invalid specialization. Must be one of: {", ".join(DoctorProfile.Specialization.values)}.'
+                return build_error_response('validation-error', 'Validation Error', 400, msg,
+                                            errors={'required_specialization': [msg]})
+
         fields = ['name', 'description', 'requires_doctor', 'available_online', 'required_specialization',
                   'duration_minutes', 'buffer_time_before', 'buffer_time_after', 'is_active']
         for f in fields:
@@ -1814,13 +1854,15 @@ class AdminServiceDetailAPI(APIView):
             try:
                 service.fee = float(request.data['fee'])
             except (TypeError, ValueError):
-                return build_error_response('validation-error', 'Validation Error', 400, 'fee must be a number.')
+                return build_error_response('validation-error', 'Validation Error', 400, 'fee must be a number.',
+                                            errors={'fee': ['Valid fee is required.']})
 
         if 'billing_type' in request.data:
             bt = request.data['billing_type']
             if bt not in VALID_BILLING:
-                return build_error_response('validation-error', 'Validation Error', 400,
-                                            f'billing_type must be one of: {", ".join(VALID_BILLING)}')
+                msg = f'billing_type must be one of: {", ".join(VALID_BILLING)}'
+                return build_error_response('validation-error', 'Validation Error', 400, msg,
+                                            errors={'billing_type': [msg]})
             service.billing_type = bt
 
         if 'sessions_included' in request.data:
@@ -1841,3 +1883,165 @@ class AdminServiceDetailAPI(APIView):
         service.is_active = False
         service.save(update_fields=['is_active'])
         return build_success_response(message="Service deactivated.", data={}, status_code=200)
+
+
+# ─── Admin Frame Management ──────────────────────────────────────────────────
+
+def _frame_scalar_fields(data):
+    """Extract & coerce the writable Frame scalar fields from request data."""
+    out = {}
+    for f in ['name', 'brand', 'style', 'material', 'description', 'features',
+              'gender', 'rim_type', 'size_category', 'transparent_overlay_png']:
+        if f in data:
+            out[f] = data[f]
+    for f in ['lens_width', 'bridge_width', 'temple_length', 'lens_height', 'total_width', 'weight_grams']:
+        if f in data:
+            v = data[f]
+            out[f] = int(v) if str(v).strip() not in ('', 'None') else None
+    if 'base_price' in data:
+        out['base_price'] = data['base_price']
+    # Up to 4 image URLs; the first becomes the primary front_image
+    if 'images' in data:
+        imgs = data.get('images') or []
+        if isinstance(imgs, list):
+            imgs = [u for u in imgs if u][:4]
+            out['images'] = imgs
+            out['front_image'] = imgs[0] if imgs else None
+    return out
+
+
+def _create_variants(frame, variants):
+    from naderk.ecommerce.models import FrameVariant
+    for v in variants or []:
+        color = (v.get('color') or '').strip()
+        size = (v.get('size') or '').strip()
+        if not color or not size:
+            continue
+        FrameVariant.objects.create(
+            frame=frame, color=color, size=size,
+            quantity_available=int(v.get('quantity_available') or 0),
+            low_stock_threshold=int(v.get('low_stock_threshold') or 3),
+            sku=(v.get('sku') or None) or None,
+            is_active=bool(v.get('is_active', True)),
+        )
+
+
+class AdminFrameListAPI(APIView):
+    """GET all frames (active + inactive); POST create a frame with variants."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        from naderk.ecommerce.models import Frame
+        from naderk.ecommerce.serializers import FrameSerializer
+        frames = Frame.objects.prefetch_related('variants').all().order_by('-created_at')
+        return build_success_response("Frames retrieved.", FrameSerializer(frames, many=True).data)
+
+    def post(self, request):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        from naderk.ecommerce.models import Frame
+        from naderk.ecommerce.serializers import FrameSerializer
+
+        data = request.data
+        name = (data.get('name') or '').strip()
+        brand = (data.get('brand') or '').strip()
+        if not name:
+            return build_error_response('validation-error', 'Validation Error', 400, 'name is required.', errors={'name': ['Frame name is required.']})
+        if not brand:
+            return build_error_response('validation-error', 'Validation Error', 400, 'brand is required.', errors={'brand': ['Brand is required.']})
+        bp = data.get('base_price')
+        if bp is None or str(bp).strip() == '':
+            return build_error_response('validation-error', 'Validation Error', 400, 'base_price is required.', errors={'base_price': ['Base price is required.']})
+        try:
+            float(bp)
+        except (TypeError, ValueError):
+            return build_error_response('validation-error', 'Validation Error', 400, 'base_price must be a number.', errors={'base_price': ['Base price must be a number.']})
+
+        fields = _frame_scalar_fields(data)
+        fields.setdefault('style', (data.get('style') or 'Rectangle'))
+        fields.setdefault('material', (data.get('material') or 'Acetate'))
+        try:
+            frame = Frame.objects.create(**fields)
+        except Exception as e:
+            return build_error_response('validation-error', 'Validation Error', 400, str(e))
+        _create_variants(frame, data.get('variants'))
+        frame.refresh_from_db()
+        return build_success_response("Frame created.", FrameSerializer(frame).data, status_code=201)
+
+
+class AdminFrameDetailAPI(APIView):
+    """GET, PATCH (scalar fields + optional variant replace), DELETE a frame."""
+    permission_classes = [IsAuthenticated]
+
+    def _get(self, pk):
+        from naderk.ecommerce.models import Frame
+        try:
+            return Frame.objects.prefetch_related('variants').get(id=pk)
+        except Frame.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        from naderk.ecommerce.serializers import FrameSerializer
+        frame = self._get(pk)
+        if not frame:
+            return build_error_response('not-found', 'Not Found', 404, 'Frame not found.')
+        return build_success_response("Frame retrieved.", FrameSerializer(frame).data)
+
+    def patch(self, request, pk):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        from naderk.ecommerce.serializers import FrameSerializer
+        frame = self._get(pk)
+        if not frame:
+            return build_error_response('not-found', 'Not Found', 404, 'Frame not found.')
+
+        for key, val in _frame_scalar_fields(request.data).items():
+            setattr(frame, key, val)
+        if 'is_active' in request.data:
+            frame.is_active = bool(request.data['is_active'])
+        frame.save()
+
+        # If variants provided, replace the full set (simple, predictable for the admin UI)
+        if 'variants' in request.data:
+            frame.variants.all().delete()
+            _create_variants(frame, request.data.get('variants'))
+
+        frame.refresh_from_db()
+        return build_success_response("Frame updated.", FrameSerializer(frame).data)
+
+    def delete(self, request, pk):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        frame = self._get(pk)
+        if not frame:
+            return build_error_response('not-found', 'Not Found', 404, 'Frame not found.')
+        try:
+            frame.delete()
+        except Exception:
+            # Referenced by carts/orders — soft-deactivate instead of hard delete
+            frame.is_active = False
+            frame.save(update_fields=['is_active'])
+            return build_success_response("Frame is in use — deactivated instead of deleted.", {"id": str(pk), "deactivated": True})
+        return build_success_response("Frame deleted.", {"id": str(pk)})
+
+
+class AdminFrameToggleAPI(APIView):
+    """POST toggle a frame's active status."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        from naderk.ecommerce.models import Frame
+        from naderk.ecommerce.serializers import FrameSerializer
+        try:
+            frame = Frame.objects.get(id=pk)
+        except Frame.DoesNotExist:
+            return build_error_response('not-found', 'Not Found', 404, 'Frame not found.')
+        frame.is_active = not frame.is_active
+        frame.save(update_fields=['is_active'])
+        return build_success_response("Frame status updated.", FrameSerializer(frame).data)

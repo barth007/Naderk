@@ -1159,11 +1159,10 @@ function ArticlesTab() {
   }
 
   const paged = blogs.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const publishedCount = blogs.filter(b => b.status === 'PUBLISHED').length;
 
   return (
     <div className="space-y-4">
-      <SectionHeader title="Articles" subtitle="All doctor & admin articles" icon={PenLine} count={publishedCount} onAdd={() => setModal({ ...EMPTY_BLOG })} />
+      <SectionHeader title="Articles" subtitle="All doctor & admin articles" icon={PenLine} count={blogs.length} onAdd={() => setModal({ ...EMPTY_BLOG })} />
       <TableContainer className="rounded-md border border-gray-100 shadow-sm">
         <Table>
           <TableHead>

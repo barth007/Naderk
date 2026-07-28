@@ -71,13 +71,46 @@ class ProductVariant(models.Model):
 # --- Optical Configuration Entities ---
 
 class Frame(models.Model):
+    class Gender(models.TextChoices):
+        MEN = 'MEN', 'Men'
+        WOMEN = 'WOMEN', 'Women'
+        UNISEX = 'UNISEX', 'Unisex'
+        KIDS = 'KIDS', 'Kids'
+
+    class RimType(models.TextChoices):
+        FULL_RIM = 'FULL_RIM', 'Full Rim'
+        SEMI_RIMLESS = 'SEMI_RIMLESS', 'Semi-Rimless'
+        RIMLESS = 'RIMLESS', 'Rimless'
+
+    class SizeCategory(models.TextChoices):
+        NARROW = 'NARROW', 'Narrow'
+        MEDIUM = 'MEDIUM', 'Medium'
+        WIDE = 'WIDE', 'Wide'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
     brand = models.CharField(max_length=255)
-    style = models.CharField(max_length=255)  # e.g. Wayfarer, Aviator, Round
+    style = models.CharField(max_length=255)  # Shape: Wayfarer, Aviator, Round, Rectangle, Cat-Eye…
     material = models.CharField(max_length=255)  # e.g. Acetate, Metal, Titanium, Plastic
     base_price = models.DecimalField(max_digits=12, decimal_places=2)
-    front_image = models.URLField(max_length=1000, blank=True, null=True)  # Future Try-On Face Overlay
+
+    # Merchandising sections
+    gender = models.CharField(max_length=10, choices=Gender.choices, default=Gender.UNISEX)
+    rim_type = models.CharField(max_length=15, choices=RimType.choices, default=RimType.FULL_RIM)
+    size_category = models.CharField(max_length=10, choices=SizeCategory.choices, default=SizeCategory.MEDIUM)
+    description = models.TextField(blank=True)
+    features = models.TextField(blank=True, help_text="e.g. Spring hinges, Adjustable nose pads (comma-separated)")
+
+    # Standard frame measurements (millimetres) — the "lens □ bridge – temple" spec
+    lens_width = models.PositiveIntegerField(null=True, blank=True, help_text="Lens width (eye size), mm")
+    bridge_width = models.PositiveIntegerField(null=True, blank=True, help_text="Bridge / nose width, mm")
+    temple_length = models.PositiveIntegerField(null=True, blank=True, help_text="Temple (arm) length, mm")
+    lens_height = models.PositiveIntegerField(null=True, blank=True, help_text="Lens height, mm")
+    total_width = models.PositiveIntegerField(null=True, blank=True, help_text="Total frame width, mm")
+    weight_grams = models.PositiveIntegerField(null=True, blank=True, help_text="Frame weight, grams")
+
+    front_image = models.URLField(max_length=1000, blank=True, null=True)  # Primary image (= images[0])
+    images = models.JSONField(default=list, blank=True)  # Up to 4 view URLs (front, side, angle, detail)
     transparent_overlay_png = models.URLField(max_length=1000, blank=True, null=True)  # Future Try-On overlay
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -182,6 +215,9 @@ class Prescription(models.Model):
     near_pd = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
     segment_height = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
     fitting_height = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+
+    # Admin-defined custom prescription fields: {field_key: value}
+    extra_measurements = models.JSONField(default=dict, blank=True)
     
     prescription_file = models.URLField(max_length=1000, blank=True, null=True)  # Cloudinary file URL
     status = models.CharField(
@@ -499,3 +535,100 @@ class FlashSale(models.Model):
     class Meta:
         verbose_name = _("Flash Sale")
         verbose_name_plural = _("Flash Sales")
+
+
+# --- Glasses Builder Configuration (admin-driven) ---
+
+class BuilderFieldConfig(models.Model):
+    """
+    Controls which prescription fields the patient-facing Glasses Builder collects,
+    whether they are required, and their allowed value ranges. Configured by admins.
+    """
+    class Field(models.TextChoices):
+        SPH = 'SPH', _('Sphere (SPH)')
+        CYL = 'CYL', _('Cylinder (CYL)')
+        AXIS = 'AXIS', _('Axis')
+        ADD = 'ADD', _('Addition (ADD)')
+        PUPILLARY_DISTANCE = 'PUPILLARY_DISTANCE', _('Pupillary Distance (PD)')
+        NEAR_PD = 'NEAR_PD', _('Near PD')
+        SEGMENT_HEIGHT = 'SEGMENT_HEIGHT', _('Segment Height')
+        FITTING_HEIGHT = 'FITTING_HEIGHT', _('Fitting Height')
+
+    class InputType(models.TextChoices):
+        NUMBER = 'NUMBER', _('Number')
+        TEXT = 'TEXT', _('Text')
+        SELECT = 'SELECT', _('Dropdown')
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Not restricted to the built-in choices — admins can add custom field keys.
+    field_key = models.CharField(max_length=60, unique=True)
+    label = models.CharField(max_length=120, blank=True)
+    is_custom = models.BooleanField(default=False)
+    input_type = models.CharField(max_length=10, choices=InputType.choices, default=InputType.NUMBER)
+    select_options = models.JSONField(default=list, blank=True, help_text=_('Choices for a dropdown field.'))
+    is_visible = models.BooleanField(default=True)
+    is_required = models.BooleanField(default=False)
+    min_value = models.DecimalField(max_digits=6, decimal_places=2, blank=True, null=True)
+    max_value = models.DecimalField(max_digits=6, decimal_places=2, blank=True, null=True)
+    help_text = models.CharField(max_length=255, blank=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order', 'field_key']
+
+    def __str__(self):
+        return self.field_key
+
+
+class LensRecommendationRule(models.Model):
+    """
+    Admin-defined rule: when a prescription metric crosses a threshold, apply an
+    action (recommend / restrict / hide) to a set of lens types and/or options.
+    """
+    class Metric(models.TextChoices):
+        SPH = 'SPH', _('Sphere (strongest eye)')
+        CYL = 'CYL', _('Cylinder (strongest eye)')
+        ADD = 'ADD', _('Addition (strongest eye)')
+        PD = 'PD', _('Pupillary Distance')
+
+    class Operator(models.TextChoices):
+        GTE = 'GTE', '≥'
+        LTE = 'LTE', '≤'
+        GT = 'GT', '>'
+        LT = 'LT', '<'
+        BETWEEN = 'BETWEEN', _('between')
+        EQ = 'EQ', '='
+
+    class Action(models.TextChoices):
+        RECOMMEND = 'RECOMMEND', _('Recommend (highlight)')
+        RESTRICT = 'RESTRICT', _('Restrict (only allow these)')
+        HIDE = 'HIDE', _('Hide (remove these)')
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=150)
+    # Built-in metric (SPH/CYL/ADD/PD) OR a custom BuilderFieldConfig.field_key
+    metric = models.CharField(max_length=60)
+    operator = models.CharField(max_length=10, choices=Operator.choices, default=Operator.GTE)
+    use_absolute = models.BooleanField(
+        default=True,
+        help_text=_('Compare the absolute value (SPH/CYL are often negative).')
+    )
+    threshold = models.DecimalField(max_digits=6, decimal_places=2)
+    threshold_max = models.DecimalField(
+        max_digits=6, decimal_places=2, blank=True, null=True,
+        help_text=_('Upper bound — only used with the "between" operator.')
+    )
+    action = models.CharField(max_length=10, choices=Action.choices, default=Action.RECOMMEND)
+    target_lens_types = models.ManyToManyField('LensType', blank=True, related_name='recommendation_rules')
+    target_lens_options = models.ManyToManyField('LensOption', blank=True, related_name='recommendation_rules')
+    message = models.TextField(blank=True, help_text=_('Optional note shown to the patient when this rule matches.'))
+    priority = models.PositiveIntegerField(default=0, help_text=_('Lower numbers evaluate first.'))
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['priority', 'created_at']
+
+    def __str__(self):
+        return self.name
