@@ -44,8 +44,10 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      # Host ports are per-environment so dev and prod MinIO can coexist.
+      # Internal access is always minio:9000 over the Docker network.
+      - "${MINIO_HOST_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
     networks:
