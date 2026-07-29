@@ -23,8 +23,11 @@ import {
   useToggleWishlist,
   useWishlist,
   useCart,
+  useFrames,
 } from '@/services/marketplace/marketplace.hooks';
 import { Product } from '@/services/marketplace/marketplace.types';
+
+const FRAMES_TAB = '__frames__'; // sentinel slug for the eyewear-frames view
 import { toast } from 'sonner';
 import { cn } from '@/lib/cn';
 
@@ -75,10 +78,14 @@ export default function MarketplacePage() {
     search: search || undefined,
     sort_by: sortBy,
   });
+  const { data: frames = [] } = useFrames(search || undefined);
   const { data: wishlist } = useWishlist();
   const { data: cart } = useCart();
   const toggleWishlistMutation = useToggleWishlist();
   const addToCartMutation = useAddToCart();
+
+  const showingFrames = activeCategorySlug === FRAMES_TAB;
+  const visibleFrames = frames.filter(f => f.is_active && parseFloat(f.base_price) <= priceRange);
 
   // Client-side price filter on top of server results
   const filteredProducts = products.filter(prod => parseFloat(prod.price) <= priceRange);
@@ -320,6 +327,16 @@ export default function MarketplacePage() {
                   {cat.name}
                 </button>
               ))}
+              {/* Eyewear frames (separate model, sold on their own) */}
+              <button
+                onClick={() => setActiveCategorySlug(FRAMES_TAB)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5",
+                  showingFrames ? "bg-[#fff5f6] text-[#ff052f] border border-[#ffccd3]" : "text-gray-400 hover:text-gray-600"
+                )}
+              >
+                <Glasses className="w-4 h-4" /> Frames
+              </button>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -338,7 +355,7 @@ export default function MarketplacePage() {
           </div>
 
           {/* Category description strip */}
-          {activeCategorySlug && (
+          {activeCategorySlug && !showingFrames && (
             <div className="bg-white border border-gray-100 rounded-xl px-5 py-3 flex items-center gap-3">
               <div className="w-8 h-8 rounded-md bg-[#fff5f6] text-[#ff052f] flex items-center justify-center shrink-0">
                 {CATEGORY_ICONS[activeCategorySlug] ?? <ShoppingBagIcon className="w-4 h-4" />}
@@ -354,8 +371,48 @@ export default function MarketplacePage() {
             </div>
           )}
 
-          {/* Product Grid */}
-          {loadingProducts ? (
+          {/* Frames grid (eyewear frames, sold on their own) */}
+          {showingFrames ? (
+            visibleFrames.length === 0 ? (
+              <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
+                <Glasses className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                <h3 className="font-semibold text-gray-600 text-sm">No frames found</h3>
+                <p className="text-xs text-gray-400 mt-1">Try a different search or adjust the price range.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {visibleFrames.map(frame => (
+                  <Link
+                    key={frame.id}
+                    href={`/dashboard/marketplace/frame/${frame.id}`}
+                    className="group bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-gray-200/80 transition duration-300 flex flex-col"
+                  >
+                    <div className="relative aspect-square bg-[#f8f9fc] overflow-hidden flex items-center justify-center">
+                      {frame.front_image ? (
+                        <img src={frame.front_image} alt={frame.name} className="object-contain w-full h-full p-3 group-hover:scale-105 transition duration-500" />
+                      ) : (
+                        <Glasses className="w-10 h-10 text-gray-300" />
+                      )}
+                      <span className="absolute top-2.5 left-2.5 text-[8px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-white text-[#ff052f] border border-[#ff052f]">
+                        {frame.gender_display ?? 'Frame'}
+                      </span>
+                    </div>
+                    <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{frame.brand}</span>
+                        <h4 className="font-bold text-gray-900 text-xs leading-snug line-clamp-2 group-hover:text-[#ff052f] transition">{frame.name}</h4>
+                        <p className="text-[10px] text-gray-400 font-semibold">{frame.style} · {frame.material}</p>
+                      </div>
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="font-black text-[#ff052f] text-sm">₦{parseFloat(frame.base_price).toLocaleString()}</span>
+                        <span className="text-[10px] font-bold text-gray-500 group-hover:text-[#ff052f]">View →</span>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )
+          ) : loadingProducts ? (
             <div className="py-20 flex justify-center">
               <RefreshCw className="animate-spin text-[#ff052f] w-8 h-8" />
             </div>
@@ -378,12 +435,14 @@ export default function MarketplacePage() {
                   >
                     {/* Image */}
                     <div className="relative aspect-square bg-[#f8f9fc] overflow-hidden">
-                      <img
-                        src={product.images[0]}
-                        alt={product.name}
-                        className="object-cover w-full h-full group-hover:scale-105 transition duration-500"
-                      />
-                      <span className={cn("absolute top-2.5 left-2.5 text-[8px] font-extrabold uppercase px-2 py-0.5 rounded-full", badge.cls)}>
+                      <Link href={`/dashboard/marketplace/product/${product.id}`} className="block w-full h-full">
+                        <img
+                          src={product.images[0]}
+                          alt={product.name}
+                          className="object-cover w-full h-full group-hover:scale-105 transition duration-500"
+                        />
+                      </Link>
+                      <span className={cn("absolute top-2.5 left-2.5 text-[8px] font-extrabold uppercase px-2 py-0.5 rounded-full pointer-events-none", badge.cls)}>
                         {badge.text}
                       </span>
                       <button
@@ -399,13 +458,13 @@ export default function MarketplacePage() {
 
                     {/* Info */}
                     <div className="p-3.5 space-y-3 flex-1 flex flex-col justify-between">
-                      <div className="space-y-0.5">
+                      <Link href={`/dashboard/marketplace/product/${product.id}`} className="space-y-0.5 block group/info">
                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                           {product.category_name}
                         </span>
-                        <h4 className="font-bold text-gray-900 text-xs leading-snug line-clamp-2">{product.name}</h4>
+                        <h4 className="font-bold text-gray-900 text-xs leading-snug line-clamp-2 group-hover/info:text-[#ff052f] transition">{product.name}</h4>
                         <p className="text-[10px] text-gray-400 font-semibold line-clamp-1">{product.description}</p>
-                      </div>
+                      </Link>
 
                       <div className="flex items-baseline gap-2 pt-1">
                         <span className="font-black text-[#ff052f] text-sm">
@@ -413,13 +472,23 @@ export default function MarketplacePage() {
                         </span>
                       </div>
 
-                      <button
-                        onClick={e => handleAddToCart(product, e)}
-                        disabled={addToCartMutation.isPending}
-                        className="w-full bg-[#ff052f] hover:bg-[#d90022] disabled:opacity-50 text-white text-[11px] font-bold py-2 rounded-xl transition shadow-xs"
-                      >
-                        Buy Now
-                      </button>
+                      {product.variants && product.variants.length > 0 ? (
+                        // Product has variants — send to detail page to choose one (don't auto-apply markup)
+                        <Link
+                          href={`/dashboard/marketplace/product/${product.id}`}
+                          className="w-full block text-center bg-[#ff052f] hover:bg-[#d90022] text-white text-[11px] font-bold py-2 rounded-xl transition shadow-xs"
+                        >
+                          Select Options
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={e => handleAddToCart(product, e)}
+                          disabled={addToCartMutation.isPending}
+                          className="w-full bg-[#ff052f] hover:bg-[#d90022] disabled:opacity-50 text-white text-[11px] font-bold py-2 rounded-xl transition shadow-xs"
+                        >
+                          Buy Now
+                        </button>
+                      )}
                     </div>
                   </motion.div>
                 );
@@ -427,7 +496,7 @@ export default function MarketplacePage() {
             </div>
           )}
 
-          {!loadingProducts && filteredProducts.length > 0 && (
+          {!showingFrames && !loadingProducts && filteredProducts.length > 0 && (
             <div className="pt-8 text-center space-y-3">
               <button className="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 text-xs font-bold px-6 py-2.5 rounded-xl transition shadow-xs">
                 Load More Products

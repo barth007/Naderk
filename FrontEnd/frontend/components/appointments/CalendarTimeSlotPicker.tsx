@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 
 interface CalendarTimeSlotPickerProps {
   doctorId: string | undefined;
+  serviceId?: string | undefined;
   selectedDate: Date;
   onDateSelect: (date: Date) => void;
   selectedTime: string | null;
@@ -14,6 +15,7 @@ interface CalendarTimeSlotPickerProps {
 
 export default function CalendarTimeSlotPicker({
   doctorId,
+  serviceId,
   selectedDate,
   onDateSelect,
   selectedTime,
@@ -21,9 +23,9 @@ export default function CalendarTimeSlotPicker({
   compact = false
 }: CalendarTimeSlotPickerProps) {
   const [currentMonth, setCurrentMonth] = useState<Date>(startOfMonth(selectedDate));
-  
+
   const formattedDate = format(selectedDate, 'yyyy-MM-dd');
-  const { data: slots, isLoading, isError } = useAvailableSlots(doctorId, formattedDate);
+  const { data: slots, isLoading, isError } = useAvailableSlots(doctorId, formattedDate, serviceId);
 
   const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
   const handleNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));

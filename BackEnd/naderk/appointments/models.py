@@ -1,5 +1,6 @@
 from decimal import Decimal
 from django.db import models
+from django.db.models.functions import Lower
 from django.conf import settings
 from naderk.users.models import DoctorProfile
 import uuid
@@ -14,7 +15,19 @@ class MedicalService(models.Model):
     name = models.CharField(max_length=150)
     slug = models.SlugField(max_length=150, unique=True)
     description = models.TextField(blank=True, null=True)
-    required_specialization = models.CharField(max_length=50, choices=DoctorProfile.Specialization.choices)
+    requires_doctor = models.BooleanField(
+        default=True,
+        help_text="If False, service is facility-based (e.g. lab test) and does not require a doctor"
+    )
+    available_online = models.BooleanField(
+        default=False,
+        help_text="If True and requires_doctor is True, patients can choose physical or telehealth. Ignored for facility-based services."
+    )
+    required_specialization = models.CharField(
+        max_length=50, choices=DoctorProfile.Specialization.choices,
+        blank=True, null=True,
+        help_text="Only relevant when requires_doctor is True"
+    )
     duration_minutes = models.PositiveIntegerField(default=30)
     buffer_time_before = models.PositiveIntegerField(default=0, help_text="Minutes before appointment")
     buffer_time_after = models.PositiveIntegerField(default=5, help_text="Minutes after appointment")
@@ -29,6 +42,11 @@ class MedicalService(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(Lower('name'), name='unique_medicalservice_name_ci'),
+        ]
 
     def __str__(self):
         return self.name
@@ -59,7 +77,7 @@ class Appointment(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='appointments_as_patient')
-    doctor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='appointments_as_doctor')
+    doctor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='appointments_as_doctor', null=True, blank=True)
     service = models.ForeignKey(MedicalService, on_delete=models.PROTECT)
     
     appointment_date = models.DateField()
@@ -150,7 +168,7 @@ class AppointmentSlotReservation(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reservations_as_patient')
-    doctor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reservations_as_doctor')
+    doctor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reservations_as_doctor', null=True, blank=True)
     slot_datetime = models.DateTimeField()
     expires_at = models.DateTimeField()
     status = models.CharField(max_length=50, choices=Status.choices, default=Status.RESERVED)

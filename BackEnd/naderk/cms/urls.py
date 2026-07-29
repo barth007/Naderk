@@ -1,6 +1,9 @@
 from django.urls import path
 from .apis import (
     BlogListAPI, BlogDetailAPI, BlogCategoryListAPI,
+    BlogCategoryCreateAPI, BlogCategoryDetailAPI,
+    BlogCreateAPI, MyBlogListAPI, AllBlogListAPI,
+    BlogUpdateDeleteAPI, BlogPublishAPI, BlogDraftAPI,
     HeroSlideListCreateApi, HeroSlideDetailApi,
     TestimonialListCreateApi, TestimonialDetailApi,
     TeamMemberListCreateApi, TeamMemberDetailApi,
@@ -11,10 +14,24 @@ from .apis import (
 )
 
 urlpatterns = [
-    # Blog (existing)
+    # Blog — public read
     path('blogs/', BlogListAPI.as_view(), name='blog-list'),
-    path('blogs/<slug:slug>/', BlogDetailAPI.as_view(), name='blog-detail'),
+
+    # Categories — public read, admin write
     path('categories/', BlogCategoryListAPI.as_view(), name='category-list'),
+    path('categories/create/', BlogCategoryCreateAPI.as_view(), name='category-create'),
+    path('categories/<int:pk>/', BlogCategoryDetailAPI.as_view(), name='category-detail'),
+
+    # Blog — authenticated write
+    path('blogs/create/', BlogCreateAPI.as_view(), name='blog-create'),
+    path('blogs/my/', MyBlogListAPI.as_view(), name='blog-my'),
+    path('blogs/all/', AllBlogListAPI.as_view(), name='blog-all'),
+    path('blogs/<int:pk>/', BlogUpdateDeleteAPI.as_view(), name='blog-update-delete'),
+    path('blogs/<int:pk>/publish/', BlogPublishAPI.as_view(), name='blog-publish'),
+    path('blogs/<int:pk>/draft/', BlogDraftAPI.as_view(), name='blog-draft'),
+
+    # Blog — public detail (must come after specific int routes)
+    path('blogs/<slug:slug>/', BlogDetailAPI.as_view(), name='blog-detail'),
 
     # Hero slides
     path('hero-slides/', HeroSlideListCreateApi.as_view(), name='hero-slide-list'),

@@ -1,10 +1,17 @@
+export type BillingType = 'PER_VISIT' | 'MONTHLY' | 'SESSION_PACK';
+
 export interface MedicalService {
   id: string;
   name: string;
   slug: string;
   description: string | null;
-  required_specialization: string;
+  requires_doctor: boolean;
+  available_online: boolean;
+  required_specialization: string | null;
   duration_minutes: number;
+  fee: string;
+  billing_type: BillingType;
+  sessions_included: number | null;
 }
 
 export interface DoctorProfile {
@@ -23,7 +30,7 @@ export type AppointmentStatus = 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'IN_PRO
 export interface Appointment {
   id: string;
   service: MedicalService;
-  doctor: DoctorProfile;
+  doctor: DoctorProfile | null;
   appointment_date: string;
   appointment_time: string;
   appointment_type: AppointmentType;

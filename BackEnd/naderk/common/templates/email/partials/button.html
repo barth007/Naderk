@@ -1,0 +1,23 @@
+{# Usage: {% include "email/partials/button.html" with url=reset_url label="Reset Password" %} #}
+<table width="100%" cellpadding="0" cellspacing="0" style="margin: 28px 0;">
+  <tr>
+    <td align="center">
+      <a href="{{ url }}"
+         style="display:inline-block; padding:14px 36px;
+                background:#E03E3E; color:#ffffff;
+                font-size:15px; font-weight:700; border-radius:6px;
+                text-decoration:none; letter-spacing:0.2px;">
+        {{ label }}
+      </a>
+    </td>
+  </tr>
+  {% if url %}
+  <tr>
+    <td align="center" style="padding-top:12px;">
+      <p style="margin:0; font-size:12px; color:#9ca3af;">
+        Or copy this link: <a href="{{ url }}" style="color:#6b7280; word-break:break-all;">{{ url }}</a>
+      </p>
+    </td>
+  </tr>
+  {% endif %}
+</table>

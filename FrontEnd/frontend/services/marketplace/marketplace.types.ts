@@ -46,6 +46,10 @@ export interface FrameVariant {
   is_active: boolean;
 }
 
+export type FrameGender = 'MEN' | 'WOMEN' | 'UNISEX' | 'KIDS';
+export type FrameRimType = 'FULL_RIM' | 'SEMI_RIMLESS' | 'RIMLESS';
+export type FrameSizeCategory = 'NARROW' | 'MEDIUM' | 'WIDE';
+
 export interface Frame {
   id: string;
   name: string;
@@ -53,7 +57,22 @@ export interface Frame {
   style: string;
   material: string;
   base_price: string;
+  gender?: FrameGender;
+  gender_display?: string;
+  rim_type?: FrameRimType;
+  rim_type_display?: string;
+  size_category?: FrameSizeCategory;
+  size_category_display?: string;
+  description?: string;
+  features?: string;
+  lens_width?: number | null;
+  bridge_width?: number | null;
+  temple_length?: number | null;
+  lens_height?: number | null;
+  total_width?: number | null;
+  weight_grams?: number | null;
   front_image?: string;
+  images?: string[];
   transparent_overlay_png?: string;
   is_active: boolean;
   variants: FrameVariant[];

@@ -118,6 +118,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # MinIO / S3-compatible Storage
 STORAGE = {
     'ENDPOINT':        env('MINIO_ENDPOINT', default='http://localhost:9000'),
+    # Browser-reachable base URL for public objects. In Docker, ENDPOINT is an
+    # internal hostname (e.g. http://minio:9000) that clients cannot reach, so
+    # this MUST be set to a public URL (e.g. https://media.naderkela.com).
+    'PUBLIC_ENDPOINT': env('MINIO_PUBLIC_ENDPOINT', default=env('MINIO_ENDPOINT', default='http://localhost:9000')),
     'ACCESS_KEY':      env('MINIO_ACCESS_KEY', default='minioadmin'),
     'SECRET_KEY':      env('MINIO_SECRET_KEY', default='minioadmin123'),
     'USE_SSL':         env.bool('MINIO_USE_SSL', default=False),
@@ -175,8 +179,34 @@ EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='notification@totalesg360.com')
 
+# Email provider: postmark | smtp | resend | ses
+EMAIL_PROVIDER = env('EMAIL_PROVIDER', default='smtp')
+
+# Postmark
+POSTMARK_SERVER_TOKEN    = env('POSTMARK_SERVER_TOKEN', default='')
+POSTMARK_MESSAGE_STREAM  = env('POSTMARK_MESSAGE_STREAM', default='outbound')
+POSTMARK_WEBHOOK_TOKEN   = env('POSTMARK_WEBHOOK_TOKEN', default='')
+DEFAULT_REPLY_TO_EMAIL   = env('DEFAULT_REPLY_TO_EMAIL', default='')
+
+# Resend
+EMAIL_RESEND_API_KEY = env('EMAIL_RESEND_API_KEY', default='')
+
+# AWS SES
+AWS_SES_ACCESS_KEY_ID     = env('AWS_SES_ACCESS_KEY_ID', default='')
+AWS_SES_SECRET_ACCESS_KEY = env('AWS_SES_SECRET_ACCESS_KEY', default='')
+AWS_SES_REGION            = env('AWS_SES_REGION', default='us-east-1')
+
+# Brand / frontend
+BRAND_NAME      = env('BRAND_NAME', default='NaderkEye Care')
+BRAND_LOGO_URL  = env('BRAND_LOGO_URL', default='')
+FRONTEND_URL    = env('FRONTEND_URL', default='http://localhost:3000')
+
 # ASGI and Channels settings
 ASGI_APPLICATION = 'config.asgi.application'
+
+# Base URL used in RFC 7807 problem type URIs — read from env so it reflects
+# the actual environment (localhost in dev, real domain in production).
+API_BASE_URL = env('API_BASE_URL', default='http://localhost:8000')
 
 CHANNEL_LAYERS = {
     'default': {

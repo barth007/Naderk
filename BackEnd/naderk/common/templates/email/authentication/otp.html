@@ -1,0 +1,30 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="text-main" style="margin:0 0 8px; font-size:22px; font-weight:700; color:#111827;">
+  Verify your account
+</h2>
+<p class="text-muted" style="margin:0 0 28px; font-size:15px; color:#6b7280; line-height:1.6;">
+  Use the code below to complete your sign-up. It expires in
+  <strong style="color:#111827;">{{ expires_minutes }} minutes</strong>.
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td align="center" style="padding: 8px 0 28px;">
+      <div style="display:inline-block; background:#f3f4f6; border-radius:10px;
+                  padding:20px 48px;">
+        <span style="font-size:40px; font-weight:800; letter-spacing:14px;
+                     color:#111827; font-family:monospace;">{{ code }}</span>
+      </div>
+    </td>
+  </tr>
+</table>
+
+<p style="margin:0 0 8px; font-size:13px; color:#9ca3af; text-align:center;">
+  Do not share this code with anyone, including {{ brand_name }} staff.
+</p>
+<p style="margin:0; font-size:13px; color:#9ca3af; text-align:center;">
+  If you didn't create an account, you can safely ignore this email.
+</p>
+{% endblock %}

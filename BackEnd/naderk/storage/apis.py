@@ -18,7 +18,7 @@ class FileUploadAPI(APIView):
         file = request.FILES.get('file')
         if not file:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="No file provided.",
@@ -41,7 +41,7 @@ class FileUploadAPI(APIView):
             )
         except StorageValidationError as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -49,7 +49,7 @@ class FileUploadAPI(APIView):
             )
         except StorageProviderError as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/storage-error",
+                type_uri=_problems_url('storage-error'),
                 title="Storage Error",
                 status_code=500,
                 detail=str(e),

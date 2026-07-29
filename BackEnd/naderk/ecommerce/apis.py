@@ -63,7 +63,7 @@ class ProductDetailApi(APIView):
             return build_success_response("Product details retrieved successfully", serializer.data)
         except Product.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Product not found",
@@ -92,7 +92,7 @@ class FrameDetailApi(APIView):
             return build_success_response("Frame details retrieved successfully", serializer.data)
         except Frame.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Frame not found",
@@ -140,7 +140,7 @@ class PrescriptionListCreateApi(APIView):
         serializer = PrescriptionSerializer(data=request.data)
         if not serializer.is_valid():
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="Prescription validation failed",
@@ -158,7 +158,7 @@ class PrescriptionListCreateApi(APIView):
                     target_patient = User.objects.get(id=patient_id, role=User.Role.PATIENT)
                 except User.DoesNotExist:
                     return build_error_response(
-                        type_uri="https://api.naderkeye.com/problems/not-found",
+                        type_uri=_problems_url('not-found'),
                         title="Not Found",
                         status_code=404,
                         detail="Patient not found",
@@ -190,7 +190,7 @@ class PrescriptionListCreateApi(APIView):
             return build_success_response("Prescription submitted", res_serializer.data, status_code=201)
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -231,7 +231,7 @@ class PrescriptionDetailApi(APIView):
             return build_success_response("Prescription retrieved successfully", serializer.data)
         except Prescription.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Prescription not found",
@@ -245,7 +245,7 @@ class PrescriptionReviewQueueApi(APIView):
     def get(self, request):
         if not request.user.is_staff and request.user.role not in ['ADMIN', 'DOCTOR']:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden",
                 status_code=403,
                 detail="Only staff, doctors, or administrators can view the review queue",
@@ -263,7 +263,7 @@ class PrescriptionReviewActionApi(APIView):
     def post(self, request, pk):
         if not request.user.is_staff and request.user.role not in ['ADMIN', 'DOCTOR']:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Forbidden",
                 status_code=403,
                 detail="Only staff, doctors, or administrators can review prescriptions",
@@ -274,7 +274,7 @@ class PrescriptionReviewActionApi(APIView):
             prescription = Prescription.objects.get(id=pk)
         except Prescription.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Prescription not found",
@@ -286,7 +286,7 @@ class PrescriptionReviewActionApi(APIView):
         
         if not status:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="Review status is required",
@@ -307,7 +307,7 @@ class PrescriptionReviewActionApi(APIView):
             return build_success_response("Prescription review updated successfully", serializer.data)
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -331,7 +331,7 @@ class CartAddItemApi(APIView):
         serializer = AddToCartSerializer(data=request.data)
         if not serializer.is_valid():
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="Invalid fields for cart addition",
@@ -354,7 +354,7 @@ class CartAddItemApi(APIView):
             return build_success_response("Item added to cart successfully", CartSerializer(cart).data)
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -371,7 +371,7 @@ class CartUpdateQuantityApi(APIView):
         
         if not item_id or quantity is None:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="item_id and quantity are required parameters",
@@ -388,7 +388,7 @@ class CartUpdateQuantityApi(APIView):
             return build_success_response("Cart item quantity updated successfully", CartSerializer(cart).data)
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -403,7 +403,7 @@ class CartRemoveItemApi(APIView):
         item_id = request.data.get('item_id')
         if not item_id:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="item_id is required to remove an item",
@@ -451,7 +451,7 @@ class WishlistToggleItemApi(APIView):
             return build_success_response(message, WishlistSerializer(wishlist).data)
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -466,7 +466,7 @@ class CheckoutApi(APIView):
         serializer = CheckoutSerializer(data=request.data)
         if not serializer.is_valid():
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="Checkout validation failed",
@@ -487,7 +487,7 @@ class CheckoutApi(APIView):
             )
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -513,7 +513,7 @@ class OrderDetailApi(APIView):
             # Users can see their own orders, staff/admin/doctors can see all
             if not request.user.is_staff and request.user.role not in ['ADMIN', 'DOCTOR'] and order.user != request.user:
                 return build_error_response(
-                    type_uri="https://api.naderkeye.com/problems/forbidden",
+                    type_uri=_problems_url('forbidden'),
                     title="Forbidden",
                     status_code=403,
                     detail="You do not have permission to view this order",
@@ -523,7 +523,7 @@ class OrderDetailApi(APIView):
             return build_success_response("Order details retrieved successfully", serializer.data)
         except Order.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Order not found",
@@ -538,7 +538,7 @@ class OrderPaymentApi(APIView):
         payment_reference = request.data.get('payment_reference')
         if not payment_reference:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="payment_reference is required",
@@ -549,7 +549,7 @@ class OrderPaymentApi(APIView):
             order = Order.objects.get(id=pk)
             if not request.user.is_staff and request.user.role not in ['ADMIN', 'DOCTOR'] and order.user != request.user:
                 return build_error_response(
-                    type_uri="https://api.naderkeye.com/problems/forbidden",
+                    type_uri=_problems_url('forbidden'),
                     title="Forbidden",
                     status_code=403,
                     detail="You do not have permission to process payment for this order",
@@ -564,7 +564,7 @@ class OrderPaymentApi(APIView):
             return build_success_response("Payment completed successfully", OrderSerializer(order).data)
         except Order.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Order not found",
@@ -572,7 +572,7 @@ class OrderPaymentApi(APIView):
             )
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail=str(e),
@@ -632,3 +632,152 @@ class OrderPrescriptionReviewApi(APIView):
             metadata={'reviewed_by': str(request.user.id), 'notes': notes}
         )
         return build_success_response("Order review complete", OrderSerializer(order).data)
+
+
+# --- Glasses Builder Configuration (admin + client) ---
+
+from naderk.ecommerce.models import BuilderFieldConfig, LensRecommendationRule
+from naderk.ecommerce.serializers import (
+    BuilderFieldConfigSerializer, LensRecommendationRuleSerializer,
+    RecommendationRequestSerializer, BuilderFieldCreateSerializer,
+)
+from naderk.ecommerce.services import evaluate_lens_recommendations, ensure_default_builder_fields
+
+
+def _is_admin(request):
+    return getattr(request.user, 'role', None) in ('ADMIN', 'SUPER_ADMIN')
+
+
+class BuilderFieldConfigApi(APIView):
+    """GET (client + admin) list field config. PUT (admin) bulk-update field config rows."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        ensure_default_builder_fields()
+        qs = BuilderFieldConfig.objects.all()
+        # Patients only see visible fields; admins see everything
+        if not _is_admin(request):
+            qs = qs.filter(is_visible=True)
+        return build_success_response("Builder fields retrieved", BuilderFieldConfigSerializer(qs, many=True).data)
+
+    def put(self, request):
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        ensure_default_builder_fields()
+        updates = request.data if isinstance(request.data, list) else request.data.get('fields', [])
+        for row in updates:
+            try:
+                cfg = BuilderFieldConfig.objects.get(id=row.get('id'))
+            except BuilderFieldConfig.DoesNotExist:
+                continue
+            ser = BuilderFieldConfigSerializer(cfg, data=row, partial=True)
+            ser.is_valid(raise_exception=True)
+            ser.save()
+        qs = BuilderFieldConfig.objects.all()
+        return build_success_response("Builder fields updated", BuilderFieldConfigSerializer(qs, many=True).data)
+
+    def post(self, request):
+        """Create a new custom prescription field."""
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        import re
+        ser = BuilderFieldCreateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+
+        # Generate a unique field_key from the label
+        base = re.sub(r'[^A-Z0-9]+', '_', data['label'].upper()).strip('_') or 'FIELD'
+        key = f'CUSTOM_{base}'
+        n = 1
+        while BuilderFieldConfig.objects.filter(field_key=key).exists():
+            n += 1
+            key = f'CUSTOM_{base}_{n}'
+
+        max_order = BuilderFieldConfig.objects.count()
+        cfg = BuilderFieldConfig.objects.create(
+            field_key=key, label=data['label'], is_custom=True,
+            input_type=data.get('input_type', 'NUMBER'),
+            select_options=data.get('select_options', []),
+            is_required=data.get('is_required', False),
+            min_value=data.get('min_value'), max_value=data.get('max_value'),
+            help_text=data.get('help_text', ''), order=max_order,
+        )
+        return build_success_response("Field created", BuilderFieldConfigSerializer(cfg).data, status_code=201)
+
+
+class BuilderFieldDeleteApi(APIView):
+    """DELETE a custom builder field (built-in fields cannot be deleted)."""
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        try:
+            cfg = BuilderFieldConfig.objects.get(id=pk)
+        except BuilderFieldConfig.DoesNotExist:
+            return build_error_response("not-found", "Not Found", 404, "Field not found.")
+        if not cfg.is_custom:
+            return build_error_response("forbidden", "Forbidden", 400, "Built-in fields cannot be deleted — hide them instead.")
+        cfg.delete()
+        return build_success_response("Field deleted", {"id": str(pk)})
+
+
+class LensRuleListApi(APIView):
+    """GET list rules (admin), POST create rule (admin)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        rules = LensRecommendationRule.objects.prefetch_related('target_lens_types', 'target_lens_options').all()
+        return build_success_response("Rules retrieved", LensRecommendationRuleSerializer(rules, many=True).data)
+
+    def post(self, request):
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        ser = LensRecommendationRuleSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return build_success_response("Rule created", ser.data, status_code=201)
+
+
+class LensRuleDetailApi(APIView):
+    """GET, PATCH, DELETE a single rule (admin)."""
+    permission_classes = [IsAuthenticated]
+
+    def _get(self, pk):
+        try:
+            return LensRecommendationRule.objects.get(id=pk)
+        except LensRecommendationRule.DoesNotExist:
+            return None
+
+    def patch(self, request, pk):
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        rule = self._get(pk)
+        if not rule:
+            return build_error_response("not-found", "Not Found", 404, "Rule not found.")
+        ser = LensRecommendationRuleSerializer(rule, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return build_success_response("Rule updated", ser.data)
+
+    def delete(self, request, pk):
+        if not _is_admin(request):
+            return build_error_response("forbidden", "Forbidden", 403, "Admin access required.")
+        rule = self._get(pk)
+        if not rule:
+            return build_error_response("not-found", "Not Found", 404, "Rule not found.")
+        rule.delete()
+        return build_success_response("Rule deleted", {"id": str(pk)})
+
+
+class LensRecommendationApi(APIView):
+    """POST prescription values → recommended/restricted/hidden lens sets (client)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ser = RecommendationRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        result = evaluate_lens_recommendations(ser.validated_data)
+        return build_success_response("Recommendations computed", result)

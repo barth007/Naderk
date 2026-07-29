@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation';
 
 export default function BookAppointmentPage() {
   const { currentStep, service, doctor, time, resetBooking, setStep } = useBookingStore();
+  const isOnSite = service && !service.requires_doctor;
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
@@ -74,12 +75,20 @@ export default function BookAppointmentPage() {
         </div>
 
         <div className="mb-10">
-          <BookingProgressStepper currentStep={(() => {
-            if (time) return 4;
-            if (doctor) return 3;
-            if (service) return 2;
-            return 1;
-          })()} />
+          <BookingProgressStepper
+            currentStep={(() => {
+              if (isOnSite) {
+                if (time) return 3;
+                if (service) return 2;
+                return 1;
+              }
+              if (time) return 4;
+              if (doctor) return 3;
+              if (service) return 2;
+              return 1;
+            })()}
+            isOnSite={!!isOnSite}
+          />
         </div>
 
         {/* Progressive Form Steps rendered together */}
@@ -91,7 +100,7 @@ export default function BookAppointmentPage() {
         </div>
 
         {/* Footer — advance to Step5Summary when all details filled */}
-        {service && doctor && time && (
+        {service && (isOnSite ? time : doctor && time) && (
           <>
             <div className="mt-12 bg-[#FEF6F6] rounded-md p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-4">
@@ -99,8 +108,13 @@ export default function BookAppointmentPage() {
                   <Calendar className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-gray-900 text-[15px]">{service.name} with Dr. {doctor.first_name} {doctor.last_name}</h3>
-                  <p className="text-[#E03E3E] text-[13px] font-medium mt-0.5">Emergency services available 24/7 via phone</p>
+                  <h3 className="font-bold text-gray-900 text-[15px]">
+                    {service.name}
+                    {!isOnSite && doctor && ` with Dr. ${doctor.first_name} ${doctor.last_name}`}
+                  </h3>
+                  <p className="text-[#E03E3E] text-[13px] font-medium mt-0.5">
+                    {isOnSite ? 'Facility-based service — no doctor required' : 'Emergency services available 24/7 via phone'}
+                  </p>
                 </div>
               </div>
 

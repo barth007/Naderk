@@ -44,7 +44,7 @@ class ConversationListCreateApi(APIView):
     def post(self, request):
         if request.user.role != User.Role.PATIENT:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Access Denied",
                 status_code=403,
                 detail="Only patients can initiate conversations.",
@@ -54,7 +54,7 @@ class ConversationListCreateApi(APIView):
         serializer = CreateConversationSerializer(data=request.data)
         if not serializer.is_valid():
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="One or more validation errors occurred.",
@@ -82,7 +82,7 @@ class ConversationListCreateApi(APIView):
             )
         except Exception as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/bad-request",
+                type_uri=_problems_url('bad-request'),
                 title="Bad Request",
                 status_code=400,
                 detail=str(e),
@@ -97,7 +97,7 @@ class ConversationDetailApi(APIView):
             conversation = Conversation.objects.get(id=pk)
         except Conversation.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Conversation not found",
@@ -109,7 +109,7 @@ class ConversationDetailApi(APIView):
         
         if not has_access:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Access Denied",
                 status_code=403,
                 detail="You do not have access to this conversation.",
@@ -159,7 +159,7 @@ class MessageCreateApi(APIView):
             conversation = Conversation.objects.get(id=pk)
         except Conversation.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Conversation not found",
@@ -171,7 +171,7 @@ class MessageCreateApi(APIView):
         
         if not has_access:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Access Denied",
                 status_code=403,
                 detail="You do not have access to this conversation.",
@@ -181,7 +181,7 @@ class MessageCreateApi(APIView):
         serializer = CreateMessageSerializer(data=request.data)
         if not serializer.is_valid():
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="One or more validation errors occurred.",
@@ -201,7 +201,7 @@ class MessageCreateApi(APIView):
             return build_success_response("Message sent successfully", response_serializer.data, 201)
         except Exception as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/bad-request",
+                type_uri=_problems_url('bad-request'),
                 title="Bad Request",
                 status_code=400,
                 detail=str(e),
@@ -214,7 +214,7 @@ class AttachmentUploadApi(APIView):
     def post(self, request):
         if 'file' not in request.FILES:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/bad-request",
+                type_uri=_problems_url('bad-request'),
                 title="Bad Request",
                 status_code=400,
                 detail="No file uploaded.",
@@ -229,7 +229,7 @@ class AttachmentUploadApi(APIView):
         ext = os.path.splitext(uploaded_file.name)[1].lower()
         if ext not in allowed_extensions:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="File type not supported. Allowed formats: JPG, PNG, PDF.",
@@ -239,7 +239,7 @@ class AttachmentUploadApi(APIView):
         max_size = 5 * 1024 * 1024 # 5MB
         if uploaded_file.size > max_size:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="File is too large. Max size is 5MB.",
@@ -251,7 +251,7 @@ class AttachmentUploadApi(APIView):
             return build_success_response("File uploaded successfully", {"url": url})
         except Exception as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/storage-error",
+                type_uri=_problems_url('storage-error'),
                 title="Storage Upload Error",
                 status_code=500,
                 detail=str(e),
@@ -265,7 +265,7 @@ class ConversationAssignApi(APIView):
         TRIAGE_ROLES = {User.Role.MEDICAL_AGENT, User.Role.AGENT, User.Role.ADMIN, User.Role.SUPER_ADMIN}
         if request.user.role not in TRIAGE_ROLES:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Access Denied",
                 status_code=403,
                 detail="Only clinical staff can assign conversations.",
@@ -276,7 +276,7 @@ class ConversationAssignApi(APIView):
             conversation = Conversation.objects.get(id=pk)
         except Conversation.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Conversation not found",
@@ -286,7 +286,7 @@ class ConversationAssignApi(APIView):
         serializer = AssignConversationSerializer(data=request.data)
         if not serializer.is_valid():
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="Invalid assignment fields.",
@@ -305,7 +305,7 @@ class ConversationAssignApi(APIView):
                     agent = User.objects.get(id=data['assigned_agent_id'], role__in=[User.Role.MEDICAL_AGENT, User.Role.AGENT, User.Role.ADMIN])
                 except User.DoesNotExist:
                     return build_error_response(
-                        type_uri="https://api.naderkeye.com/problems/not-found",
+                        type_uri=_problems_url('not-found'),
                         title="Not Found",
                         status_code=400,
                         detail="Selected agent not found.",
@@ -321,7 +321,7 @@ class ConversationAssignApi(APIView):
                     doctor = User.objects.get(id=data['assigned_doctor_id'], role=User.Role.DOCTOR)
                 except User.DoesNotExist:
                     return build_error_response(
-                        type_uri="https://api.naderkeye.com/problems/not-found",
+                        type_uri=_problems_url('not-found'),
                         title="Not Found",
                         status_code=400,
                         detail="Selected doctor not found.",
@@ -341,7 +341,7 @@ class ConversationAssignApi(APIView):
             )
         except Exception as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/bad-request",
+                type_uri=_problems_url('bad-request'),
                 title="Bad Request",
                 status_code=400,
                 detail=str(e),
@@ -357,7 +357,7 @@ class ConversationInternalNotesApi(APIView):
         is_staff = request.user.role in [User.Role.AGENT, User.Role.DOCTOR, User.Role.ADMIN]
         if not is_staff:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Access Denied",
                 status_code=403,
                 detail="Only staff can view internal notes.",
@@ -371,7 +371,7 @@ class ConversationInternalNotesApi(APIView):
             return build_success_response("Notes retrieved", {"results": serializer.data})
         except Exception as e:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/bad-request",
+                type_uri=_problems_url('bad-request'),
                 title="Bad Request",
                 status_code=400,
                 detail=str(e),
@@ -382,7 +382,7 @@ class ConversationInternalNotesApi(APIView):
         is_staff = request.user.role in [User.Role.AGENT, User.Role.DOCTOR, User.Role.ADMIN]
         if not is_staff:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/forbidden",
+                type_uri=_problems_url('forbidden'),
                 title="Access Denied",
                 status_code=403,
                 detail="Only staff can create internal notes.",
@@ -393,7 +393,7 @@ class ConversationInternalNotesApi(APIView):
             conversation = Conversation.objects.get(id=pk)
         except Conversation.DoesNotExist:
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/not-found",
+                type_uri=_problems_url('not-found'),
                 title="Not Found",
                 status_code=404,
                 detail="Conversation not found",
@@ -403,7 +403,7 @@ class ConversationInternalNotesApi(APIView):
         serializer = CreateInternalNoteSerializer(data=request.data)
         if not serializer.is_valid():
             return build_error_response(
-                type_uri="https://api.naderkeye.com/problems/validation-error",
+                type_uri=_problems_url('validation-error'),
                 title="Validation Error",
                 status_code=400,
                 detail="Validation failed",

@@ -4,7 +4,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { apiClient } from '@/lib/api';
 
 export default function Step4PatientInfo() {
-  const { notes, setAppointmentDetails, time, appointmentType } = useBookingStore();
+  const { service, notes, setAppointmentDetails, time, appointmentType } = useBookingStore();
+  const isOnSite = service && !service.requires_doctor;
   const { user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
 
@@ -22,7 +23,7 @@ export default function Step4PatientInfo() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-sm font-bold text-gray-700">4. Patient's Information</h2>
+      <h2 className="text-sm font-bold text-gray-700">{isOnSite ? '3. Patient\'s Information' : '4. Patient\'s Information'}</h2>
 
       <div className="bg-white border border-gray-100 rounded-[14px] shadow-sm p-4 sm:p-8 space-y-6">
 

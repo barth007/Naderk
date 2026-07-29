@@ -5,7 +5,8 @@ from .apis import (
     PrescriptionDetailApi, PrescriptionReviewQueueApi, PrescriptionReviewActionApi,
     CartDetailApi, CartAddItemApi, CartUpdateQuantityApi, CartRemoveItemApi, CartClearApi,
     WishlistDetailApi, WishlistToggleItemApi, CheckoutApi, OrderListApi, OrderDetailApi,
-    OrderPaymentApi, OrderReviewQueueApi, OrderPrescriptionReviewApi
+    OrderPaymentApi, OrderReviewQueueApi, OrderPrescriptionReviewApi,
+    BuilderFieldConfigApi, BuilderFieldDeleteApi, LensRuleListApi, LensRuleDetailApi, LensRecommendationApi,
 )
 
 app_name = 'ecommerce'
@@ -46,4 +47,11 @@ urlpatterns = [
     path('orders/<uuid:pk>/', OrderDetailApi.as_view(), name='order-detail'),
     path('orders/<uuid:pk>/pay/', OrderPaymentApi.as_view(), name='order-pay'),
     path('orders/<uuid:pk>/review/', OrderPrescriptionReviewApi.as_view(), name='order-prescription-review'),
+
+    # Glasses Builder configuration
+    path('builder/config/', BuilderFieldConfigApi.as_view(), name='builder-config'),
+    path('builder/config/<uuid:pk>/', BuilderFieldDeleteApi.as_view(), name='builder-config-delete'),
+    path('builder/recommendations/', LensRecommendationApi.as_view(), name='builder-recommendations'),
+    path('builder/rules/', LensRuleListApi.as_view(), name='builder-rules'),
+    path('builder/rules/<uuid:pk>/', LensRuleDetailApi.as_view(), name='builder-rule-detail'),
 ]

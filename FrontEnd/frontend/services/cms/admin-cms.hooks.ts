@@ -323,7 +323,175 @@ export const useUpdateSiteSettings = () => {
   });
 };
 
-// Convenience hook — returns the two brand fields used across layout components
+// ── Blog Categories (admin write) ────────────────────────────────────────────
+
+export interface BlogCategoryAdmin {
+  id: number;
+  name: string;
+  slug: string;
+  description: string;
+}
+
+export const useAdminCategories = () =>
+  useQuery({
+    queryKey: ['admin-categories'],
+    queryFn: async () => {
+      const res = await apiClient.get('/cms/categories/');
+      return res.data.data.results as BlogCategoryAdmin[];
+    },
+  });
+
+export const useCreateCategory = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; description?: string }) =>
+      apiClient.post('/cms/categories/create/', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-categories'] });
+      qc.invalidateQueries({ queryKey: ['blogCategories'] });
+    },
+  });
+};
+
+export const useUpdateCategory = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: number; name: string; description?: string }) =>
+      apiClient.put(`/cms/categories/${id}/`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-categories'] });
+      qc.invalidateQueries({ queryKey: ['blogCategories'] });
+    },
+  });
+};
+
+export const useDeleteCategory = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => apiClient.delete(`/cms/categories/${id}/`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-categories'] });
+      qc.invalidateQueries({ queryKey: ['blogCategories'] });
+    },
+  });
+};
+
+// ── Blog Authoring ───────────────────────────────────────────────────────────
+
+export interface BlogAuthorPost {
+  id: number;
+  title: string;
+  slug: string;
+  excerpt: string;
+  content: string;
+  image_url: string;
+  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  is_featured: boolean;
+  reading_time: string;
+  published_at: string | null;
+  category: { id: number; name: string; slug: string } | null;
+  author: { id: number; first_name: string; last_name: string } | null;
+  meta_title: string;
+  meta_description: string;
+  meta_keywords: string;
+  views_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BlogPostInput {
+  title: string;
+  content: string;
+  excerpt?: string;
+  image_url?: string;
+  category_id?: number | null;
+  is_featured?: boolean;
+  status?: 'DRAFT' | 'PUBLISHED';
+  meta_title?: string;
+  meta_description?: string;
+  meta_keywords?: string;
+}
+
+export const useMyBlogs = () =>
+  useQuery({
+    queryKey: ['my-blogs'],
+    queryFn: async () => {
+      const res = await apiClient.get('/cms/blogs/my/');
+      return res.data.data.results as BlogAuthorPost[];
+    },
+  });
+
+export const useAllBlogsAdmin = () =>
+  useQuery({
+    queryKey: ['admin-all-blogs'],
+    queryFn: async () => {
+      const res = await apiClient.get('/cms/blogs/all/');
+      return res.data.data.results as BlogAuthorPost[];
+    },
+  });
+
+export const useCreateBlog = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: BlogPostInput) => apiClient.post('/cms/blogs/create/', data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-blogs'] });
+      qc.invalidateQueries({ queryKey: ['admin-all-blogs'] });
+      qc.invalidateQueries({ queryKey: ['cms-blogs'] });
+    },
+  });
+};
+
+export const useUpdateBlog = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: BlogPostInput & { id: number }) =>
+      apiClient.put(`/cms/blogs/${id}/`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-blogs'] });
+      qc.invalidateQueries({ queryKey: ['admin-all-blogs'] });
+      qc.invalidateQueries({ queryKey: ['cms-blogs'] });
+    },
+  });
+};
+
+export const useDeleteBlog = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => apiClient.delete(`/cms/blogs/${id}/`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-blogs'] });
+      qc.invalidateQueries({ queryKey: ['admin-all-blogs'] });
+      qc.invalidateQueries({ queryKey: ['cms-blogs'] });
+    },
+  });
+};
+
+export const usePublishBlog = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => apiClient.post(`/cms/blogs/${id}/publish/`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-blogs'] });
+      qc.invalidateQueries({ queryKey: ['admin-all-blogs'] });
+      qc.invalidateQueries({ queryKey: ['cms-blogs'] });
+    },
+  });
+};
+
+export const useDraftBlog = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => apiClient.post(`/cms/blogs/${id}/draft/`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-blogs'] });
+      qc.invalidateQueries({ queryKey: ['admin-all-blogs'] });
+      qc.invalidateQueries({ queryKey: ['cms-blogs'] });
+    },
+  });
+};
+
+// ── Convenience hook — returns the two brand fields used across layout components
 export const useBrand = () => {
   const { data: settings } = useSiteSettings();
   return {

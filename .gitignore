@@ -10,7 +10,9 @@ FrontEnd/fronend/.env.production
 
 # ── Python ─────────────────────────────────────────────────────────────────────
 __pycache__/
+*.pyc
 *.py[cod]
+*.cpython-312.pyc
 *.pyo
 *.pyd
 .Python

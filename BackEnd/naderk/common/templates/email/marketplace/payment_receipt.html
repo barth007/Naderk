@@ -1,0 +1,46 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="text-main" style="margin:0 0 6px; font-size:22px; font-weight:700; color:#111827;">
+  Payment receipt
+</h2>
+<p class="text-muted" style="margin:0 0 24px; font-size:15px; color:#6b7280; line-height:1.6;">
+  Hi {{ customer_name }}, your payment was successful.
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0"
+       style="background:#f9fafb; border-radius:8px; margin-bottom:24px;">
+  <tr>
+    <td style="padding:14px 20px;">
+      <span style="font-size:13px;color:#6b7280;display:block;margin-bottom:2px;">Reference</span>
+      <span style="font-size:14px;font-weight:600;color:#111827;font-family:monospace;">{{ reference }}</span>
+    </td>
+  </tr>
+  <tr style="border-top:1px solid #e5e7eb;">
+    <td style="padding:14px 20px;">
+      <span style="font-size:13px;color:#6b7280;display:block;margin-bottom:2px;">Description</span>
+      <span style="font-size:14px;font-weight:600;color:#111827;">{{ description }}</span>
+    </td>
+  </tr>
+  <tr style="border-top:1px solid #e5e7eb;">
+    <td style="padding:14px 20px;">
+      <span style="font-size:13px;color:#6b7280;display:block;margin-bottom:2px;">Amount</span>
+      <span style="font-size:20px;font-weight:700;color:#E03E3E;">{{ amount }}</span>
+    </td>
+  </tr>
+  <tr style="border-top:1px solid #e5e7eb;">
+    <td style="padding:14px 20px;">
+      <span style="font-size:13px;color:#6b7280;display:block;margin-bottom:2px;">Date</span>
+      <span style="font-size:14px;font-weight:600;color:#111827;">{{ payment_date }}</span>
+    </td>
+  </tr>
+  {% if payment_method %}
+  <tr style="border-top:1px solid #e5e7eb;">
+    <td style="padding:14px 20px;">
+      <span style="font-size:13px;color:#6b7280;display:block;margin-bottom:2px;">Payment Method</span>
+      <span style="font-size:14px;font-weight:600;color:#111827;">{{ payment_method }}</span>
+    </td>
+  </tr>
+  {% endif %}
+</table>
+{% endblock %}

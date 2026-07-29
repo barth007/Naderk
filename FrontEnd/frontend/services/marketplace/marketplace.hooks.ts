@@ -153,6 +153,7 @@ export interface PrescriptionPayload {
   segment_height?: number | null;
   fitting_height?: number | null;
   prescription_file?: string | null;
+  extra_measurements?: Record<string, string>;
 }
 
 export const useSubmitPrescription = () => {
@@ -371,6 +372,166 @@ export interface ReviewOrderPayload {
   action: 'approve' | 'reject';
   notes?: string;
 }
+
+// ── Glasses Builder Configuration ────────────────────────────────────────────
+
+export type FieldInputType = 'NUMBER' | 'TEXT' | 'SELECT';
+
+export interface BuilderFieldConfig {
+  id: string;
+  field_key: string;
+  field_label: string;
+  label: string;
+  is_custom: boolean;
+  input_type: FieldInputType;
+  select_options: string[];
+  is_visible: boolean;
+  is_required: boolean;
+  min_value: string | null;
+  max_value: string | null;
+  help_text: string;
+  order: number;
+}
+
+export interface CreateBuilderFieldPayload {
+  label: string;
+  input_type: FieldInputType;
+  select_options?: string[];
+  is_required?: boolean;
+  min_value?: string | null;
+  max_value?: string | null;
+  help_text?: string;
+}
+
+export type RuleMetric = 'SPH' | 'CYL' | 'ADD' | 'PD';
+export type RuleOperator = 'GTE' | 'LTE' | 'GT' | 'LT' | 'BETWEEN' | 'EQ';
+export type RuleAction = 'RECOMMEND' | 'RESTRICT' | 'HIDE';
+
+export interface LensRule {
+  id: string;
+  name: string;
+  metric: string; // built-in RuleMetric or a custom field_key
+  metric_display: string;
+  operator: RuleOperator;
+  operator_display: string;
+  use_absolute: boolean;
+  threshold: string;
+  threshold_max: string | null;
+  action: RuleAction;
+  action_display: string;
+  target_lens_type_ids: string[];
+  target_lens_option_ids: string[];
+  target_lens_type_names: string[];
+  target_lens_option_names: string[];
+  message: string;
+  priority: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface LensRecommendationResult {
+  metrics: Record<string, string | null>;
+  recommended_lens_type_ids: string[];
+  recommended_lens_option_ids: string[];
+  hidden_lens_type_ids: string[];
+  hidden_lens_option_ids: string[];
+  allowed_lens_type_ids: string[] | null;
+  allowed_lens_option_ids: string[] | null;
+  messages: string[];
+}
+
+export const useBuilderFields = () =>
+  useQuery({
+    queryKey: ['builder-fields'],
+    queryFn: async () => {
+      const res = await apiClient.get('/marketplace/builder/config/');
+      return res.data.data as BuilderFieldConfig[];
+    },
+  });
+
+export const useUpdateBuilderFields = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (fields: Partial<BuilderFieldConfig>[]) => {
+      const res = await apiClient.put('/marketplace/builder/config/', fields);
+      return res.data.data as BuilderFieldConfig[];
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['builder-fields'] }),
+  });
+};
+
+export const useCreateBuilderField = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateBuilderFieldPayload) => apiClient.post('/marketplace/builder/config/', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['builder-fields'] }),
+  });
+};
+
+export const useDeleteBuilderField = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/marketplace/builder/config/${id}/`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['builder-fields'] }),
+  });
+};
+
+export const useLensRules = () =>
+  useQuery({
+    queryKey: ['builder-rules'],
+    queryFn: async () => {
+      const res = await apiClient.get('/marketplace/builder/rules/');
+      return res.data.data as LensRule[];
+    },
+  });
+
+export interface LensRulePayload {
+  name: string;
+  metric: string; // built-in RuleMetric or a custom field_key
+  operator: RuleOperator;
+  use_absolute?: boolean;
+  threshold: string;
+  threshold_max?: string | null;
+  action: RuleAction;
+  target_lens_type_ids?: string[];
+  target_lens_option_ids?: string[];
+  message?: string;
+  priority?: number;
+  is_active?: boolean;
+}
+
+export const useCreateLensRule = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: LensRulePayload) => apiClient.post('/marketplace/builder/rules/', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['builder-rules'] }),
+  });
+};
+
+export const useUpdateLensRule = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: Partial<LensRulePayload> & { id: string }) =>
+      apiClient.patch(`/marketplace/builder/rules/${id}/`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['builder-rules'] }),
+  });
+};
+
+export const useDeleteLensRule = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/marketplace/builder/rules/${id}/`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['builder-rules'] }),
+  });
+};
+
+export const useLensRecommendations = () =>
+  useMutation({
+    mutationFn: async (values: Record<string, string | null>) => {
+      const res = await apiClient.post('/marketplace/builder/recommendations/', values);
+      return res.data.data as LensRecommendationResult;
+    },
+  });
 
 export const useReviewOrder = () => {
   const queryClient = useQueryClient();

@@ -46,9 +46,12 @@ export const useBookingStore = create<BookingState>()(
       nextStep: () => set((state) => ({ currentStep: Math.min(state.currentStep + 1, 6) })),
       prevStep: () => set((state) => ({ currentStep: Math.max(state.currentStep - 1, 1) })),
       
-      setService: (service) => set({ service }),
+      setService: (service) => set({ service, doctor: null, date: null, time: null, consultationFee: '0.00', isConsultationValid: false }),
       setDoctor: (doctor) => set({ doctor }),
       setDateTime: (date, time) => set({ date, time }),
+      // Consultation type does NOT affect the recommended doctor (doctor depends on
+      // service + date only), so we must not clear the doctor here — doing so left
+      // Step2 with a null doctor that never re-fetched.
       setAppointmentDetails: (type, notes) => set({ appointmentType: type, notes }),
       setConsultationInfo: (fee, isValid) => set({ consultationFee: fee, isConsultationValid: isValid }),
       setReservation: (id) => set({ reservationId: id }),

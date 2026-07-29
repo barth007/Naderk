@@ -1,0 +1,43 @@
+{% extends "email/base.html" %}
+
+{% block content %}
+<h2 class="text-main" style="margin:0 0 8px; font-size:22px; font-weight:700; color:#111827;">
+  Welcome to {{ brand_name }}, {{ first_name }}!
+</h2>
+<p class="text-muted" style="margin:0 0 8px; font-size:15px; color:#6b7280; line-height:1.6;">
+  You have been added to the <strong style="color:#111827;">{{ brand_name }}</strong> team
+  as a <strong style="color:#111827;">{{ role_display }}</strong>.
+</p>
+<p class="text-muted" style="margin:0 0 24px; font-size:15px; color:#6b7280; line-height:1.6;">
+  Click the button below to set your password and activate your account.
+  This link expires in <strong style="color:#111827;">{{ expires_minutes|default:"24" }} hours</strong>.
+</p>
+
+{% include "email/partials/button.html" with url=invite_url label="Set My Password" %}
+
+<table width="100%" cellpadding="0" cellspacing="0"
+       style="background:#f0fdf4; border-radius:8px; margin-top:8px; margin-bottom:16px;">
+  <tr>
+    <td style="padding:16px 20px;">
+      <p style="margin:0 0 6px; font-size:13px; color:#166534; font-weight:600;">Your login details</p>
+      <p style="margin:0; font-size:13px; color:#166534; line-height:1.8;">
+        Email: <strong>{{ email }}</strong><br>
+        Role: <strong>{{ role_display }}</strong>
+      </p>
+    </td>
+  </tr>
+</table>
+
+<table width="100%" cellpadding="0" cellspacing="0"
+       style="background:#fef2f2; border-radius:8px; margin-top:8px;">
+  <tr>
+    <td style="padding:16px 20px;">
+      <p style="margin:0; font-size:13px; color:#991b1b; line-height:1.6;">
+        <strong>Didn't expect this?</strong>
+        If you believe this was sent in error, please ignore this email
+        or contact your administrator.
+      </p>
+    </td>
+  </tr>
+</table>
+{% endblock %}

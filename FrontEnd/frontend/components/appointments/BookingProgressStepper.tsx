@@ -2,15 +2,22 @@ import React from 'react';
 
 interface Props {
   currentStep: number;
+  isOnSite?: boolean;
 }
 
-export default function BookingProgressStepper({ currentStep }: Props) {
-  const steps = [
-    { num: 1, label: 'Service' },
-    { num: 2, label: 'Doctor' },
-    { num: 3, label: 'Time Slot' },
-    { num: 4, label: 'Details' },
-  ];
+export default function BookingProgressStepper({ currentStep, isOnSite }: Props) {
+  const steps = isOnSite
+    ? [
+        { num: 1, label: 'Service' },
+        { num: 2, label: 'Time Slot' },
+        { num: 3, label: 'Details' },
+      ]
+    : [
+        { num: 1, label: 'Service' },
+        { num: 2, label: 'Doctor' },
+        { num: 3, label: 'Time Slot' },
+        { num: 4, label: 'Details' },
+      ];
 
   return (
     <div className="w-full pb-6 border-b border-gray-200">
