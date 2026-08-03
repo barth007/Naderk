@@ -3,7 +3,7 @@ from django.utils import timezone
 from django.db import transaction
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from naderk.common.responses.builders import build_success_response, build_error_response
+from naderk.common.responses.builders import build_success_response, build_error_response, _problems_url
 from .models import MedicalService, Appointment, AppointmentSlotReservation
 from .serializers import (
     MedicalServiceSerializer,

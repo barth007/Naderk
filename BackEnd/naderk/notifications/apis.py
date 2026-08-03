@@ -1,6 +1,6 @@
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
-from naderk.common.responses.builders import build_success_response, build_error_response
+from naderk.common.responses.builders import build_success_response, build_error_response, _problems_url
 from .models import Notification
 from .selectors import get_all_notifications, get_unread_notifications
 from .serializers import NotificationSerializer
