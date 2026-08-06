@@ -11,6 +11,7 @@ import {
 } from '@/services/admin/admin-frames.hooks';
 import { Frame } from '@/services/marketplace/marketplace.types';
 import ImageUploader from '@/components/admin/ImageUploader';
+import ConfirmationModal from '@/components/ui/ConfirmationModal';
 
 const EMPTY: FramePayload = {
   name: '', brand: '', style: 'Rectangle', material: 'Acetate', base_price: '',
@@ -61,7 +62,20 @@ function FrameModal({ initial, onClose, onSaved }: { initial?: Frame; onClose: (
     if (!form.base_price || isNaN(parseFloat(form.base_price))) e.base_price = 'Valid base price is required.';
     const validVariants = (form.variants ?? []).filter(v => v.color.trim() && v.size.trim());
     if (validVariants.length === 0) e.variants = 'Add at least one color/size variant.';
-    if (Object.keys(e).length) { setErrors(e); return; }
+    if (Object.keys(e).length) {
+      setErrors(e);
+      // The field errors render inside the modal's scrollable body while the
+      // Create button is pinned to the footer, so a blocked submit looked like
+      // the button did nothing. Say so out loud.
+      const LABELS: Record<string, string> = {
+        name: 'Frame name', brand: 'Brand', base_price: 'Base price',
+        variants: 'At least one colour/size variant',
+      };
+      toast.error('Frame not saved — required fields are missing.', {
+        description: Object.keys(e).map(k => LABELS[k] ?? k).join(', '),
+      });
+      return;
+    }
 
     const payload = { ...form, variants: validVariants };
     const apiErr = (err: any) => {
@@ -214,8 +228,26 @@ export default function AdminFramesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Frame | undefined>();
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  // Same guard as the services page: toggling under an active/inactive filter
+  // drops the card out of the list, so the next click would land on whichever
+  // frame slid into that spot.
+  const [pendingToggle, setPendingToggle] = useState<Frame | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const filtered = frames.filter(f => filter === 'all' ? true : filter === 'active' ? f.is_active : !f.is_active);
+
+  const confirmToggle = () => {
+    const f = pendingToggle;
+    if (!f) return;
+    setTogglingId(f.id);
+    toggleFrame(f.id, {
+      onSuccess: () => toast.success(f.is_active ? `"${f.name}" deactivated.` : `"${f.name}" activated.`, {
+        description: f.is_active ? 'Shoppers can no longer see this frame.' : 'Shoppers can now see this frame.',
+      }),
+      onError: () => toast.error(`Could not update "${f.name}".`),
+      onSettled: () => { setTogglingId(null); setPendingToggle(null); },
+    });
+  };
 
   const handleDelete = (f: Frame) => {
     if (!confirm(`Delete frame "${f.name}"? This cannot be undone.`)) return;
@@ -280,7 +312,7 @@ export default function AdminFramesPage() {
 
               <div className="flex gap-1 mt-3 pt-3 border-t border-gray-50">
                 <button onClick={() => { setEditing(f); setShowForm(true); }} className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 px-2 py-1.5 rounded-md hover:bg-gray-50"><Pencil className="w-3.5 h-3.5" /> Edit</button>
-                <button onClick={() => toggleFrame(f.id, { onSuccess: () => toast.success(f.is_active ? 'Frame deactivated.' : 'Frame activated.') })} className={`flex items-center gap-1.5 text-xs font-semibold px-2 py-1.5 rounded-md ${f.is_active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}><Power className="w-3.5 h-3.5" /> {f.is_active ? 'Deactivate' : 'Activate'}</button>
+                <button onClick={() => setPendingToggle(f)} disabled={togglingId === f.id} className={`flex items-center gap-1.5 text-xs font-semibold px-2 py-1.5 rounded-md disabled:opacity-50 disabled:cursor-not-allowed ${f.is_active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}>{togglingId === f.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />} {f.is_active ? 'Deactivate' : 'Activate'}</button>
                 <button onClick={() => handleDelete(f)} className="flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 px-2 py-1.5 rounded-md ml-auto"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             </Card>
@@ -289,6 +321,23 @@ export default function AdminFramesPage() {
       )}
 
       {showForm && <FrameModal initial={editing} onClose={() => { setShowForm(false); setEditing(undefined); }} onSaved={toast.success} />}
+
+      <ConfirmationModal
+        isOpen={!!pendingToggle}
+        onClose={() => setPendingToggle(null)}
+        onConfirm={confirmToggle}
+        title={pendingToggle?.is_active ? 'Deactivate frame?' : 'Activate frame?'}
+        description={
+          pendingToggle
+            ? pendingToggle.is_active
+              ? `"${pendingToggle.name}" will be removed from the marketplace. Existing orders are not affected.`
+              : `"${pendingToggle.name}" will appear in the marketplace for shoppers.`
+            : ''
+        }
+        confirmText={pendingToggle?.is_active ? 'Deactivate' : 'Activate'}
+        confirmButtonVariant={pendingToggle?.is_active ? 'destructive' : 'default'}
+        isPending={!!togglingId}
+      />
     </div>
   );
 }

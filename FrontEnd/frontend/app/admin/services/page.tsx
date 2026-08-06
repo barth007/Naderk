@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Plus, Pencil, Power, Loader2, X, Clock, Stethoscope, UserCheck, FlaskConical, Video, Trash2, Settings2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
+import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import {
   useAdminServices,
   useAdminCreateService,
@@ -645,11 +646,16 @@ export default function AdminServicesPage() {
   const [showSpecializations, setShowSpecializations] = useState(false);
   const [editing, setEditing] = useState<AdminService | undefined>();
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  // Held until the admin confirms. Capturing the whole service (not just an id)
+  // means the confirmation names the service the click actually landed on.
+  const [pendingToggle, setPendingToggle] = useState<AdminService | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   const specNameByCode = new Map(specializations.map((s) => [s.code, s.name]));
 
-  function handleToggle(service: AdminService) {
+  function confirmToggle() {
+    const service = pendingToggle;
+    if (!service) return;
     const nextActive = !service.is_active;
     setTogglingId(service.id);
     toggleService(
@@ -671,7 +677,7 @@ export default function AdminServicesPage() {
             { description: detail || 'Please try again.' },
           );
         },
-        onSettled: () => setTogglingId(null),
+        onSettled: () => { setTogglingId(null); setPendingToggle(null); },
       },
     );
   }
@@ -740,7 +746,7 @@ export default function AdminServicesPage() {
               key={service.id}
               service={service}
               onEdit={() => { setEditing(service); setShowForm(true); }}
-              onToggle={() => handleToggle(service)}
+              onToggle={() => setPendingToggle(service)}
               isToggling={togglingId === service.id}
               specializationLabel={
                 service.required_specialization
@@ -763,6 +769,23 @@ export default function AdminServicesPage() {
       {showSpecializations && (
         <ManageSpecializationsModal onClose={() => setShowSpecializations(false)} />
       )}
+
+      <ConfirmationModal
+        isOpen={!!pendingToggle}
+        onClose={() => setPendingToggle(null)}
+        onConfirm={confirmToggle}
+        title={pendingToggle?.is_active ? 'Deactivate service?' : 'Activate service?'}
+        description={
+          pendingToggle
+            ? pendingToggle.is_active
+              ? `"${pendingToggle.name}" will be hidden from patients and can no longer be booked. Existing appointments are not affected.`
+              : `"${pendingToggle.name}" will become visible to patients and available for booking.`
+            : ''
+        }
+        confirmText={pendingToggle?.is_active ? 'Deactivate' : 'Activate'}
+        confirmButtonVariant={pendingToggle?.is_active ? 'destructive' : 'default'}
+        isPending={!!togglingId}
+      />
     </div>
   );
 }

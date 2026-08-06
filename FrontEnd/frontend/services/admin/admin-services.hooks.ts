@@ -85,13 +85,17 @@ export const useAdminToggleService = () => {
       return res.data.data as AdminService;
     },
     // Write the server's row straight into the list so the card (and its
-    // Activate/Deactivate label) flips as soon as the request returns, instead
-    // of waiting on the refetch that invalidateQueries kicks off.
+    // Activate/Deactivate label) flips as soon as the request returns.
+    //
+    // Deliberately NOT invalidating ['admin-services'] here: the PATCH response
+    // is the authoritative row, so a refetch only re-renders the whole grid a
+    // second time, which reads as a flicker. Only the patient-facing list needs
+    // dropping, since activation changes what patients can book.
     onSuccess: (updated) => {
       qc.setQueryData<AdminService[]>(['admin-services'], (prev) =>
         prev?.map((s) => (s.id === updated.id ? updated : s)),
       );
-      invalidateServiceCaches(qc);
+      qc.invalidateQueries({ queryKey: ['medical-services'] });
     },
   });
 };

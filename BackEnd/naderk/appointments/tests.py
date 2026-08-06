@@ -211,6 +211,26 @@ class AdminServiceToggleTests(TestCase):
         self.service.refresh_from_db()
         self.assertTrue(self.service.is_active)
 
+    def test_toggling_one_service_leaves_the_others_untouched(self):
+        """Admins reported one service flipping when another was clicked — prove
+        the write itself is scoped to a single row."""
+        others = [
+            MedicalService.objects.create(
+                name=f'Other {i}', slug=f'other-{i}', requires_doctor=True,
+                required_specialization=DoctorProfile.Specialization.OPTOMETRIST,
+                fee=1000, is_active=True,
+            )
+            for i in range(3)
+        ]
+        res = self.client.patch(self.detail_url, {'is_active': False}, format='json')
+        self.assertEqual(res.json()['data']['id'], str(self.service.id))
+
+        self.service.refresh_from_db()
+        self.assertFalse(self.service.is_active)
+        for o in others:
+            o.refresh_from_db()
+            self.assertTrue(o.is_active, f'{o.name} should not have changed')
+
     def test_deactivated_service_disappears_from_patient_service_list(self):
         self.client.patch(self.detail_url, {'is_active': False}, format='json')
         res = self.client.get(reverse('medical-services'))

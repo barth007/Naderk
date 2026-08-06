@@ -87,6 +87,14 @@ export default function MarketplacePage() {
   const showingFrames = activeCategorySlug === FRAMES_TAB;
   const visibleFrames = frames.filter(f => f.is_active && parseFloat(f.base_price) <= priceRange);
 
+  // There is also a StoreCategory called "Frames" holding Product rows that
+  // duplicate the Frame catalogue. Rendering it would give two identically
+  // labelled "Frames" tabs backed by different models — an admin adding a frame
+  // would open the wrong one and conclude it never saved. Eyewear is sold
+  // through the Frame model (variants, lens builder, prescriptions), so that is
+  // the tab we keep.
+  const categoryTabs = categories.filter(cat => cat.slug !== 'frames');
+
   // Client-side price filter on top of server results
   const filteredProducts = products.filter(prod => parseFloat(prod.price) <= priceRange);
 
@@ -312,7 +320,7 @@ export default function MarketplacePage() {
               >
                 All Items
               </button>
-              {categories.map(cat => (
+              {categoryTabs.map(cat => (
                 <button
                   key={cat.id}
                   onClick={() => setActiveCategorySlug(cat.slug)}
