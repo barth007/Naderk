@@ -10,6 +10,7 @@ import {
   MapPin, Bell, Shield, Award, Calendar, Truck, Pencil, X, Check, Loader2, Save,
 } from 'lucide-react';
 import { Country, State } from 'country-state-city';
+import { useSpecializations } from '@/services/admin/admin-specializations.hooks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -83,17 +84,12 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-const SPECIALIZATIONS = [
-  { value: 'OPTOMETRIST',          label: 'Optometrist' },
-  { value: 'OPHTHALMOLOGIST',      label: 'Ophthalmologist' },
-  { value: 'ENT',                  label: 'ENT Specialist' },
-  { value: 'GENERAL_PRACTITIONER', label: 'General Practitioner' },
-];
-
 function DoctorProfileSection({ user, profileData, setProfileData, profilePicture, coverPhoto, doctorName, getInitials, isPasswordModalOpen, setIsPasswordModalOpen }: any) {
   const [editing, setEditing]   = useState(false);
   const [saving, setSaving]     = useState(false);
   const [draft, setDraft]       = useState<any>({});
+  // Specializations are admin-managed, so fetch rather than hardcode.
+  const { data: specializations = [] } = useSpecializations();
 
   const startEdit = () => {
     setDraft({
@@ -220,7 +216,13 @@ function DoctorProfileSection({ user, profileData, setProfileData, profilePictur
                   onChange={e => setDraft((p: any) => ({ ...p, specialization: e.target.value }))}
                   className="w-full border border-gray-200 focus:outline-none focus:border-[#E03E3E] rounded-md px-3 py-2 text-xs text-gray-900 bg-white"
                 >
-                  {SPECIALIZATIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  <option value="">Select specialization</option>
+                  {specializations.map(s => <option key={s.id} value={s.code}>{s.name}</option>)}
+                  {/* Keep a code that has since been deactivated visible, so
+                      saving the form doesn't silently wipe the doctor's value. */}
+                  {draft.specialization && !specializations.some(s => s.code === draft.specialization) && (
+                    <option value={draft.specialization}>{draft.specialization.replace(/_/g, ' ')}</option>
+                  )}
                 </select>
               </div>
               {field('License Number', 'license_number')}

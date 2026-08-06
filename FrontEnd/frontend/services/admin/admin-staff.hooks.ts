@@ -74,6 +74,8 @@ export const useAdminCreateStaff = () => {
       phone_number?: string;
       role: string;
       department?: string;
+      /** Required when role is DOCTOR — see AdminStaffListAPI.post. */
+      specialization?: string;
       employee_id?: string;
     }) => apiClient.post('/dashboard/admin/staff/', data),
     onSuccess: () => {

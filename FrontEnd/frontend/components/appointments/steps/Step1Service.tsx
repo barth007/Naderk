@@ -8,22 +8,28 @@ export default function Step1Service() {
   const { data: services, isLoading, isError } = useMedicalServices();
   const { service: selectedService, setService, appointmentType, setAppointmentDetails, notes } = useBookingStore();
 
+  // Telehealth is offered only when the admin enabled it for this service
+  // (MedicalService.available_online). Facility-based services never qualify.
+  const supportsTelehealth = !!selectedService?.requires_doctor && !!selectedService?.available_online;
+
   const handleSelectService = (svc: MedicalService) => {
+    // setService already resets the type to PHYSICAL; the patient opts into
+    // telehealth afterwards, and only for services that allow it.
     setService(svc);
-    // Always default to PHYSICAL when changing service; user can switch to TELEHEALTH if available
-    setAppointmentDetails('PHYSICAL', notes);
   };
 
   const handleSelectType = (type: AppointmentType) => {
+    if (type === 'TELEHEALTH' && !supportsTelehealth) return;
     setAppointmentDetails(type, notes);
   };
 
-  // If the current appointmentType is TELEHEALTH but the service is on-site only, reset
+  // Guard against a TELEHEALTH type left over in persisted state for a service
+  // that can't do telehealth (e.g. the admin turned the flag off since).
   useEffect(() => {
-    if (selectedService && !selectedService.requires_doctor && appointmentType === 'TELEHEALTH') {
+    if (selectedService && !supportsTelehealth && appointmentType === 'TELEHEALTH') {
       setAppointmentDetails('PHYSICAL', notes);
     }
-  }, [selectedService]);
+  }, [selectedService, supportsTelehealth, appointmentType]);
 
   if (isLoading) {
     return (
@@ -42,7 +48,7 @@ export default function Step1Service() {
     return <div className="text-red-500">Failed to load services. Please try again later.</div>;
   }
 
-  // On-site = no doctor required. All doctor-required services support both physical and telehealth.
+  // On-site = no doctor required.
   const isOnSite = selectedService && !selectedService.requires_doctor;
   const showConsultationType = !!selectedService;
 
@@ -88,19 +94,20 @@ export default function Step1Service() {
           <h2 className="text-[15px] font-bold text-gray-700">2. Consultation Type</h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Physical Visit card — always shown */}
+            {/* Physical Visit card — always shown, and the only option when the
+                service isn't enabled for telehealth */}
             <div
-              onClick={() => !isOnSite && handleSelectType('PHYSICAL')}
+              onClick={() => supportsTelehealth && handleSelectType('PHYSICAL')}
               className={`rounded-[14px] p-5 border transition-all duration-200 flex items-center gap-4 bg-white shadow-sm
-                ${isOnSite
-                  ? 'cursor-default border-red-200 ring-1 ring-red-50 bg-red-50/10'   // on-site: auto-selected, not clickable
+                ${!supportsTelehealth
+                  ? 'cursor-default border-red-200 ring-1 ring-red-50 bg-red-50/10'   // only option: auto-selected, not clickable
                   : appointmentType === 'PHYSICAL'
                     ? 'cursor-pointer border-red-200 ring-1 ring-red-50 bg-red-50/10'
                     : 'cursor-pointer border-gray-100 hover:border-red-100'
                 }`}
             >
               <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0
-                ${(isOnSite || appointmentType === 'PHYSICAL') ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-400'}`}>
+                ${(!supportsTelehealth || appointmentType === 'PHYSICAL') ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-400'}`}>
                 <MapPin className="w-5 h-5" />
               </div>
               <div>
@@ -115,8 +122,8 @@ export default function Step1Service() {
               </div>
             </div>
 
-            {/* Telehealth card — active for all doctor-required services, greyed out for on-site only */}
-            {!isOnSite ? (
+            {/* Telehealth card — only for services the admin marked available online */}
+            {supportsTelehealth ? (
               <div
                 onClick={() => handleSelectType('TELEHEALTH')}
                 className={`cursor-pointer rounded-[14px] p-5 border transition-all duration-200 flex items-center gap-4 bg-white shadow-sm

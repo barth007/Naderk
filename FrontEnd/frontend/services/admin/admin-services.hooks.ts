@@ -44,6 +44,13 @@ export interface CreateServicePayload {
 
 const BASE = '/dashboard/admin/services/';
 
+// Activating/deactivating a service changes what patients see in the booking
+// wizard, so every write here must also drop the patient-facing services cache.
+const invalidateServiceCaches = (qc: ReturnType<typeof useQueryClient>) => {
+  qc.invalidateQueries({ queryKey: ['admin-services'] });
+  qc.invalidateQueries({ queryKey: ['medical-services'] });
+};
+
 export const useAdminServices = () =>
   useQuery({
     queryKey: ['admin-services'],
@@ -57,7 +64,7 @@ export const useAdminCreateService = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateServicePayload) => apiClient.post(BASE, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-services'] }),
+    onSuccess: () => invalidateServiceCaches(qc),
   });
 };
 
@@ -66,16 +73,26 @@ export const useAdminUpdateService = () => {
   return useMutation({
     mutationFn: ({ id, ...data }: Partial<CreateServicePayload> & { id: string }) =>
       apiClient.patch(`${BASE}${id}/`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-services'] }),
+    onSuccess: () => invalidateServiceCaches(qc),
   });
 };
 
 export const useAdminToggleService = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
-      apiClient.patch(`${BASE}${id}/`, { is_active }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-services'] }),
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const res = await apiClient.patch(`${BASE}${id}/`, { is_active });
+      return res.data.data as AdminService;
+    },
+    // Write the server's row straight into the list so the card (and its
+    // Activate/Deactivate label) flips as soon as the request returns, instead
+    // of waiting on the refetch that invalidateQueries kicks off.
+    onSuccess: (updated) => {
+      qc.setQueryData<AdminService[]>(['admin-services'], (prev) =>
+        prev?.map((s) => (s.id === updated.id ? updated : s)),
+      );
+      invalidateServiceCaches(qc);
+    },
   });
 };
 
@@ -83,6 +100,6 @@ export const useAdminDeleteService = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`${BASE}${id}/`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-services'] }),
+    onSuccess: () => invalidateServiceCaches(qc),
   });
 };

@@ -1,24 +1,29 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useBookingStore } from '@/store/useBookingStore';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import CalendarTimeSlotPicker from '../CalendarTimeSlotPicker';
 
 export default function Step3TimeSlot() {
-  const { service, doctor, setDateTime, time: selectedTime } = useBookingStore();
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const { service, doctor, date, setDateTime, time: selectedTime } = useBookingStore();
 
-  const handleDateSelect = (date: Date) => {
-    setSelectedDate(date);
-    setDateTime(format(date, 'yyyy-MM-dd'), null);
+  // The date lives in the store, not in local state: Step2 assigns the doctor
+  // for whichever date is picked here, so a local copy would let the two steps
+  // disagree about which day is being booked.
+  const selectedDate = date ? parseISO(date) : new Date();
+
+  const handleDateSelect = (d: Date) => {
+    setDateTime(format(d, 'yyyy-MM-dd'), null);
   };
 
   const handleSlotSelect = (time: string) => {
     setDateTime(format(selectedDate, 'yyyy-MM-dd'), time);
   };
 
-  // On-site services don't require a doctor — show the time slot picker anyway
+  // On-site services don't require a doctor — show the time slot picker anyway.
+  // Doctor services render the calendar even before a doctor is assigned, so a
+  // patient whose specialist is booked today can move to a date that works.
   const isOnSite = service && !service.requires_doctor;
-  if (!isOnSite && !doctor) return null;
+  if (!service) return null;
 
   return (
     <div className="space-y-4 sm:space-y-6">

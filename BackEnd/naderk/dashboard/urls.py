@@ -37,6 +37,10 @@ urlpatterns = [
     path('admin/staff/schedule/', apis.AdminWeekScheduleAPI.as_view(), name='admin-staff-schedule'),
     path('admin/staff/<uuid:pk>/toggle/', apis.AdminStaffToggleAPI.as_view(), name='admin-staff-toggle'),
     # Departments
+    # Readable by any signed-in user (doctor onboarding + profile dropdowns);
+    # writes are admin-only, enforced in the view.
+    path('specializations/', apis.SpecializationListAPI.as_view(), name='specializations'),
+    path('specializations/<uuid:pk>/', apis.SpecializationDetailAPI.as_view(), name='specialization-detail'),
     path('admin/departments/', apis.AdminDepartmentListAPI.as_view(), name='admin-departments'),
     path('admin/departments/<uuid:pk>/', apis.AdminDepartmentDetailAPI.as_view(), name='admin-department-detail'),
     # Permissions

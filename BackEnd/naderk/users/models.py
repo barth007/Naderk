@@ -17,6 +17,46 @@ class Department(models.Model):
         ordering = ['name']
 
 
+class Specialization(models.Model):
+    """
+    Clinical specializations a doctor can hold, editable from the admin panel.
+
+    `code` is the value actually stored on DoctorProfile.specialization and
+    MedicalService.required_specialization, and it is what the booking engine
+    matches on — so it is immutable once created. `name` is display-only and
+    can be renamed freely.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    code = models.CharField(
+        max_length=50, unique=True,
+        help_text="Stored value, e.g. OPTOMETRIST. Immutable once created.",
+    )
+    name = models.CharField(max_length=100, help_text="Display label, e.g. Optometrist")
+    description = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+def specialization_label(code):
+    """
+    Display name for a specialization code. Falls back to a prettified code so
+    doctors carrying a code that was later deactivated (or predates the table)
+    still render sensibly instead of showing a raw enum value.
+    """
+    if not code:
+        return ''
+    spec = Specialization.objects.filter(code=code).only('name').first()
+    if spec:
+        return spec.name
+    return code.replace('_', ' ').title()
+
+
 class RolePermissionConfig(models.Model):
     """Stores which system permissions each staff role has."""
     role = models.CharField(max_length=50, unique=True)
@@ -85,6 +125,9 @@ class StaffProfile(models.Model):
 
 class DoctorProfile(models.Model):
     class Specialization(models.TextChoices):
+        """Built-in specializations. These seed the Specialization table and
+        supply defaults; the table is the authority for what admins may pick,
+        so this enum is deliberately NOT used as field `choices`."""
         OPTOMETRIST = 'OPTOMETRIST', 'Optometrist'
         OPHTHALMOLOGIST = 'OPHTHALMOLOGIST', 'Ophthalmologist'
         ENT = 'ENT', 'ENT Specialist'
@@ -92,8 +135,9 @@ class DoctorProfile(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='doctor_profile')
-    
-    specialization = models.CharField(max_length=50, choices=Specialization.choices)
+
+    # No `choices`: valid values come from the Specialization table at runtime.
+    specialization = models.CharField(max_length=50)
     years_experience = models.PositiveIntegerField(default=0)
     bio = models.TextField(blank=True, null=True)
     is_accepting_patients = models.BooleanField(default=True)
@@ -122,8 +166,12 @@ class DoctorProfile(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    @property
+    def specialization_display(self):
+        return specialization_label(self.specialization)
+
     def __str__(self):
-        return f"Dr. {self.user.last_name} ({self.get_specialization_display()})"
+        return f"Dr. {self.user.last_name} ({self.specialization_display})"
 
 
 class DoctorNote(models.Model):

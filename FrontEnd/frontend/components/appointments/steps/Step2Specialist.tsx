@@ -1,33 +1,50 @@
 import React, { useEffect } from 'react';
-import { useAssignSpecialist } from '@/services/appointments/appointments.hooks';
+import { useAssignedSpecialist } from '@/services/appointments/appointments.hooks';
 import { useBookingStore } from '@/store/useBookingStore';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 
 export default function Step2Specialist() {
-  const { service, date: selectedDate, setDoctor, setConsultationInfo, doctor: selectedDoctor } = useBookingStore();
-  const assignSpecialistMutation = useAssignSpecialist();
+  const {
+    service,
+    date: selectedDate,
+    appointmentType,
+    doctor: selectedDoctor,
+    setDoctor,
+    setConsultationInfo,
+  } = useBookingStore();
 
+  const needsDoctor = !!service?.requires_doctor;
+
+  const { data, isFetching, isError } = useAssignedSpecialist(
+    service?.id,
+    selectedDate ?? undefined,
+    appointmentType,
+    needsDoctor,
+  );
+
+  // Mirror the query result into the booking store, which is what Step3 and
+  // Step5 read. Clearing on a miss matters: a stale doctor from a previous date
+  // would otherwise let the patient book a slot nobody is available for.
   useEffect(() => {
-    if (!service) return;
-    assignSpecialistMutation.mutate({
-      service_id: service.id,
-      date: selectedDate ?? format(new Date(), 'yyyy-MM-dd'),
-    }, {
-      onSuccess: (data) => {
-        setDoctor(data.doctor);
-        setConsultationInfo(data.consultation_fee, data.consultation_valid);
-      },
-    });
-  }, [service, selectedDate]); // Re-run when date changes so doctor matches actual availability
+    if (!needsDoctor) return;
+    if (data?.doctor) {
+      setDoctor(data.doctor);
+      setConsultationInfo(data.consultation_fee, data.consultation_valid);
+    } else if (isError) {
+      setDoctor(null);
+    }
+  }, [data, isError, needsDoctor, setDoctor, setConsultationInfo]);
 
   // On-site services don't need a specialist — skip this step entirely
-  if (!service || !service.requires_doctor) return null;
+  if (!service || !needsDoctor) return null;
+
+  const prettyDate = selectedDate ? format(parseISO(selectedDate), 'EEE, MMM d') : 'the selected date';
 
   return (
     <div className="space-y-5">
       <h2 className="text-[15px] font-bold text-gray-700">2. Choose Your Specialist</h2>
 
-      {assignSpecialistMutation.isPending ? (
+      {isFetching ? (
         <div className="h-24 bg-gray-100 rounded-[14px] animate-pulse max-w-md"></div>
       ) : selectedDoctor ? (
         <div className="space-y-4">
@@ -57,7 +74,15 @@ export default function Step2Specialist() {
           </div>
         </div>
       ) : (
-         <div className="text-[13px] text-gray-500">No specialists available for this service right now.</div>
+        <div className="rounded-[14px] border border-amber-100 bg-amber-50/60 p-4 max-w-xl">
+          <p className="text-[13px] font-semibold text-amber-900">
+            No {appointmentType === 'TELEHEALTH' ? 'telehealth ' : ''}specialist is free on {prettyDate}.
+          </p>
+          <p className="text-[12px] text-amber-800 mt-1">
+            Pick another date in the calendar below
+            {service.available_online ? ', or switch consultation type,' : ''} to see who is available.
+          </p>
+        </div>
       )}
     </div>
   );

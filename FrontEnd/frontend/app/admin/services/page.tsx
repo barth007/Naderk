@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Pencil, Power, Loader2, X, CheckCircle2, AlertCircle, Clock, Stethoscope, UserCheck, FlaskConical, Video } from 'lucide-react';
+import { Plus, Pencil, Power, Loader2, X, Clock, Stethoscope, UserCheck, FlaskConical, Video, Trash2, Settings2, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import {
   useAdminServices,
@@ -13,17 +14,15 @@ import {
   BILLING_LABELS,
   CreateServicePayload,
 } from '@/services/admin/admin-services.hooks';
+import {
+  useSpecializations,
+  useCreateSpecialization,
+  useUpdateSpecialization,
+  useDeleteSpecialization,
+  Specialization,
+} from '@/services/admin/admin-specializations.hooks';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-// Must match DoctorProfile.Specialization on the backend (naderk/users/models.py),
-// otherwise a service's required_specialization will never match any doctor.
-const SPECIALIZATIONS = [
-  { value: 'GENERAL_PRACTITIONER', label: 'General Practitioner' },
-  { value: 'OPTOMETRIST',          label: 'Optometrist' },
-  { value: 'OPHTHALMOLOGIST',      label: 'Ophthalmologist' },
-  { value: 'ENT',                  label: 'ENT Specialist' },
-];
 
 const BILLING_OPTIONS: { value: BillingType; label: string; hint: string }[] = [
   { value: 'PER_VISIT',    label: 'Per Visit',           hint: 'Patient pays each time they book.' },
@@ -60,6 +59,7 @@ function ServiceFormModal({
   const isEdit = !!initial;
   const { mutate: create, isPending: creating } = useAdminCreateService();
   const { mutate: update, isPending: updating } = useAdminUpdateService();
+  const { data: specializations = [], isLoading: loadingSpecs } = useSpecializations();
   const isPending = creating || updating;
 
   const [form, setForm] = useState<CreateServicePayload & { id?: string }>(
@@ -142,6 +142,7 @@ function ServiceFormModal({
   }
 
   const inputCls = 'w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E03E3E]/20';
+  const selectedSpec = specializations.find((s) => s.code === form.required_specialization);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -236,10 +237,38 @@ function ServiceFormModal({
           {form.requires_doctor && (
             <div>
               <label className="text-xs font-semibold text-gray-700 block mb-1">Required Specialization *</label>
-              <select value={form.required_specialization ?? ''} onChange={(e) => setF('required_specialization', e.target.value)} className={`${inputCls} bg-white`}>
-                <option value="">Select specialization</option>
-                {SPECIALIZATIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              <select
+                value={form.required_specialization ?? ''}
+                onChange={(e) => setF('required_specialization', e.target.value)}
+                disabled={loadingSpecs}
+                className={`${inputCls} bg-white disabled:opacity-50`}
+              >
+                <option value="">{loadingSpecs ? 'Loading…' : 'Select specialization'}</option>
+                {specializations.map((s) => <option key={s.id} value={s.code}>{s.name}</option>)}
               </select>
+              {!loadingSpecs && specializations.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1">
+                  No specializations configured yet — add one from &ldquo;Manage Specializations&rdquo;.
+                </p>
+              )}
+              {/* A service whose specialization no doctor holds can never have a
+                  specialist assigned — patients just see "no specialist available"
+                  on every date. Surface that here rather than at booking time. */}
+              {selectedSpec && selectedSpec.doctor_count === 0 && (
+                <p className="text-xs text-amber-600 mt-1.5 flex items-start gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+                  <span>
+                    No doctor currently has this specialization, so no specialist can be
+                    assigned. Set a doctor&apos;s specialization to <strong>{selectedSpec.name}</strong> under
+                    Staff, or pick a different one.
+                  </span>
+                </p>
+              )}
+              {selectedSpec && selectedSpec.doctor_count > 0 && (
+                <p className="text-xs text-gray-400 mt-1.5">
+                  {selectedSpec.doctor_count} doctor{selectedSpec.doctor_count === 1 ? '' : 's'} available for this specialization.
+                </p>
+              )}
               {errors.required_specialization && <p className="text-xs text-red-500 mt-1">{errors.required_specialization}</p>}
             </div>
           )}
@@ -343,10 +372,14 @@ function ServiceCard({
   service,
   onEdit,
   onToggle,
+  isToggling,
+  specializationLabel,
 }: {
   service: AdminService;
   onEdit: () => void;
   onToggle: () => void;
+  isToggling: boolean;
+  specializationLabel: string | null;
 }) {
   return (
     <Card className={`p-4 border rounded-xl transition-opacity ${service.is_active ? 'border-gray-100' : 'border-gray-100 opacity-60'}`}>
@@ -363,9 +396,7 @@ function ServiceCard({
             {service.requires_doctor ? (
               <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
                 <UserCheck className="w-3 h-3" />
-                {service.required_specialization
-                  ? service.required_specialization.charAt(0) + service.required_specialization.slice(1).toLowerCase().replace(/_/g, ' ')
-                  : 'Doctor required'}
+                {specializationLabel ?? 'Doctor required'}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">
@@ -407,9 +438,13 @@ function ServiceCard({
         </button>
         <button
           onClick={onToggle}
-          className={`flex items-center gap-1.5 text-xs font-semibold px-2 py-1.5 rounded-md transition-colors ${service.is_active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}
+          disabled={isToggling}
+          aria-label={`${service.is_active ? 'Deactivate' : 'Activate'} ${service.name}`}
+          className={`flex items-center gap-1.5 text-xs font-semibold px-2 py-1.5 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${service.is_active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}
         >
-          <Power className="w-3.5 h-3.5" />
+          {isToggling
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            : <Power className="w-3.5 h-3.5" />}
           {service.is_active ? 'Deactivate' : 'Activate'}
         </button>
       </div>
@@ -417,14 +452,183 @@ function ServiceCard({
   );
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
+// ─── Manage Specializations Modal ─────────────────────────────────────────────
 
-function Toast({ message, type, onDismiss }: { message: string; type: 'success' | 'error'; onDismiss: () => void }) {
+function ManageSpecializationsModal({ onClose }: { onClose: () => void }) {
+  // Inactive rows are shown here so an admin can see and reactivate them.
+  const { data: specs = [], isLoading } = useSpecializations(true);
+  const { mutate: create, isPending: creating } = useCreateSpecialization();
+  const { mutate: update } = useUpdateSpecialization();
+  const { mutate: remove } = useDeleteSpecialization();
+
+  const [newName, setNewName] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+
+  const apiDetail = (err: unknown) =>
+    (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+
+  function handleCreate() {
+    const name = newName.trim();
+    if (!name) return;
+    create(
+      { name, description: newDesc.trim() || undefined },
+      {
+        onSuccess: (spec) => {
+          toast.success(`"${spec.name}" added.`, {
+            description: `Doctors and services can now use it. Code: ${spec.code}`,
+          });
+          setNewName('');
+          setNewDesc('');
+        },
+        onError: (err) => toast.error('Could not add specialization.', { description: apiDetail(err) }),
+      },
+    );
+  }
+
+  function handleRename(spec: Specialization) {
+    const name = editName.trim();
+    if (!name) return;
+    update(
+      { id: spec.id, name },
+      {
+        onSuccess: () => { toast.success('Specialization renamed.'); setEditingId(null); },
+        onError: (err) => toast.error('Could not rename.', { description: apiDetail(err) }),
+      },
+    );
+  }
+
+  function handleToggleActive(spec: Specialization) {
+    update(
+      { id: spec.id, is_active: !spec.is_active },
+      {
+        onSuccess: () => toast.success(spec.is_active ? `"${spec.name}" deactivated.` : `"${spec.name}" reactivated.`),
+        onError: (err) => toast.error('Could not update.', { description: apiDetail(err) }),
+      },
+    );
+  }
+
+  function handleDelete(spec: Specialization) {
+    remove(spec.id, {
+      onSuccess: () => toast.success(`"${spec.name}" removed.`),
+      onError: (err) =>
+        toast.error('Could not remove.', {
+          description: apiDetail(err) || 'It may still be assigned to doctors or services.',
+        }),
+    });
+  }
+
   return (
-    <div className={`fixed top-5 right-5 z-[100] flex items-center gap-2.5 px-4 py-3 rounded-md shadow-lg text-sm font-medium ${type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-      {type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-      {message}
-      <button onClick={onDismiss} className="ml-1 opacity-75 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <Card className="rounded-xl border border-gray-100 shadow-xl p-6 w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-md bg-red-50 flex items-center justify-center">
+              <Settings2 className="w-4 h-4 text-[#E03E3E]" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">Manage Specializations</h3>
+              <p className="text-xs text-gray-400">Used by services, doctor profiles, and onboarding</p>
+            </div>
+          </div>
+          <button onClick={onClose}><X className="w-4 h-4 text-gray-400" /></button>
+        </div>
+
+        {/* Add */}
+        <div className="space-y-2 pb-4 border-b border-gray-100">
+          <p className="text-xs font-semibold text-gray-700">Add Specialization</p>
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+            placeholder="e.g. Retina Specialist"
+            className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E03E3E]/20"
+          />
+          <input
+            value={newDesc}
+            onChange={(e) => setNewDesc(e.target.value)}
+            placeholder="Description (optional)"
+            className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E03E3E]/20"
+          />
+          <button
+            onClick={handleCreate}
+            disabled={creating || !newName.trim()}
+            className="w-full bg-[#E03E3E] text-white text-sm font-semibold py-2 rounded-md hover:bg-[#c93535] disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {creating ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Adding…</> : <><Plus className="w-4 h-4" /> Add Specialization</>}
+          </button>
+        </div>
+
+        {/* List */}
+        <div className="overflow-y-auto flex-1 pt-4 space-y-2">
+          {isLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-gray-400 animate-spin" /></div>
+          ) : specs.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">No specializations yet.</p>
+          ) : (
+            specs.map((spec) => (
+              <div
+                key={spec.id}
+                className={`border border-gray-100 rounded-md px-3 py-2.5 ${spec.is_active ? '' : 'opacity-60'}`}
+              >
+                {editingId === spec.id ? (
+                  <div className="flex gap-2">
+                    <input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleRename(spec)}
+                      autoFocus
+                      className="flex-1 border border-gray-200 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#E03E3E]/20"
+                    />
+                    <button onClick={() => handleRename(spec)} className="text-xs font-semibold text-[#E03E3E] px-2">Save</button>
+                    <button onClick={() => setEditingId(null)} className="text-xs font-semibold text-gray-500 px-2">Cancel</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{spec.name}</p>
+                      <p className="text-xs text-gray-400">
+                        <code>{spec.code}</code>
+                        {spec.in_use > 0 && ` · used by ${spec.in_use}`}
+                        {!spec.is_active && ' · inactive'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => { setEditingId(spec.id); setEditName(spec.name); }}
+                        title="Rename"
+                        className="p-1.5 rounded-md text-gray-500 hover:bg-gray-50"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleToggleActive(spec)}
+                        title={spec.is_active ? 'Deactivate' : 'Reactivate'}
+                        className={`p-1.5 rounded-md ${spec.is_active ? 'text-amber-600 hover:bg-amber-50' : 'text-green-600 hover:bg-green-50'}`}
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(spec)}
+                        disabled={spec.in_use > 0}
+                        title={spec.in_use > 0 ? 'Still assigned to doctors or services' : 'Remove'}
+                        className="p-1.5 rounded-md text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        <p className="text-xs text-gray-400 mt-4 pt-3 border-t border-gray-100">
+          The code is what booking matches on, so it can&apos;t be changed after creation. Renaming is safe.
+        </p>
+      </Card>
     </div>
   );
 }
@@ -435,22 +639,39 @@ export default function AdminServicesPage() {
   const { data: services = [], isLoading } = useAdminServices();
   const { mutate: toggleService } = useAdminToggleService();
 
+  const { data: specializations = [] } = useSpecializations(true);
+
   const [showForm, setShowForm] = useState(false);
+  const [showSpecializations, setShowSpecializations] = useState(false);
   const [editing, setEditing] = useState<AdminService | undefined>();
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
-  function showToast(message: string, type: 'success' | 'error' = 'success') {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  }
+  const specNameByCode = new Map(specializations.map((s) => [s.code, s.name]));
 
   function handleToggle(service: AdminService) {
+    const nextActive = !service.is_active;
+    setTogglingId(service.id);
     toggleService(
-      { id: service.id, is_active: !service.is_active },
+      { id: service.id, is_active: nextActive },
       {
-        onSuccess: () => showToast(`Service ${service.is_active ? 'deactivated' : 'activated'}.`),
-        onError: () => showToast('Failed to update service.', 'error'),
+        onSuccess: () =>
+          toast.success(
+            nextActive ? `"${service.name}" activated.` : `"${service.name}" deactivated.`,
+            {
+              description: nextActive
+                ? 'Patients can now book this service.'
+                : 'Patients can no longer book this service.',
+            },
+          ),
+        onError: (err: unknown) => {
+          const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+          toast.error(
+            `Could not ${nextActive ? 'activate' : 'deactivate'} "${service.name}".`,
+            { description: detail || 'Please try again.' },
+          );
+        },
+        onSettled: () => setTogglingId(null),
       },
     );
   }
@@ -464,8 +685,6 @@ export default function AdminServicesPage() {
 
   return (
     <div className="p-6 space-y-6">
-      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
-
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -474,12 +693,20 @@ export default function AdminServicesPage() {
             {activeCount} active · {inactiveCount} inactive
           </p>
         </div>
-        <button
-          onClick={() => { setEditing(undefined); setShowForm(true); }}
-          className="flex items-center gap-2 bg-[#E03E3E] text-white text-sm font-semibold px-4 py-2 rounded-md hover:bg-[#c93535] transition-colors"
-        >
-          <Plus className="w-4 h-4" /> New Service
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSpecializations(true)}
+            className="flex items-center gap-2 border border-gray-200 text-gray-700 text-sm font-semibold px-4 py-2 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            <Settings2 className="w-4 h-4" /> Specializations
+          </button>
+          <button
+            onClick={() => { setEditing(undefined); setShowForm(true); }}
+            className="flex items-center gap-2 bg-[#E03E3E] text-white text-sm font-semibold px-4 py-2 rounded-md hover:bg-[#c93535] transition-colors"
+          >
+            <Plus className="w-4 h-4" /> New Service
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -514,18 +741,27 @@ export default function AdminServicesPage() {
               service={service}
               onEdit={() => { setEditing(service); setShowForm(true); }}
               onToggle={() => handleToggle(service)}
+              isToggling={togglingId === service.id}
+              specializationLabel={
+                service.required_specialization
+                  ? specNameByCode.get(service.required_specialization) ?? service.required_specialization
+                  : null
+              }
             />
           ))}
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modals */}
       {showForm && (
         <ServiceFormModal
           initial={editing}
           onClose={() => { setShowForm(false); setEditing(undefined); }}
-          onSaved={(msg) => showToast(msg)}
+          onSaved={(msg) => toast.success(msg)}
         />
+      )}
+      {showSpecializations && (
+        <ManageSpecializationsModal onClose={() => setShowSpecializations(false)} />
       )}
     </div>
   );

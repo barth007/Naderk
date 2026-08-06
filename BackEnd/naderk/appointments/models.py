@@ -23,10 +23,11 @@ class MedicalService(models.Model):
         default=False,
         help_text="If True and requires_doctor is True, patients can choose physical or telehealth. Ignored for facility-based services."
     )
+    # No `choices`: valid values come from the Specialization table at runtime.
     required_specialization = models.CharField(
-        max_length=50, choices=DoctorProfile.Specialization.choices,
+        max_length=50,
         blank=True, null=True,
-        help_text="Only relevant when requires_doctor is True"
+        help_text="Specialization code a doctor must hold. Only relevant when requires_doctor is True"
     )
     duration_minutes = models.PositiveIntegerField(default=30)
     buffer_time_before = models.PositiveIntegerField(default=0, help_text="Minutes before appointment")
