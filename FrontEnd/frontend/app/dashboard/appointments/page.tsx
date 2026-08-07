@@ -59,21 +59,21 @@ export default function AppointmentsHistoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 py-6 sm:py-10">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8">
 
-        <div className="mb-8">
+        <div className="mb-5">
           <Breadcrumbs />
         </div>
 
         {/* Header (only show if not completely empty or loading) */}
         {(!history || (history.upcoming.length > 0 || history.past.length > 0)) && (
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-3">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">My Appointments</h1>
-              <p className="mt-2 text-gray-600">Manage and track your eye care schedule</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">My Appointments</h1>
+              <p className="mt-1 text-xs sm:text-sm text-gray-600">Manage and track your eye care schedule</p>
             </div>
-            <Link href="/dashboard/appointments/book" onClick={() => resetBooking()} className="bg-[#E03E3E] hover:bg-red-700 text-white font-medium py-2.5 px-6 rounded-md shadow transition-colors">
+            <Link href="/dashboard/appointments/book" onClick={() => resetBooking()} className="w-full md:w-auto text-center bg-[#E03E3E] hover:bg-red-700 text-white text-sm font-medium py-2.5 px-5 rounded-md shadow transition-colors">
               Book New Appointment
             </Link>
           </div>
@@ -90,11 +90,11 @@ export default function AppointmentsHistoryPage() {
         ) : history?.upcoming.length === 0 && history?.past.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-6 sm:py-10">
             <div className="bg-white rounded-md shadow-sm border border-gray-100 p-6 sm:p-12 max-w-2xl w-full text-center flex flex-col items-center">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-red-50 rounded-md flex items-center justify-center mb-6">
-                <CalendarIcon className="w-8 h-8 sm:w-10 sm:h-10 text-[#E03E3E]" />
+              <div className="w-14 h-14 sm:w-16 sm:h-16 bg-red-50 rounded-md flex items-center justify-center mb-4">
+                <CalendarIcon className="w-7 h-7 sm:w-8 sm:h-8 text-[#E03E3E]" />
               </div>
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3 sm:mb-4">No appointments yet.</h2>
-              <p className="text-sm sm:text-base text-gray-500 mb-6 sm:mb-8 max-w-md">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 sm:mb-3">No appointments yet.</h2>
+              <p className="text-xs sm:text-sm text-gray-500 mb-5 sm:mb-6 max-w-md">
                 Your schedule is currently clear. Regular eye exams are key to maintaining long-term vision health. Would you like to schedule your first check up with our specialists?
               </p>
               <Link href="/dashboard/appointments/book" onClick={() => resetBooking()} className="w-full sm:w-auto bg-[#E03E3E] hover:bg-red-700 text-white font-medium py-3 px-8 rounded-md shadow transition-colors">
@@ -102,7 +102,7 @@ export default function AppointmentsHistoryPage() {
               </Link>
             </div>
 
-            <div className="mt-8 flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
+            <div className="mt-6 flex flex-col sm:flex-row items-center gap-3">
               <div className="flex -space-x-3">
                 <img className="w-10 h-10 rounded-md border-2 border-white object-cover shadow-sm" src="https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=100&auto=format&fit=crop&q=60" alt="Doctor" />
                 <img className="w-10 h-10 rounded-md border-2 border-white object-cover bg-yellow-100 shadow-sm" src="https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=100&auto=format&fit=crop&q=60" alt="Doctor" />
@@ -115,24 +115,24 @@ export default function AppointmentsHistoryPage() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col lg:flex-row gap-8">
+          <div className="flex flex-col lg:flex-row gap-5 lg:gap-6">
 
             {/* Main Content (Left Column) */}
-            <div className="flex-1 lg:max-w-[70%] space-y-10">
+            <div className="flex-1 lg:max-w-[70%] space-y-6 min-w-0">
 
               {/* Upcoming Appointments */}
               <div>
-                <h2 className="text-[13px] font-bold text-gray-500 uppercase tracking-wider mb-4">Next Scheduled Visit</h2>
+                <h2 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-3">Next Scheduled Visit</h2>
 
                 {history?.upcoming.length === 0 ? (
-                  <div className="bg-white p-8 rounded-md border border-gray-100 text-center shadow-sm">
-                    <p className="text-gray-500 mb-4">You have no upcoming appointments.</p>
-                    <Link href="/dashboard/appointments/book" onClick={() => resetBooking()} className="text-[#E03E3E] font-medium hover:underline">
+                  <div className="bg-white p-6 rounded-md border border-gray-100 text-center shadow-sm">
+                    <p className="text-sm text-gray-500 mb-3">You have no upcoming appointments.</p>
+                    <Link href="/dashboard/appointments/book" onClick={() => resetBooking()} className="text-sm text-[#E03E3E] font-medium hover:underline">
                       Schedule a visit now
                     </Link>
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {history?.upcoming.map((apt: Appointment, idx: number) => (
                       <AppointmentCard 
                         key={apt.id}
@@ -152,8 +152,8 @@ export default function AppointmentsHistoryPage() {
               {/* Past Appointments */}
               <div>
                 <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-[13px] font-bold text-gray-500 uppercase tracking-wider">Recent Past Visits</h2>
-                  <button className="text-[#E03E3E] text-[13px] font-bold hover:underline">View All History</button>
+                  <h2 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Recent Past Visits</h2>
+                  <button className="text-[#E03E3E] text-[11px] font-bold hover:underline">View All History</button>
                 </div>
 
                 <AppointmentHistoryTable history={history?.past || []} />
@@ -162,15 +162,15 @@ export default function AppointmentsHistoryPage() {
             </div>
 
             {/* Sidebar (Right Column) */}
-            <div className="lg:w-[30%] lg:min-w-[320px] space-y-6">
+            <div className="lg:w-[30%] lg:min-w-[300px] space-y-4">
 
               {/* Banner */}
-              <div className="relative rounded-md overflow-hidden bg-gray-900 shadow-sm p-6 text-white min-h-[160px] flex flex-col justify-center">
+              <div className="relative rounded-md overflow-hidden bg-gray-900 shadow-sm p-5 text-white min-h-[140px] flex flex-col justify-center">
                 <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=500&auto=format&fit=crop&q=60')] bg-cover bg-center opacity-40"></div>
                 <div className="relative z-10">
-                  <h3 className="font-bold text-lg leading-tight mb-2">Need a new appointment?</h3>
-                  <p className="text-gray-200 text-[13px] mb-5 max-w-[200px]">Book a visit with our specialists in just a few clicks.</p>
-                  <Link href="/dashboard/appointments/book" onClick={() => resetBooking()} className="inline-block bg-[#E03E3E] hover:bg-red-700 text-white text-[13px] font-bold py-2.5 px-6 rounded-md transition-colors shadow-sm">
+                  <h3 className="font-bold text-base leading-tight mb-1.5">Need a new appointment?</h3>
+                  <p className="text-gray-200 text-xs mb-4 max-w-[220px]">Book a visit with our specialists in just a few clicks.</p>
+                  <Link href="/dashboard/appointments/book" onClick={() => resetBooking()} className="inline-block bg-[#E03E3E] hover:bg-red-700 text-white text-xs font-bold py-2.5 px-5 rounded-md transition-colors shadow-sm">
                     Schedule Now
                   </Link>
                 </div>

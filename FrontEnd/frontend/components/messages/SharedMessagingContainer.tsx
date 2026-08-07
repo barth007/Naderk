@@ -18,8 +18,8 @@ import {
   NewConversationModal 
 } from '@/components/messages';
 import { 
-  Loader2, MessageSquare, ShieldAlert, UserPlus, 
-  Activity, ArrowRightLeft, CheckCircle2, RefreshCw 
+  Loader2, MessageSquare, ShieldAlert, UserPlus,
+  Activity, ArrowRightLeft, CheckCircle2, RefreshCw, X
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,7 @@ export function SharedMessagingContainer() {
   const [selectedPriority, setSelectedPriority] = useState<string>('');
   const [closeReason, setCloseReason] = useState<string>('');
   const [isTriageExpanded, setIsTriageExpanded] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   const isPatient = user?.role === 'PATIENT';
   const isDoctor = user?.role === 'DOCTOR';
@@ -75,6 +76,14 @@ export function SharedMessagingContainer() {
 
   const handleNewConversationSuccess = (newId: string) => {
     setActiveConversationId(newId);
+  };
+
+  // Leaving a thread must also dismiss its details sheet, otherwise it stays
+  // open over the conversation list. Done here rather than in an effect so the
+  // two state updates batch into one render.
+  const closeConversation = () => {
+    setActiveConversationId(undefined);
+    setIsDetailsOpen(false);
   };
 
   // Agent coordination operations
@@ -163,7 +172,7 @@ export function SharedMessagingContainer() {
 
   if (isError) {
     return (
-      <Card className="p-8 text-center text-[#E03E3E] max-w-lg mx-auto mt-10 border-red-100 rounded-2xl bg-red-50/10 shadow-sm flex flex-col items-center gap-3">
+      <Card className="p-8 text-center text-[#E03E3E] max-w-lg mx-auto mt-10 border-red-100 rounded-md bg-red-50/10 shadow-sm flex flex-col items-center gap-3">
         <ShieldAlert className="w-10 h-10" />
         <span className="font-bold">Failed to load conversation history. Please try again.</span>
         <Button onClick={() => refetch()} variant="outline" className="mt-2 text-xs border-red-200 text-[#E03E3E] hover:bg-red-50">Retry</Button>
@@ -174,7 +183,7 @@ export function SharedMessagingContainer() {
   // Doctor Empty Messaging State
   if (isDoctor && conversations.length === 0) {
     return (
-      <div className="w-full flex flex-col items-center justify-center min-h-[400px] text-center p-8 bg-white border border-gray-100 rounded-3xl">
+      <div className="w-full flex flex-col items-center justify-center min-h-[400px] text-center p-8 bg-white border border-gray-100 rounded-md">
         <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center text-[#E03E3E] mb-4 border border-red-100/50">
           <MessageSquare className="w-6 h-6" />
         </div>
@@ -197,14 +206,20 @@ export function SharedMessagingContainer() {
   const showEmptyState = conversations.length === 0 && isPatient;
 
   return (
-    <div className="h-[calc(100vh-160px)] flex flex-col select-none">
+    /* Full-bleed on mobile: the dashboard shell pads children by 16px, which
+       left the chat floating in a rounded box instead of owning the screen the
+       way a messaging app should. -m-4 cancels that padding below md only. */
+    <div className="-m-4 md:m-0 h-[calc(100dvh-64px)] md:h-[calc(100dvh-190px)] flex flex-col select-none">
       {showEmptyState ? (
         <EmptyInbox onStartConversation={() => setIsModalOpen(true)} />
       ) : (
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-0 items-stretch h-full overflow-hidden border border-gray-100 rounded-3xl bg-white shadow-[0_8px_30px_rgb(0,0,0,0.015)]">
-          
-          {/* Left Column: Conversation List */}
-          <div className="md:col-span-3 h-full overflow-hidden border-r border-gray-100/80">
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-0 items-stretch h-full overflow-hidden border-0 md:border border-gray-100 rounded-none md:rounded-md bg-white shadow-none md:shadow-[0_8px_30px_rgb(0,0,0,0.015)]">
+
+          {/* Left Column: Conversation List.
+              Below md this is a master-detail flow, not two stacked panes —
+              the list used to render above a full-height chat window, so both
+              scrolled independently and neither was usable on a phone. */}
+          <div className={`${activeConversationId ? 'hidden md:block' : 'block'} md:col-span-3 h-full overflow-hidden border-r border-gray-100/80`}>
             <ConversationList
               conversations={conversations}
               activeConversationId={activeConversationId}
@@ -214,14 +229,14 @@ export function SharedMessagingContainer() {
           </div>
 
           {/* Middle Column: Chat Window & Triage Manager */}
-          <div className={`${activeConversationId && detailData ? 'md:col-span-6 border-r border-gray-100/80' : 'md:col-span-9'} h-full overflow-hidden flex flex-col bg-gray-50/20`}>
-            
+          <div className={`${activeConversationId ? 'flex' : 'hidden md:flex'} ${activeConversationId && detailData ? 'md:col-span-6 border-r border-gray-100/80' : 'md:col-span-9'} h-full overflow-hidden flex-col bg-gray-50/20 min-w-0`}>
+
             {activeConversationId && detailData ? (
               <div className="flex-grow flex flex-col h-full overflow-hidden relative">
                 
                 {/* Agent Triage Control Panel (Agent/Admin Triage Workspace) */}
                 {(isAgent || user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN') && (
-                  <div className="border-b border-gray-100 bg-white px-5 py-3.5 flex flex-col gap-3 shadow-[0_2px_10px_rgba(0,0,0,0.01)] shrink-0 transition-all">
+                  <div className="border-b border-gray-100 bg-white px-3 sm:px-5 py-3 flex flex-col gap-3 shadow-[0_2px_10px_rgba(0,0,0,0.01)] shrink-0 transition-all">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Activity className="w-4.5 h-4.5 text-[#E03E3E]" />
@@ -368,6 +383,8 @@ export function SharedMessagingContainer() {
                   onSendInternalNote={handleSendInternalNote}
                   careTeamOnline={careTeamOnline}
                   isTyping={typingUsers}
+                  onBack={closeConversation}
+                  onOpenDetails={() => setIsDetailsOpen(true)}
                 />
               </div>
             ) : isDetailLoading ? (
@@ -375,7 +392,7 @@ export function SharedMessagingContainer() {
                 <Loader2 className="w-6 h-6 text-[#E03E3E] animate-spin" />
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center flex-grow bg-white h-full text-center p-8">
+              <div className="flex flex-col items-center justify-center flex-grow bg-white h-full text-center p-6">
                 <div className="w-14 h-14 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 mb-4 border border-gray-100">
                   <MessageSquare className="w-6 h-6" />
                 </div>
@@ -391,6 +408,34 @@ export function SharedMessagingContainer() {
           {activeConversationId && detailData && (
             <div className="md:col-span-3 h-full overflow-hidden hidden md:block">
               <ConversationDetailsSidebar conversation={detailData.conversation} />
+            </div>
+          )}
+
+          {/* Same details, as a slide-over on mobile. Previously this panel was
+              simply `hidden` below md, so phone users lost the participant and
+              case information entirely. */}
+          {activeConversationId && detailData && isDetailsOpen && (
+            <div className="md:hidden fixed inset-0 z-50 flex">
+              <button
+                aria-label="Close details"
+                onClick={() => setIsDetailsOpen(false)}
+                className="absolute inset-0 bg-black/40"
+              />
+              <div className="relative ml-auto w-[85%] max-w-sm h-full bg-white shadow-xl flex flex-col animate-in slide-in-from-right duration-200">
+                <div className="flex items-center justify-between px-4 h-14 border-b border-gray-100 shrink-0">
+                  <span className="text-sm font-bold text-gray-900">Details</span>
+                  <button
+                    onClick={() => setIsDetailsOpen(false)}
+                    aria-label="Close details"
+                    className="p-2 -mr-2 text-gray-400 hover:text-gray-900"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  <ConversationDetailsSidebar conversation={detailData.conversation} />
+                </div>
+              </div>
             </div>
           )}
         </div>

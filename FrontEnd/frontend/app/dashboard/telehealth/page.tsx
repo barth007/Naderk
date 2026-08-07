@@ -42,14 +42,14 @@ export default function TelehealthPage() {
     data && (data.active.length > 0 || data.upcoming.length > 0 || data.past.length > 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-5">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-100 pb-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">
+          <h1 className="text-lg sm:text-xl font-extrabold text-gray-900 tracking-tight">
             Telehealth Consultations
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-xs sm:text-sm text-gray-500 mt-1">
             Access secure video appointments and view virtual consultation logs.
           </p>
         </div>

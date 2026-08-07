@@ -118,42 +118,42 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20 select-none">
+    <div className="w-full max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-in fade-in duration-500 pb-16 select-none">
       
       {/* Welcome & Overview Header Card */}
-      <Card className="p-6 md:p-8 bg-white border border-gray-100 rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.01)] flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-4 flex-grow min-w-0">
+      <Card className="p-4 sm:p-5 md:p-6 bg-white border border-gray-100 rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.01)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-3 flex-grow min-w-0">
           <div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">
+            <h1 className="text-lg sm:text-xl md:text-2xl font-extrabold text-gray-900 tracking-tight">
               {greeting}, {user?.first_name || 'Sarah'}!
             </h1>
-            <p className="text-gray-500 text-sm mt-1.5 font-semibold">
+            <p className="text-gray-500 text-xs sm:text-sm mt-1 font-semibold">
               {getWelcomeMessage(upcomingAppt)}
             </p>
           </div>
           
-          <div className="flex flex-wrap gap-4 pt-2">
-            <div className="bg-gray-50/50 border border-gray-100 p-3.5 rounded-md w-40 min-w-fit flex flex-col justify-between">
+          <div className="grid grid-cols-2 gap-2.5 sm:flex sm:flex-wrap sm:gap-3 pt-1">
+            <div className="bg-gray-50/50 border border-gray-100 p-3 rounded-md sm:w-40 min-w-0 flex flex-col justify-between">
               <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider">Last Checkup</span>
-              <span className="text-xs font-bold text-gray-800 mt-1">{lastCheckupDate}</span>
+              <span className="text-xs font-bold text-gray-800 mt-1 truncate">{lastCheckupDate}</span>
             </div>
-            <div className="bg-gray-50/50 border border-gray-100 p-3.5 rounded-md w-40 min-w-fit flex flex-col justify-between">
+            <div className="bg-gray-50/50 border border-gray-100 p-3 rounded-md sm:w-40 min-w-0 flex flex-col justify-between">
               <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider">Next Prescription</span>
-              <span className="text-xs font-bold text-gray-800 mt-1">{nextPrescriptionText}</span>
+              <span className="text-xs font-bold text-gray-800 mt-1 truncate">{nextPrescriptionText}</span>
             </div>
           </div>
         </div>
 
         {/* Target Red Box */}
-        <div className="w-20 h-20 md:w-24 md:h-24 bg-[#E03E3E] rounded-2xl flex items-center justify-center shrink-0 shadow-[0_8px_30px_rgba(224,62,62,0.15)]">
-          <div className="w-10 h-10 rounded-full border-4 border-white flex items-center justify-center">
+        <div className="hidden sm:flex w-16 h-16 md:w-20 md:h-20 bg-[#E03E3E] rounded-md items-center justify-center shrink-0 shadow-[0_8px_30px_rgba(224,62,62,0.15)]">
+          <div className="w-8 h-8 rounded-full border-4 border-white flex items-center justify-center">
             <div className="w-3.5 h-3.5 rounded-full bg-white animate-pulse" />
           </div>
         </div>
       </Card>
 
       {/* Row 2: Upcoming Appointment (Left) & Messages (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
         
         {/* Upcoming Appointment */}
         <div className="lg:col-span-8 flex flex-col h-full">
@@ -163,12 +163,12 @@ export default function DashboardPage() {
           </div>
 
           {appointmentsLoading ? (
-            <Card className="p-6 bg-white border border-gray-100 rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.01)] h-[213px] flex items-center justify-center">
+            <Card className="p-6 bg-white border border-gray-100 rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.01)] min-h-[180px] flex items-center justify-center">
               <Loader2 className="w-6 h-6 animate-spin text-[#E03E3E]" />
             </Card>
           ) : upcomingAppt ? (
-            <Card className="p-6 bg-white border border-gray-100 rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.01)] h-[213px]">
-              <div className="flex flex-col md:flex-row gap-6 items-center h-full">
+            <Card className="p-6 bg-white border border-gray-100 rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.01)] min-h-[180px]">
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center h-full">
                 <div className="w-full md:w-1/3 rounded-md overflow-hidden relative min-h-[140px] md:min-h-0 md:h-full shrink-0">
                   <img
                     src="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&q=80&w=400"
@@ -210,7 +210,7 @@ export default function DashboardPage() {
               </div>
             </Card>
           ) : (
-            <Card className="p-8 flex flex-col items-center justify-center text-center space-y-4 border border-gray-100 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.01)] rounded-md h-[213px]">
+            <Card className="p-5 flex flex-col items-center justify-center text-center space-y-3 border border-gray-100 bg-white shadow-[0_4px_20px_rgba(0,0,0,0.01)] rounded-md min-h-[180px]">
               <div className="w-12 h-12 rounded-md bg-[#fcdede] text-[#E03E3E] flex items-center justify-center shrink-0">
                 <CalendarDays className="w-5 h-5 stroke-[1.5]" />
               </div>
@@ -234,7 +234,7 @@ export default function DashboardPage() {
             <h3 className="font-extrabold text-gray-955 text-base">Messages</h3>
           </div>
 
-          <Card className="p-6 bg-white border border-gray-100 rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.01)] flex-grow flex flex-col justify-between min-h-[260px]">
+          <Card className="p-4 sm:p-5 bg-white border border-gray-100 rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.01)] flex-grow flex flex-col justify-between min-h-[220px]">
             {conversationsLoading ? (
               <div className="flex-grow flex items-center justify-center">
                 <Loader2 className="w-6 h-6 animate-spin text-[#E03E3E]" />
@@ -302,7 +302,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Row 3: Current Prescription (Left) & Health Care News & Tips (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5">
         
         {/* Current Prescription */}
         <div className="lg:col-span-8 flex flex-col h-full">
@@ -318,13 +318,13 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <Card className="p-6 bg-white border border-gray-100 rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.01)] flex-grow min-h-[220px] flex flex-col justify-center">
+          <Card className="p-4 sm:p-5 bg-white border border-gray-100 rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.01)] flex-grow min-h-[200px] flex flex-col justify-center">
             {prescriptionsLoading ? (
               <div className="flex items-center justify-center">
                 <Loader2 className="w-6 h-6 animate-spin text-[#E03E3E]" />
               </div>
             ) : activePrescriptions.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
                 {activePrescriptions.slice(0, 2).map(p => (
                   <Card
                     key={p.id}

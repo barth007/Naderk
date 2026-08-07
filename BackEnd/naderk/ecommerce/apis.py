@@ -49,8 +49,35 @@ class ProductListApi(APIView):
             search_query=search_query,
             sort_by=sort_by
         )
-        serializer = ProductSerializer(products, many=True)
-        return build_success_response("Products retrieved successfully", serializer.data)
+
+        # Optional limit/offset paging for the storefront's infinite scroll.
+        # Without `limit` the full list is returned, so existing callers that
+        # expect a plain array keep working unchanged.
+        limit = request.query_params.get('limit')
+        if limit is None:
+            return build_success_response(
+                "Products retrieved successfully", ProductSerializer(products, many=True).data,
+            )
+
+        try:
+            limit = max(1, min(int(limit), 60))
+            offset = max(0, int(request.query_params.get('offset') or 0))
+        except (TypeError, ValueError):
+            return build_error_response(
+                type_uri=_problems_url('validation-error'), title="Validation Error",
+                status_code=400, detail="limit and offset must be integers.",
+                instance=request.path,
+            )
+
+        total = products.count()
+        page = products[offset:offset + limit]
+        return build_success_response("Products retrieved successfully", {
+            'results': ProductSerializer(page, many=True).data,
+            'total': total,
+            'offset': offset,
+            'limit': limit,
+            'has_more': offset + limit < total,
+        })
 
 
 class ProductDetailApi(APIView):

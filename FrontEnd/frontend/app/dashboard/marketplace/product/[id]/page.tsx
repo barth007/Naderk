@@ -84,8 +84,8 @@ export default function ProductDetailPage() {
   return (
     <div className="w-full bg-[#f8f9fc] min-h-screen text-[#1f2937] pb-16">
       {/* Breadcrumb */}
-      <div className="bg-white px-6 rounded-xl border border-gray-100 mb-6">
-        <Breadcrumbs />
+      <div className="bg-white px-6 rounded-md border border-gray-200 mb-6">
+        <Breadcrumbs labels={{ [product.id]: product.name }} />
       </div>
 
       <button

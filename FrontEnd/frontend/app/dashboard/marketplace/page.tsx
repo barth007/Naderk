@@ -1,102 +1,165 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { useInView } from 'react-intersection-observer';
 import {
   Search,
-  Heart,
   ShoppingBag,
   Sparkles,
-  Check,
   ShoppingBagIcon,
   RefreshCw,
   FlaskConical,
   HeartPulse,
   Glasses,
+  SlidersHorizontal,
+  ArrowRight,
+  X,
 } from 'lucide-react';
 import { Breadcrumbs } from '@/components/ui/breadcrumb';
 import {
-  useProducts,
   useCategories,
   useAddToCart,
   useToggleWishlist,
   useWishlist,
   useCart,
   useFrames,
+  useInfiniteProducts,
 } from '@/services/marketplace/marketplace.hooks';
 import { Product } from '@/services/marketplace/marketplace.types';
-
-const FRAMES_TAB = '__frames__'; // sentinel slug for the eyewear-frames view
+import ProductCard from '@/components/marketplace/ProductCard';
+import FrameCard from '@/components/marketplace/FrameCard';
+import CarouselRow from '@/components/marketplace/CarouselRow';
 import { toast } from 'sonner';
 import { cn } from '@/lib/cn';
 
-// Icon map for the 3 categories
+const FRAMES_TAB = '__frames__'; // sentinel slug for the eyewear-frames view
+
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   wellness: <HeartPulse className="w-4 h-4" />,
   frames: <Glasses className="w-4 h-4" />,
   'laboratory-equipment': <FlaskConical className="w-4 h-4" />,
 };
 
-// Badge helper — rotate through styles based on product index
-const BADGE_STYLES = [
-  { text: '50% OFF',     cls: 'bg-white text-[#ff052f] border border-[#ff052f]' },
-  { text: 'BEST SELLER', cls: 'bg-[#ff052f] text-white' },
-  { text: 'NEW ARRIVAL', cls: 'bg-[#e0f2fe] text-[#0369a1]' },
-  { text: 'FLASH SALE',  cls: 'bg-[#ff052f] text-white' },
-];
+const PRICE_CEILING = 2_500_000;
+
+/** One horizontal shelf of products for a single category. */
+function CategoryShelf({
+  slug,
+  name,
+  description,
+  sortBy,
+  onSeeAll,
+  cardProps,
+  isInWishlist,
+}: {
+  slug: string;
+  name: string;
+  description?: string | null;
+  sortBy: string;
+  onSeeAll: () => void;
+  cardProps: Omit<React.ComponentProps<typeof ProductCard>, 'product' | 'fixedWidth' | 'inWishlist'>;
+  isInWishlist: (id: string) => boolean;
+}) {
+  // One page per shelf — the shelf is a teaser, "See all" opens the full grid.
+  const { data, isLoading } = useInfiniteProducts({ category_slug: slug, sort_by: sortBy });
+  const items = data?.pages.flatMap(p => p.results) ?? [];
+  const total = data?.pages[0]?.total ?? 0;
+
+  if (isLoading) {
+    return (
+      <div className="flex gap-4 overflow-hidden">
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} className="w-[240px] h-[360px] shrink-0 bg-white border border-gray-100 rounded-md animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+  if (items.length === 0) return null;
+
+  return (
+    <CarouselRow
+      title={name}
+      subtitle={description || `${total} item${total === 1 ? '' : 's'}`}
+      icon={<span className="text-[#ff052f]">{CATEGORY_ICONS[slug]}</span>}
+      action={
+        <button
+          onClick={onSeeAll}
+          className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-[#ff052f] transition-colors"
+        >
+          See all <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+      }
+    >
+      {items.map(product => (
+        <ProductCard
+          key={product.id}
+          product={product}
+          fixedWidth
+          {...cardProps}
+          inWishlist={isInWishlist(product.id)}
+        />
+      ))}
+    </CarouselRow>
+  );
+}
 
 export default function MarketplacePage() {
-  // Active category slug (null = All)
   const [activeCategorySlug, setActiveCategorySlug] = useState<string | null>(null);
-
-  // Additional filters
-  const [priceRange, setPriceRange] = useState<number>(2500000);
-  const [selectedColor, setSelectedColor] = useState<string>('');
+  const [priceRange, setPriceRange] = useState<number>(PRICE_CEILING);
   const [search, setSearch] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('newest');
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // Countdown timer for the promo banner
-  const [countdown, setCountdown] = useState({ hours: 2, minutes: 25, seconds: 12 });
+  // Debounced so typing doesn't fire a request per keystroke.
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown(prev => {
-        if (prev.seconds > 0) return { ...prev, seconds: prev.seconds - 1 };
-        if (prev.minutes > 0) return { ...prev, minutes: prev.minutes - 1, seconds: 59 };
-        if (prev.hours > 0) return { hours: prev.hours - 1, minutes: 59, seconds: 59 };
-        clearInterval(timer);
-        return prev;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  // Data hooks
   const { data: categories = [], isLoading: loadingCats } = useCategories();
-  const { data: products = [], isLoading: loadingProducts } = useProducts({
-    category_slug: activeCategorySlug ?? undefined,
-    search: search || undefined,
-    sort_by: sortBy,
-  });
-  const { data: frames = [] } = useFrames(search || undefined);
+  const { data: frames = [] } = useFrames(debouncedSearch || undefined);
   const { data: wishlist } = useWishlist();
   const { data: cart } = useCart();
   const toggleWishlistMutation = useToggleWishlist();
   const addToCartMutation = useAddToCart();
 
   const showingFrames = activeCategorySlug === FRAMES_TAB;
-  const visibleFrames = frames.filter(f => f.is_active && parseFloat(f.base_price) <= priceRange);
+  // Browse mode = the shelves view. Any filter turns it into a flat grid, since
+  // shelves-per-category stop making sense once you've narrowed to one.
+  const isBrowsing = activeCategorySlug === null && !debouncedSearch;
+
+  const {
+    data: pagedProducts,
+    isLoading: loadingProducts,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteProducts({
+    category_slug: showingFrames ? undefined : activeCategorySlug ?? undefined,
+    search: debouncedSearch || undefined,
+    sort_by: sortBy,
+  });
+
+  const gridProducts = (pagedProducts?.pages.flatMap(p => p.results) ?? [])
+    .filter(p => parseFloat(p.price) <= priceRange);
+  const totalProducts = pagedProducts?.pages[0]?.total ?? 0;
+
+  // Auto-load the next page when the sentinel scrolls into view.
+  const { ref: sentinelRef, inView } = useInView({ rootMargin: '400px' });
+  useEffect(() => {
+    if (inView && hasNextPage && !isFetchingNextPage && !isBrowsing && !showingFrames) {
+      fetchNextPage();
+    }
+  }, [inView, hasNextPage, isFetchingNextPage, isBrowsing, showingFrames, fetchNextPage]);
 
   // There is also a StoreCategory called "Frames" holding Product rows that
   // duplicate the Frame catalogue. Rendering it would give two identically
-  // labelled "Frames" tabs backed by different models — an admin adding a frame
-  // would open the wrong one and conclude it never saved. Eyewear is sold
-  // through the Frame model (variants, lens builder, prescriptions), so that is
-  // the tab we keep.
+  // labelled "Frames" tabs backed by different models. Eyewear is sold through
+  // the Frame model (variants, lens builder, prescriptions), so that tab wins.
   const categoryTabs = categories.filter(cat => cat.slug !== 'frames');
-
-  // Client-side price filter on top of server results
-  const filteredProducts = products.filter(prod => parseFloat(prod.price) <= priceRange);
+  const visibleFrames = frames.filter(f => f.is_active && parseFloat(f.base_price) <= priceRange);
 
   const isInWishlist = (id: string) =>
     wishlist?.items?.some(item => item.product === id) ?? false;
@@ -104,10 +167,10 @@ export default function MarketplacePage() {
   const handleToggleWishlist = (productId: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    const wasSaved = isInWishlist(productId);
     toggleWishlistMutation.mutate({ product_id: productId }, {
-      onSuccess: () => {
-        toast.success(isInWishlist(productId) ? 'Removed from wishlist' : 'Added to wishlist');
-      },
+      onSuccess: () => toast.success(wasSaved ? 'Removed from wishlist' : 'Added to wishlist'),
+      onError: () => toast.error('Could not update your wishlist.'),
     });
   };
 
@@ -119,42 +182,149 @@ export default function MarketplacePage() {
       product_variant_id: product.variants?.[0]?.id ?? null,
       quantity: 1,
     }, {
-      onSuccess: () => toast.success(`${product.name} added to cart!`),
-      onError: (err: any) => toast.error(err.response?.data?.detail ?? 'Could not add item to cart.'),
+      onSuccess: () => toast.success(`${product.name} added to cart`),
+      onError: (err: unknown) => {
+        const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        toast.error(detail ?? 'Could not add item to cart.');
+      },
     });
   };
 
+  const cardProps = {
+    onToggleWishlist: handleToggleWishlist,
+    onAddToCart: handleAddToCart,
+    isAddingToCart: addToCartMutation.isPending,
+  };
+
+  const activeFilterCount = (debouncedSearch ? 1 : 0) + (priceRange < PRICE_CEILING ? 1 : 0);
+
+  const tabClass = (active: boolean) =>
+    cn(
+      'px-3.5 h-9 inline-flex items-center gap-1.5 rounded-md text-xs font-bold transition-colors border',
+      active
+        ? 'bg-[#fff5f6] text-[#ff052f] border-[#ffccd3]'
+        : 'bg-white text-gray-500 border-gray-200 hover:text-gray-900 hover:border-gray-300',
+    );
+
+  const filterPanel = (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <label className="text-xs font-bold text-gray-700">Search</label>
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search products…"
+            className="w-full pl-9 pr-8 h-10 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#ff052f]/20 focus:border-[#ff052f] rounded-md text-sm bg-white"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              aria-label="Clear search"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-bold text-gray-700">Category</label>
+        {loadingCats ? (
+          <RefreshCw className="w-4 h-4 animate-spin text-gray-300 my-2" />
+        ) : (
+          <div className="space-y-1">
+            {[{ id: 'all', slug: null as string | null, name: 'All categories' },
+              ...categoryTabs.map(c => ({ id: c.id, slug: c.slug as string | null, name: c.name })),
+              { id: 'frames', slug: FRAMES_TAB as string | null, name: 'Eyewear frames' }].map(cat => {
+              const active = activeCategorySlug === cat.slug;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveCategorySlug(cat.slug)}
+                  className={cn(
+                    'w-full flex items-center gap-2.5 px-3 h-10 rounded-md text-sm font-semibold transition-colors text-left border',
+                    active
+                      ? 'bg-[#fff5f6] text-[#ff052f] border-[#ffccd3]'
+                      : 'text-gray-600 border-transparent hover:bg-gray-50',
+                  )}
+                >
+                  <span className={cn('w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0',
+                    active ? 'border-[#ff052f]' : 'border-gray-300')}>
+                    {active && <span className="w-2 h-2 rounded-full bg-[#ff052f]" />}
+                  </span>
+                  <span className="truncate">{cat.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-baseline justify-between">
+          <label className="text-xs font-bold text-gray-700">Max price</label>
+          <span className="text-xs font-bold text-[#ff052f]">₦{priceRange.toLocaleString()}</span>
+        </div>
+        <input
+          type="range"
+          min={1000}
+          max={PRICE_CEILING}
+          step={5000}
+          value={priceRange}
+          onChange={e => setPriceRange(Number(e.target.value))}
+          className="w-full accent-[#ff052f]"
+        />
+        <div className="flex justify-between text-[11px] text-gray-400 font-semibold">
+          <span>₦1,000</span>
+          <span>₦{PRICE_CEILING.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {activeFilterCount > 0 && (
+        <button
+          onClick={() => { setSearch(''); setPriceRange(PRICE_CEILING); }}
+          className="w-full h-10 rounded-md border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          Clear filters
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div className="w-full bg-[#f8f9fc] min-h-screen text-[#1f2937]">
-
-      {/* Breadcrumb */}
-      <div className="bg-white px-6 rounded-xl border border-gray-100 mb-6">
+      <div className="bg-white px-6 rounded-md border border-gray-200 mb-6">
         <Breadcrumbs />
       </div>
 
-      {/* Page Header */}
+      {/* Header */}
       <div className="mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-extrabold text-[#111827]">Naderk Marketplace</h1>
-          <p className="text-gray-400 text-xs mt-0.5">
-            Explore wellness products, designer frames, and professional laboratory equipment.
+          <p className="text-gray-500 text-sm mt-1">
+            Wellness products, designer frames, and professional laboratory equipment.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Link
             href="/dashboard/marketplace/optical-builder"
-            className="inline-flex items-center gap-2 bg-[#ff052f] hover:bg-[#d90022] text-white font-bold px-4 py-2 rounded-full shadow-md shadow-red-100 transition text-xs"
+            className="inline-flex items-center gap-2 bg-[#ff052f] hover:bg-[#d90022] text-white font-bold px-4 h-10 rounded-md transition-colors text-sm"
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            Launch Glasses Builder
+            <Sparkles className="w-4 h-4" />
+            Glasses Builder
           </Link>
           <Link
             href="/dashboard/cart"
-            className="relative p-2 bg-white text-[#374151] hover:text-[#ff052f] transition border border-gray-200 rounded-full hover:border-[#ffe4e6]"
+            aria-label="Cart"
+            className="relative inline-flex items-center justify-center w-10 h-10 bg-white text-gray-600 hover:text-[#ff052f] transition-colors border border-gray-200 rounded-md hover:border-[#ffccd3]"
           >
             <ShoppingBag className="w-4 h-4" />
             {cart?.items && cart.items.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-[#ff052f] text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center border border-white">
+              <span className="absolute -top-1.5 -right-1.5 bg-[#ff052f] text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center border-2 border-white">
                 {cart.items.reduce((s, i) => s + i.quantity, 0)}
               </span>
             )}
@@ -162,370 +332,212 @@ export default function MarketplacePage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-6 items-start">
+        {/* Filters — inline on desktop, collapsible on mobile */}
+        <aside className="hidden lg:block bg-white p-5 rounded-md border border-gray-200 lg:sticky lg:top-6">
+          <h2 className="text-sm font-extrabold text-gray-900 mb-4 pb-3 border-b border-gray-100">Filters</h2>
+          {filterPanel}
+        </aside>
 
-        {/* ── Left Filters ── */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-100 space-y-6 lg:sticky lg:top-6">
-          <div>
-            <h3 className="font-extrabold text-sm text-[#111827] uppercase tracking-wider mb-4">Filters</h3>
-            <div className="h-px bg-gray-100 w-full" />
-          </div>
-
-          {/* Search */}
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">Search</span>
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search products..."
-                className="w-full pl-9 pr-3 py-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-xl text-xs bg-[#f8f9fc]"
-              />
-            </div>
-          </div>
-
-          {/* Category — API-driven */}
-          <div className="space-y-2">
-            <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">Category</span>
-
-            {loadingCats ? (
-              <RefreshCw className="w-4 h-4 animate-spin text-gray-300 mx-auto my-2" />
-            ) : (
-              <div className="space-y-1">
-                {/* All option */}
-                <button
-                  onClick={() => setActiveCategorySlug(null)}
-                  className={cn(
-                    "w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition text-left",
-                    activeCategorySlug === null
-                      ? "bg-[#fff5f6] text-[#ff052f] border border-[#ffccd3]"
-                      : "text-gray-500 hover:bg-gray-50"
-                  )}
-                >
-                  <div className={cn("w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0",
-                    activeCategorySlug === null ? "border-[#ff052f]" : "border-gray-300"
-                  )}>
-                    {activeCategorySlug === null && <div className="w-1.5 h-1.5 rounded-full bg-[#ff052f]" />}
-                  </div>
-                  All Categories
-                </button>
-
-                {categories.map(cat => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setActiveCategorySlug(cat.slug)}
-                    className={cn(
-                      "w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition text-left",
-                      activeCategorySlug === cat.slug
-                        ? "bg-[#fff5f6] text-[#ff052f] border border-[#ffccd3]"
-                        : "text-gray-500 hover:bg-gray-50"
-                    )}
-                  >
-                    <div className={cn("w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0",
-                      activeCategorySlug === cat.slug ? "border-[#ff052f]" : "border-gray-300"
-                    )}>
-                      {activeCategorySlug === cat.slug && <div className="w-1.5 h-1.5 rounded-full bg-[#ff052f]" />}
-                    </div>
-                    <span className="text-gray-400">
-                      {CATEGORY_ICONS[cat.slug] ?? null}
-                    </span>
-                    {cat.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Price Range */}
-          <div className="space-y-2.5">
-            <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">Max Price</span>
-            <input
-              type="range"
-              min="1000"
-              max="2500000"
-              step="5000"
-              value={priceRange}
-              onChange={e => setPriceRange(Number(e.target.value))}
-              className="w-full accent-[#ff052f]"
-            />
-            <div className="flex justify-between text-[10px] text-gray-400 font-bold">
-              <span>₦1,000</span>
-              <span>₦{priceRange.toLocaleString()}</span>
-            </div>
-          </div>
-
-          {/* Colors */}
-          <div className="space-y-2.5">
-            <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">Colors</span>
-            <div className="flex gap-2 flex-wrap">
-              {[
-                { name: 'Red',       hex: '#ff052f' },
-                { name: 'Blue',      hex: '#60a5fa' },
-                { name: 'Purple',    hex: '#6366f1' },
-                { name: 'Dark Grey', hex: '#1f2937' },
-              ].map(color => (
-                <button
-                  key={color.name}
-                  onClick={() => setSelectedColor(selectedColor === color.name ? '' : color.name)}
-                  className={cn(
-                    "w-6 h-6 rounded-full border-2 transition relative flex items-center justify-center",
-                    selectedColor === color.name ? "border-gray-400 scale-110" : "border-transparent"
-                  )}
-                  style={{ backgroundColor: color.hex }}
-                  title={color.name}
-                >
-                  {selectedColor === color.name && <Check className="w-3.5 h-3.5 text-white" />}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="lg:hidden">
+          <button
+            onClick={() => setFiltersOpen(o => !o)}
+            className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-md px-4 h-11 text-sm font-bold text-gray-700"
+          >
+            <span className="inline-flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4" /> Filters
+              {activeFilterCount > 0 && (
+                <span className="bg-[#ff052f] text-white text-[10px] rounded-full px-1.5 py-0.5">{activeFilterCount}</span>
+              )}
+            </span>
+            <span className="text-gray-400">{filtersOpen ? '−' : '+'}</span>
+          </button>
+          {filtersOpen && (
+            <div className="mt-3 bg-white p-5 rounded-md border border-gray-200">{filterPanel}</div>
+          )}
         </div>
 
-        {/* ── Right Product Grid ── */}
-        <div className="lg:col-span-3 space-y-6">
-
-          {/* Promo Banner */}
+        <div className="space-y-6 min-w-0">
+          {/* Hero — promotes a real feature rather than a fabricated countdown */}
           <div
-            className="relative bg-cover bg-center rounded-3xl p-6 md:p-8 text-white overflow-hidden min-h-[160px] flex flex-col justify-center"
+            className="relative bg-cover bg-center rounded-md p-6 md:p-8 text-white overflow-hidden min-h-[170px] flex flex-col justify-center"
             style={{
-              backgroundImage: `linear-gradient(to right, rgba(0,0,0,0.72), rgba(0,0,0,0.2)), url('https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=1200')`,
+              backgroundImage: `linear-gradient(to right, rgba(17,24,39,0.88), rgba(17,24,39,0.35)), url('https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=1200')`,
             }}
           >
-            <div className="relative z-10 max-w-md space-y-2">
-              <span className="inline-block px-3 py-1 rounded-full text-[9px] font-extrabold bg-white text-[#ff052f] uppercase tracking-wider">
-                Limited Time Offer
+            <div className="relative z-10 max-w-lg space-y-2.5">
+              <span className="inline-block px-2.5 py-1 rounded-md text-[10px] font-extrabold bg-white text-[#ff052f] uppercase tracking-wider">
+                Prescription eyewear
               </span>
-              <h2 className="text-xl md:text-3xl font-black uppercase tracking-tight">
-                Flash Deals — Up to 60% Off
+              <h2 className="text-xl md:text-2xl font-extrabold leading-tight">
+                Build your glasses, frame to lens
               </h2>
-              <p className="text-[11px] text-gray-200">
-                Next drop in: {String(countdown.hours).padStart(2, '0')}:{String(countdown.minutes).padStart(2, '0')}:{String(countdown.seconds).padStart(2, '0')}
+              <p className="text-sm text-gray-200">
+                Pick a frame, add your prescription, and choose the lens that fits how you see.
               </p>
+              <Link
+                href="/dashboard/marketplace/optical-builder"
+                className="inline-flex items-center gap-2 bg-white text-gray-900 hover:bg-gray-100 font-bold px-4 h-10 rounded-md text-sm transition-colors"
+              >
+                Start building <ArrowRight className="w-4 h-4" />
+              </Link>
             </div>
           </div>
 
-          {/* Category Tab Pills + Sort */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white px-4 py-3 rounded-2xl border border-gray-100">
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={() => setActiveCategorySlug(null)}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-bold transition",
-                  activeCategorySlug === null
-                    ? "bg-[#fff5f6] text-[#ff052f] border border-[#ffccd3]"
-                    : "text-gray-400 hover:text-gray-600"
-                )}
-              >
-                All Items
+          {/* Tabs + sort */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex gap-2 flex-wrap min-w-0">
+              <button onClick={() => setActiveCategorySlug(null)} className={tabClass(activeCategorySlug === null)}>
+                All items
               </button>
               {categoryTabs.map(cat => (
                 <button
                   key={cat.id}
                   onClick={() => setActiveCategorySlug(cat.slug)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5",
-                    activeCategorySlug === cat.slug
-                      ? "bg-[#fff5f6] text-[#ff052f] border border-[#ffccd3]"
-                      : "text-gray-400 hover:text-gray-600"
-                  )}
+                  className={tabClass(activeCategorySlug === cat.slug)}
                 >
                   {CATEGORY_ICONS[cat.slug]}
                   {cat.name}
                 </button>
               ))}
-              {/* Eyewear frames (separate model, sold on their own) */}
-              <button
-                onClick={() => setActiveCategorySlug(FRAMES_TAB)}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5",
-                  showingFrames ? "bg-[#fff5f6] text-[#ff052f] border border-[#ffccd3]" : "text-gray-400 hover:text-gray-600"
-                )}
-              >
+              <button onClick={() => setActiveCategorySlug(FRAMES_TAB)} className={tabClass(showingFrames)}>
                 <Glasses className="w-4 h-4" /> Frames
               </button>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs font-semibold text-gray-400">Sort:</span>
-              <select
-                value={sortBy}
-                onChange={e => setSortBy(e.target.value)}
-                className="bg-transparent text-xs font-bold text-gray-700 border border-gray-200 rounded-xl px-2.5 py-1.5 focus:outline-none"
-              >
-                <option value="newest">Newest</option>
-                <option value="price_asc">Price: Low → High</option>
-                <option value="price_desc">Price: High → Low</option>
-                <option value="name_asc">Name A–Z</option>
-              </select>
-            </div>
+            {!isBrowsing && (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs font-semibold text-gray-400">Sort</span>
+                <select
+                  value={sortBy}
+                  onChange={e => setSortBy(e.target.value)}
+                  className="bg-white text-xs font-bold text-gray-700 border border-gray-200 rounded-md px-2.5 h-9 focus:outline-none focus:border-[#ff052f]"
+                >
+                  <option value="newest">Newest</option>
+                  <option value="price_asc">Price: Low → High</option>
+                  <option value="price_desc">Price: High → Low</option>
+                  <option value="name_asc">Name A–Z</option>
+                </select>
+              </div>
+            )}
           </div>
 
-          {/* Category description strip */}
-          {activeCategorySlug && !showingFrames && (
-            <div className="bg-white border border-gray-100 rounded-xl px-5 py-3 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-md bg-[#fff5f6] text-[#ff052f] flex items-center justify-center shrink-0">
-                {CATEGORY_ICONS[activeCategorySlug] ?? <ShoppingBagIcon className="w-4 h-4" />}
-              </div>
-              <div>
-                <p className="text-xs font-extrabold text-gray-900">
-                  {categories.find(c => c.slug === activeCategorySlug)?.name}
-                </p>
-                <p className="text-[10px] text-gray-400 font-semibold">
-                  {categories.find(c => c.slug === activeCategorySlug)?.description}
-                </p>
-              </div>
-            </div>
-          )}
+          {/* ── Browse: one horizontal shelf per category ── */}
+          {isBrowsing ? (
+            <div className="space-y-8">
+              {categoryTabs.map(cat => (
+                <CategoryShelf
+                  key={cat.id}
+                  slug={cat.slug}
+                  name={cat.name}
+                  description={cat.description}
+                  sortBy={sortBy}
+                  onSeeAll={() => setActiveCategorySlug(cat.slug)}
+                  cardProps={cardProps}
+                  isInWishlist={isInWishlist}
+                />
+              ))}
 
-          {/* Frames grid (eyewear frames, sold on their own) */}
-          {showingFrames ? (
+              {visibleFrames.length > 0 && (
+                <CarouselRow
+                  title="Eyewear Frames"
+                  subtitle={`${visibleFrames.length} frame${visibleFrames.length === 1 ? '' : 's'}`}
+                  icon={<Glasses className="w-4 h-4 text-[#ff052f]" />}
+                  action={
+                    <button
+                      onClick={() => setActiveCategorySlug(FRAMES_TAB)}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-[#ff052f] transition-colors"
+                    >
+                      See all <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  }
+                >
+                  {visibleFrames.map(frame => (
+                    <FrameCard key={frame.id} frame={frame} fixedWidth />
+                  ))}
+                </CarouselRow>
+              )}
+            </div>
+          ) : showingFrames ? (
+            /* ── Frames grid ── */
             visibleFrames.length === 0 ? (
-              <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
-                <Glasses className="w-8 h-8 mx-auto text-gray-300 mb-2" />
-                <h3 className="font-semibold text-gray-600 text-sm">No frames found</h3>
-                <p className="text-xs text-gray-400 mt-1">Try a different search or adjust the price range.</p>
-              </div>
+              <EmptyState
+                icon={<Glasses className="w-9 h-9" />}
+                title="No frames found"
+                hint="Try a different search or raise the max price."
+              />
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {visibleFrames.map(frame => (
-                  <Link
-                    key={frame.id}
-                    href={`/dashboard/marketplace/frame/${frame.id}`}
-                    className="group bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-gray-200/80 transition duration-300 flex flex-col"
-                  >
-                    <div className="relative aspect-square bg-[#f8f9fc] overflow-hidden flex items-center justify-center">
-                      {frame.front_image ? (
-                        <img src={frame.front_image} alt={frame.name} className="object-contain w-full h-full p-3 group-hover:scale-105 transition duration-500" />
-                      ) : (
-                        <Glasses className="w-10 h-10 text-gray-300" />
-                      )}
-                      <span className="absolute top-2.5 left-2.5 text-[8px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-white text-[#ff052f] border border-[#ff052f]">
-                        {frame.gender_display ?? 'Frame'}
-                      </span>
-                    </div>
-                    <div className="p-3.5 space-y-2 flex-1 flex flex-col justify-between">
-                      <div className="space-y-0.5">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{frame.brand}</span>
-                        <h4 className="font-bold text-gray-900 text-xs leading-snug line-clamp-2 group-hover:text-[#ff052f] transition">{frame.name}</h4>
-                        <p className="text-[10px] text-gray-400 font-semibold">{frame.style} · {frame.material}</p>
-                      </div>
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="font-black text-[#ff052f] text-sm">₦{parseFloat(frame.base_price).toLocaleString()}</span>
-                        <span className="text-[10px] font-bold text-gray-500 group-hover:text-[#ff052f]">View →</span>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
+                {visibleFrames.map(frame => <FrameCard key={frame.id} frame={frame} />)}
               </div>
             )
           ) : loadingProducts ? (
-            <div className="py-20 flex justify-center">
-              <RefreshCw className="animate-spin text-[#ff052f] w-8 h-8" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="h-[360px] bg-white border border-gray-100 rounded-md animate-pulse" />
+              ))}
             </div>
-          ) : filteredProducts.length === 0 ? (
-            <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
-              <ShoppingBagIcon className="w-8 h-8 mx-auto text-gray-300 mb-2" />
-              <h3 className="font-semibold text-gray-600 text-sm">No products found</h3>
-              <p className="text-xs text-gray-400 mt-1">Try a different category or adjust the price range.</p>
-            </div>
+          ) : gridProducts.length === 0 ? (
+            <EmptyState
+              icon={<ShoppingBagIcon className="w-9 h-9" />}
+              title="No products found"
+              hint="Try a different category, or adjust your search and price range."
+            />
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredProducts.map((product, idx) => {
-                const badge = BADGE_STYLES[idx % BADGE_STYLES.length];
-                const inWishlist = isInWishlist(product.id);
-                return (
-                  <motion.div
-                    layout
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
+                {gridProducts.map(product => (
+                  <ProductCard
                     key={product.id}
-                    className="group bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-xs hover:shadow-md hover:border-gray-200/80 transition duration-300 flex flex-col"
+                    product={product}
+                    {...cardProps}
+                    inWishlist={isInWishlist(product.id)}
+                  />
+                ))}
+              </div>
+
+              {/* Infinite scroll sentinel */}
+              <div ref={sentinelRef} className="pt-6 text-center">
+                {isFetchingNextPage ? (
+                  <span className="inline-flex items-center gap-2 text-xs font-bold text-gray-400">
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Loading more…
+                  </span>
+                ) : hasNextPage ? (
+                  <button
+                    onClick={() => fetchNextPage()}
+                    className="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 text-xs font-bold px-6 h-10 rounded-md transition-colors"
                   >
-                    {/* Image */}
-                    <div className="relative aspect-square bg-[#f8f9fc] overflow-hidden">
-                      <Link href={`/dashboard/marketplace/product/${product.id}`} className="block w-full h-full">
-                        <img
-                          src={product.images[0]}
-                          alt={product.name}
-                          className="object-cover w-full h-full group-hover:scale-105 transition duration-500"
-                        />
-                      </Link>
-                      <span className={cn("absolute top-2.5 left-2.5 text-[8px] font-extrabold uppercase px-2 py-0.5 rounded-full pointer-events-none", badge.cls)}>
-                        {badge.text}
-                      </span>
-                      <button
-                        onClick={e => handleToggleWishlist(product.id, e)}
-                        className={cn(
-                          "absolute top-2.5 right-2.5 p-1.5 rounded-full transition",
-                          inWishlist ? "bg-[#ff052f] text-white" : "bg-white text-gray-300 hover:text-[#ff052f]"
-                        )}
-                      >
-                        <Heart className="w-3.5 h-3.5 fill-current" />
-                      </button>
-                    </div>
-
-                    {/* Info */}
-                    <div className="p-3.5 space-y-3 flex-1 flex flex-col justify-between">
-                      <Link href={`/dashboard/marketplace/product/${product.id}`} className="space-y-0.5 block group/info">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                          {product.category_name}
-                        </span>
-                        <h4 className="font-bold text-gray-900 text-xs leading-snug line-clamp-2 group-hover/info:text-[#ff052f] transition">{product.name}</h4>
-                        <p className="text-[10px] text-gray-400 font-semibold line-clamp-1">{product.description}</p>
-                      </Link>
-
-                      <div className="flex items-baseline gap-2 pt-1">
-                        <span className="font-black text-[#ff052f] text-sm">
-                          ₦{parseFloat(product.price).toLocaleString()}
-                        </span>
-                      </div>
-
-                      {product.variants && product.variants.length > 0 ? (
-                        // Product has variants — send to detail page to choose one (don't auto-apply markup)
-                        <Link
-                          href={`/dashboard/marketplace/product/${product.id}`}
-                          className="w-full block text-center bg-[#ff052f] hover:bg-[#d90022] text-white text-[11px] font-bold py-2 rounded-xl transition shadow-xs"
-                        >
-                          Select Options
-                        </Link>
-                      ) : (
-                        <button
-                          onClick={e => handleAddToCart(product, e)}
-                          disabled={addToCartMutation.isPending}
-                          className="w-full bg-[#ff052f] hover:bg-[#d90022] disabled:opacity-50 text-white text-[11px] font-bold py-2 rounded-xl transition shadow-xs"
-                        >
-                          Buy Now
-                        </button>
-                      )}
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          )}
-
-          {!showingFrames && !loadingProducts && filteredProducts.length > 0 && (
-            <div className="pt-8 text-center space-y-3">
-              <button className="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 text-xs font-bold px-6 py-2.5 rounded-xl transition shadow-xs">
-                Load More Products
-              </button>
-              <p className="text-[10px] text-gray-400 font-bold">
-                Showing {filteredProducts.length} products
-              </p>
-            </div>
+                    Load more
+                  </button>
+                ) : (
+                  <p className="text-xs text-gray-400 font-semibold">
+                    Showing all {gridProducts.length} of {totalProducts} products
+                  </p>
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>
 
-      {/* Footer */}
-      <footer className="mt-20 border-t border-gray-100 py-10 text-center space-y-4">
-        <p className="text-[10px] text-gray-400 font-semibold">© 2026 NaderkEye Care. All rights reserved.</p>
-        <div className="flex justify-center gap-6 text-[10px] text-gray-400 font-bold">
-          <Link href="/privacy" className="hover:text-[#ff052f] transition">Privacy Policy</Link>
-          <Link href="/terms" className="hover:text-[#ff052f] transition">Terms of Service</Link>
-          <Link href="/rights" className="hover:text-[#ff052f] transition">Patient's Rights</Link>
+      <footer className="mt-16 border-t border-gray-200 py-8 text-center space-y-3">
+        <p className="text-xs text-gray-400 font-semibold">© 2026 NaderkEye Care. All rights reserved.</p>
+        <div className="flex justify-center gap-6 text-xs text-gray-400 font-bold">
+          <Link href="/privacy" className="hover:text-[#ff052f] transition-colors">Privacy Policy</Link>
+          <Link href="/terms" className="hover:text-[#ff052f] transition-colors">Terms of Service</Link>
+          <Link href="/rights" className="hover:text-[#ff052f] transition-colors">Patient&apos;s Rights</Link>
         </div>
       </footer>
+    </div>
+  );
+}
+
+function EmptyState({ icon, title, hint }: { icon: React.ReactNode; title: string; hint: string }) {
+  return (
+    <div className="text-center py-20 bg-white rounded-md border border-dashed border-gray-200">
+      <div className="mx-auto text-gray-300 mb-3 flex justify-center">{icon}</div>
+      <h3 className="font-bold text-gray-700 text-sm">{title}</h3>
+      <p className="text-xs text-gray-400 mt-1">{hint}</p>
     </div>
   );
 }

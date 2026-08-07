@@ -103,7 +103,7 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
     );
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20 select-none">
+    <div className="w-full max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-in fade-in duration-500 pb-16 select-none">
 
       {/* Header */}
       <div className="flex items-center gap-3">
@@ -118,10 +118,10 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
           </Button>
         )}
         <div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">
+          <h1 className="text-lg sm:text-xl md:text-2xl font-extrabold text-gray-900 tracking-tight">
             {mode === 'PATIENT' ? 'Your Health History' : `Patient: ${overview?.patient_info?.name || '—'}`}
           </h1>
-          <p className="text-gray-500 text-sm mt-1 font-semibold">
+          <p className="text-gray-500 text-xs sm:text-sm mt-1 font-semibold">
             {mode === 'PATIENT'
               ? 'Access clinical summaries, prescriptions, and lab results in one place.'
               : `Clinical dashboard history · ID: ${overview?.patient_info?.patient_id || '—'}`}
@@ -140,21 +140,21 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
           />
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 items-start">
 
           {/* LEFT COLUMN — Visit Notes + Diagnostic Results */}
-          <div className="lg:col-span-8 space-y-8">
+          <div className="lg:col-span-8 space-y-6">
 
             {/* Recent Visit Notes */}
             <div>
-              <h3 className="font-extrabold text-gray-900 text-base mb-4">Recent Visit Notes</h3>
+              <h3 className="font-extrabold text-gray-900 text-sm mb-3">Recent Visit Notes</h3>
               <Card className="bg-white border border-gray-100 rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.01)]">
                 {isEncountersLoading ? (
                   <div className="py-12 flex justify-center">
                     <Loader2 className="w-6 h-6 text-[#E03E3E] animate-spin" />
                   </div>
                 ) : !encountersResponse || encountersResponse.results.length === 0 ? (
-                  <div className="p-6">
+                  <div className="p-4 sm:p-5">
                     <EmptyState role={mode} configKey="NO_ENCOUNTERS" />
                   </div>
                 ) : (
@@ -164,7 +164,7 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
                         key={enc.id}
                         onClick={() => setSelectedEncounterId(enc.id)}
                         className={cn(
-                          "flex items-center gap-4 px-6 py-4 hover:bg-gray-50/60 cursor-pointer transition-colors group",
+                          "flex items-center gap-3 px-4 sm:px-5 py-3.5 hover:bg-gray-50/60 cursor-pointer transition-colors group",
                           idx < encountersResponse.results.length - 1 && "border-b border-gray-100"
                         )}
                       >
@@ -216,7 +216,7 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
 
             {/* Diagnostic Results */}
             <div>
-              <h3 className="font-extrabold text-gray-900 text-base mb-4">Diagnostic Results</h3>
+              <h3 className="font-extrabold text-gray-900 text-sm mb-3">Diagnostic Results</h3>
               {isDiagnosticsLoading ? (
                 <div className="py-8 flex justify-center">
                   <Loader2 className="w-6 h-6 text-[#E03E3E] animate-spin" />
@@ -225,7 +225,7 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
                 <EmptyState role={mode} configKey="NO_DIAGNOSTICS" />
               ) : (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {diagnosticsResponse.results.map((diag) => (
                       <Card key={diag.id} className="p-4 bg-white border border-gray-100 rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.01)] space-y-2">
                         <div className="flex items-center justify-between">
@@ -278,7 +278,7 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
 
             {/* Prescriptions: Active Eyewear + Medications combined */}
             <div>
-              <h3 className="font-extrabold text-gray-900 text-base mb-4">Prescriptions</h3>
+              <h3 className="font-extrabold text-gray-900 text-sm mb-3">Prescriptions</h3>
               <Card className="bg-white border border-gray-100 rounded-md shadow-[0_4px_20px_rgba(0,0,0,0.01)] overflow-hidden">
 
                 {/* Active Eyewear sub-section */}
@@ -330,7 +330,7 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
                     )}
 
                     {(!prescriptionsResponse || prescriptionsResponse.results.length === 0) && (!overview?.active_medications || overview.active_medications.length === 0) && (
-                      <div className="p-6">
+                      <div className="p-4 sm:p-5">
                         <EmptyState role={mode} configKey="NO_PRESCRIPTIONS" />
                       </div>
                     )}
@@ -341,7 +341,7 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
 
             {/* Recent Scans */}
             <div>
-              <h3 className="font-extrabold text-gray-900 text-base mb-4">Recent Scans</h3>
+              <h3 className="font-extrabold text-gray-900 text-sm mb-3">Recent Scans</h3>
               {isScansLoading ? (
                 <div className="py-6 flex justify-center">
                   <Loader2 className="w-6 h-6 text-[#E03E3E] animate-spin" />
