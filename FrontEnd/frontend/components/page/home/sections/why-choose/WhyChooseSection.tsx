@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn"
+import { getSiteBrand } from "@/lib/site-brand"
 import {
   WHY_CHOOSE_DESCRIPTION,
   WHY_CHOOSE_FEATURES,
@@ -7,11 +8,16 @@ import {
 import { WhyChooseCard } from "./WhyChooseCard"
 import type { WhyChooseSectionProps } from "./why-choose.types"
 
-export function WhyChooseSection({
+export async function WhyChooseSection({
   title = WHY_CHOOSE_TITLE,
   description = WHY_CHOOSE_DESCRIPTION,
   features = WHY_CHOOSE_FEATURES,
 }: WhyChooseSectionProps) {
+  // The constant carries a {brand} placeholder so the copy stays editable in one
+  // place while still following a CMS rename.
+  const brand = await getSiteBrand()
+  const heading = title.replace(/\{brand\}/g, brand.name)
+
   return (
     <section aria-labelledby="why-choose-heading" className="bg-muted/50 py-16 lg:py-0 lg:h-[487px] flex items-center">
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -20,7 +26,7 @@ export function WhyChooseSection({
             id="why-choose-heading"
             className="text-balance text-3xl font-bold leading-tight text-foreground sm:text-4xl"
           >
-            {title}
+            {heading}
           </h2>
           <p className="mt-4 max-w-3xl text-base leading-relaxed text-muted-foreground sm:text-lg">
             {description}

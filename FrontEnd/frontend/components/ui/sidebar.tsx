@@ -185,7 +185,7 @@ import type React from "react"
   <div className="flex h-screen">
     <Sidebar>
       <SidebarHeader>
-        <span className="font-bold text-lg">Naderk</span>
+        <span className="font-bold text-lg truncate">Acme</span>
       </SidebarHeader>
       <SidebarContent>
         <SidebarSection title="Main">

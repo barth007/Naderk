@@ -24,7 +24,7 @@ export const DEFAULT_NAV_ITEMS: NavItem[] = [
         isFeatured: true,
       },
       {
-        label: "Naderk Marketplace",
+        label: "Marketplace",
         href: "/dashboard/marketplace",
       },
       {

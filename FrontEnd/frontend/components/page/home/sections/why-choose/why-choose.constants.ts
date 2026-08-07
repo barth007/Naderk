@@ -1,6 +1,7 @@
 import type { WhyChooseFeature } from "./why-choose.types"
 
-export const WHY_CHOOSE_TITLE = "Why Choose NaderkEye?"
+/** `{brand}` is substituted with the CMS company name at render time. */
+export const WHY_CHOOSE_TITLE = "Why Choose {brand}?"
 
 export const WHY_CHOOSE_DESCRIPTION =
   "We are committed to providing high-quality eye care services using advanced technology and experienced specialists."

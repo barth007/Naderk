@@ -14,6 +14,7 @@ import {
 import { format, parseISO } from 'date-fns';
 import { useCart } from '@/services/marketplace/marketplace.hooks';
 import { useBrand } from '@/services/cms/admin-cms.hooks';
+import BrandLogo from '@/components/layout/BrandLogo';
 
 export default function DashboardNavbar() {
   const pathname = usePathname();
@@ -112,7 +113,7 @@ export default function DashboardNavbar() {
             <Menu className="w-5 h-5" />
           </button>
           <Link href="/" className="flex items-center">
-            <img src={brand.logoUrl ?? '/naderk_logo.png'} alt={brand.name} className="h-8 md:h-14 object-contain" />
+            <BrandLogo size="lg" />
           </Link>
         </div>
 

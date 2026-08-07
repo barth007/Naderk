@@ -10,6 +10,7 @@ import {
   DEFAULT_CTA_BUTTONS,
 } from "./navbar.constants"
 import { useBrand } from "@/services/cms/admin-cms.hooks"
+import BrandLogo from "@/components/layout/BrandLogo"
 import type {
   NavbarProps,
   NavItem,
@@ -255,14 +256,7 @@ function MobileNav({ id, items, ctas, activePath, isOpen, onClose, logoSrc = '/n
         {/* Drawer header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
           <Link href="/" onClick={onClose} className="flex items-center gap-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={logoSrc}
-              alt={logoAlt}
-              width={130}
-              height={40}
-              className="h-10 w-auto object-contain"
-            />
+            <BrandLogo size="md" />
           </Link>
           <button
             type="button"
@@ -474,14 +468,7 @@ export function Navbar({
                 "transition-opacity duration-150 hover:opacity-80"
               )}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={logoSrc}
-                alt={logoAlt}
-                width={110}
-                height={70}
-                className="object-contain"
-              />
+              <BrandLogo size="lg" />
             </Link>
           </div>
 

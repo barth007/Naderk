@@ -31,6 +31,7 @@ import ProductCard from '@/components/marketplace/ProductCard';
 import FrameCard from '@/components/marketplace/FrameCard';
 import CarouselRow from '@/components/marketplace/CarouselRow';
 import { toast } from 'sonner';
+import { useBrand } from '@/services/cms/admin-cms.hooks';
 import { cn } from '@/lib/cn';
 
 const FRAMES_TAB = '__frames__'; // sentinel slug for the eyewear-frames view
@@ -118,6 +119,7 @@ export default function MarketplacePage() {
     return () => clearTimeout(t);
   }, [search]);
 
+  const brand = useBrand();
   const { data: categories = [], isLoading: loadingCats } = useCategories();
   const { data: frames = [] } = useFrames(debouncedSearch || undefined);
   const { data: wishlist } = useWishlist();
@@ -304,7 +306,7 @@ export default function MarketplacePage() {
       {/* Header */}
       <div className="mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-[#111827]">Naderk Marketplace</h1>
+          <h1 className="text-2xl font-extrabold text-[#111827]">{brand.name} Marketplace</h1>
           <p className="text-gray-500 text-sm mt-1">
             Wellness products, designer frames, and professional laboratory equipment.
           </p>
@@ -521,7 +523,7 @@ export default function MarketplacePage() {
       </div>
 
       <footer className="mt-16 border-t border-gray-200 py-8 text-center space-y-3">
-        <p className="text-xs text-gray-400 font-semibold">© 2026 NaderkEye Care. All rights reserved.</p>
+        <p className="text-xs text-gray-400 font-semibold">© {new Date().getFullYear()} {brand.name}. All rights reserved.</p>
         <div className="flex justify-center gap-6 text-xs text-gray-400 font-bold">
           <Link href="/privacy" className="hover:text-[#ff052f] transition-colors">Privacy Policy</Link>
           <Link href="/terms" className="hover:text-[#ff052f] transition-colors">Terms of Service</Link>

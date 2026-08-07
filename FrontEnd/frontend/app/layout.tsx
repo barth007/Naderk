@@ -4,12 +4,9 @@ import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { ConditionalWrapper } from "@/components/layout/ConditionalWrapper";
 import { Toaster } from "sonner";
+import { getSiteBrand } from "@/lib/site-brand";
 import "./globals.css";
 
-const siteName = "Naderk Eye Clinic";
-const defaultTitle = "Naderk Eye Clinic | Advanced Vision Care";
-const siteDescription =
-  "Naderk Eye Clinic provides comprehensive eye care, telehealth consultations, laboratory diagnostics, and optical services with modern technology and expert support.";
 
 const rawSiteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ??
@@ -31,16 +28,23 @@ const poppins = Poppins({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await getSiteBrand();
+  const siteName = brand.name;
+  const defaultTitle = `${brand.name} | Advanced Vision Care`;
+  const siteDescription = `${brand.name} provides ${brand.description}`;
+  const ogImage = brand.logoUrl ?? "/naderk_logo.png";
+
+  return {
   metadataBase: new URL(siteUrl),
   title: {
     default: defaultTitle,
-    template: "%s | Naderk Eye Clinic",
+    template: `%s | ${brand.name}`,
   },
   description: siteDescription,
   applicationName: siteName,
   keywords: [
-    "Naderk Eye Clinic",
+    brand.name,
     "eye clinic",
     "vision care",
     "telehealth eye consultation",
@@ -74,10 +78,10 @@ export const metadata: Metadata = {
     description: siteDescription,
     images: [
       {
-        url: "/naderk_logo.png",
+        url: ogImage,
         width: 1200,
         height: 630,
-        alt: "Naderk Eye Clinic",
+        alt: brand.name,
       },
     ],
   },
@@ -85,15 +89,16 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: defaultTitle,
     description: siteDescription,
-    images: ["/naderk_logo.png"],
+    images: [ogImage],
   },
   icons: {
     icon: "/icon.png",
     shortcut: "/icon.png",
     apple: "/icon.png",
   },
-  category: "healthcare",
-};
+    category: "healthcare",
+  };
+}
 
 import QueryProvider from "@/components/providers/QueryProvider";
 import { DynamicFavicon } from "@/components/layout/DynamicFavicon";

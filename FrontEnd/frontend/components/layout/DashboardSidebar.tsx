@@ -7,6 +7,7 @@ import * as LucideIcons from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { apiClient } from '@/lib/api';
 import { useBrand } from '@/services/cms/admin-cms.hooks';
+import BrandLogo from '@/components/layout/BrandLogo';
 import { Sidebar, SidebarContent, SidebarItem, SidebarFooter, SidebarSection } from '@/components/ui/sidebar';
 import { ROLE_CONFIGS } from '@/utils/role-config';
 import { useSidebar } from '@/context/SidebarContext';
@@ -89,7 +90,7 @@ export default function DashboardSidebar() {
 
           {/* Mobile close button */}
           <div className="md:hidden flex items-center justify-between px-4 pt-4 pb-2">
-            <img src={brand.logoUrl ?? '/naderk_logo.png'} alt={brand.name} className="h-9 object-contain" />
+            <BrandLogo size="md" />
             <button
               onClick={close}
               className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"

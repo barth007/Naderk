@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useBrand } from '@/services/cms/admin-cms.hooks';
 import {
   useAdminDashboard,
   AdminVolumeTrend,
@@ -314,6 +315,7 @@ function AppointmentRow({ appt }: { appt: AdminAppointmentQueueItem }) {
 // ---------- Main page ----------
 
 export default function AdminDashboardPage() {
+  const brand = useBrand();
   const { data, isLoading, isError, refetch } = useAdminDashboard();
   const stats = data?.stats;
 
@@ -339,7 +341,7 @@ export default function AdminDashboardPage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Clinical Oversight</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Monitoring daily operations at NaderkEye Center</p>
+          <p className="text-sm text-gray-500 mt-0.5">Monitoring daily operations at {brand.name}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button

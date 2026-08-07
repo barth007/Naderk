@@ -11,6 +11,7 @@ import {
   TableContainer, Table, TableHead, TableBody, TableRow, Th, Td,
 } from '@/components/ui/table';
 import { Pagination } from '@/components/ui/pagination';
+import { useBrand } from '@/services/cms/admin-cms.hooks';
 import {
   useAdminBillingSummary,
   useAdminTransactions,
@@ -236,6 +237,7 @@ function StatCard({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AdminBillingPage() {
+  const brand = useBrand();
   const [tab, setTab]         = useState<TabType>('all');
   const [page, setPage]       = useState(1);
   const [dateFrom, setDateFrom] = useState('');
@@ -281,7 +283,7 @@ export default function AdminBillingPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Clinical Oversight</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Billing & Revenue Management at NaderkEye Center</p>
+          <p className="text-sm text-gray-500 mt-0.5">Billing & Revenue Management at {brand.name}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <div className="flex items-center gap-1 border border-gray-200 rounded-[var(--radius-md)] px-3 h-9 bg-white text-xs text-gray-500">

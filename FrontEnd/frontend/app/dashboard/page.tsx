@@ -19,8 +19,10 @@ import {
 } from '@/services/appointments/appointments.hooks';
 import { usePrescriptions } from '@/services/marketplace/marketplace.hooks';
 import { useConversations } from '@/services/messaging/messaging.hooks';
+import { useBrand } from '@/services/cms/admin-cms.hooks';
 
 export default function DashboardPage() {
+  const brand = useBrand();
   const { user } = useAuth();
   
   // Queries
@@ -184,7 +186,7 @@ export default function DashboardPage() {
                     <h4 className="text-base font-extrabold text-gray-955 leading-tight">
                       Dr. {upcomingAppt.doctor?.first_name} {upcomingAppt.doctor?.last_name}, OD
                     </h4>
-                    <p className="text-xs text-gray-500 font-semibold mt-0.5">NaderkEye Centre main branch.</p>
+                    <p className="text-xs text-gray-500 font-semibold mt-0.5">{brand.name} main branch.</p>
                   </div>
 
                   <div className="flex flex-wrap gap-3 mt-2">

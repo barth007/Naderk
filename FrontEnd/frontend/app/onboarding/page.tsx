@@ -15,6 +15,7 @@ import { apiClient } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import DashboardNavbar from '@/components/layout/DashboardNavbar';
 
+import { useBrand } from '@/services/cms/admin-cms.hooks';
 import {
   PersonalInformationSection,
   ContactInformationSection,
@@ -89,6 +90,7 @@ const defaultStaffSchema = z.object({
 });
 
 export default function OnboardingPage() {
+  const brand = useBrand();
   const router = useRouter();
   const { user, isAuthenticated, setUser } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
@@ -350,7 +352,7 @@ export default function OnboardingPage() {
         </div>
 
         <footer className="mt-12 mb-8 text-center text-xs text-gray-500 space-y-3">
-          <p>© {new Date().getFullYear()} NaderkEye Care. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} {brand.name}. All rights reserved.</p>
         </footer>
       </main>
     </div>
