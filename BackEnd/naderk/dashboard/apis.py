@@ -69,9 +69,12 @@ class DoctorCalendarAPI(APIView):
 
     def get(self, request):
         doctor = request.user
-        appointments = Appointment.objects.filter(
-            doctor=doctor
-        ).exclude(status=Appointment.Status.CANCELLED).order_by('appointment_date', 'appointment_time')[:100]
+        appointments = (
+            Appointment.objects.filter(doctor=doctor)
+            .exclude_unpaid_checkouts()
+            .exclude(status=Appointment.Status.CANCELLED)
+            .order_by('appointment_date', 'appointment_time')[:100]
+        )
         
         results = []
         for appt in appointments:
@@ -91,10 +94,17 @@ class DoctorAppointmentsAPI(APIView):
     def get(self, request):
         doctor = request.user
         today = timezone.now().date()
-        appointments = Appointment.objects.filter(
-            doctor=doctor,
-            appointment_date=today
-        ).exclude(status__in=[Appointment.Status.CANCELLED, Appointment.Status.PENDING]).order_by('appointment_time')
+        # PENDING is kept here on purpose. It used to be excluded, so a paid
+        # appointment awaiting the doctor's acceptance showed on the calendar
+        # for today while this queue said "no patients waiting" — two widgets on
+        # one screen contradicting each other about the same booking. Unpaid
+        # rows are still filtered out, so only real bookings appear.
+        appointments = (
+            Appointment.objects.filter(doctor=doctor, appointment_date=today)
+            .exclude_unpaid_checkouts()
+            .exclude(status=Appointment.Status.CANCELLED)
+            .order_by('appointment_time')
+        )
         
         results = []
         for appt in appointments:
@@ -115,14 +125,12 @@ class DoctorRequestsAPI(APIView):
 
     def get(self, request):
         doctor = request.user
-        pending_requests = Appointment.objects.filter(
-            doctor=doctor,
-            status=Appointment.Status.PENDING,
-        ).exclude(
-            # Hide appointments awaiting payment — only surface to doctor once paid (or free).
-            payment_status=Appointment.PaymentStatus.PENDING,
-            consultation_fee__gt=0,
-        ).order_by('appointment_date', 'appointment_time')
+        # Only surface a request to the doctor once it is paid (or free).
+        pending_requests = (
+            Appointment.objects.filter(doctor=doctor, status=Appointment.Status.PENDING)
+            .exclude_unpaid_checkouts()
+            .order_by('appointment_date', 'appointment_time')
+        )
         
         results = []
         for appt in pending_requests:
@@ -314,11 +322,13 @@ class AdminDashboardSummaryAPI(APIView):
 
         # --- Appointment queue: today's appointments (must match the summary count above,
         # which counts all non-cancelled appointments, including PENDING) ---
-        queue_qs = Appointment.objects.filter(
-            appointment_date=today
-        ).exclude(
-            status=Appointment.Status.CANCELLED
-        ).order_by('appointment_time').select_related('patient', 'service')[:20]
+        queue_qs = (
+            Appointment.objects.filter(appointment_date=today)
+            .exclude_unpaid_checkouts()
+            .exclude(status=Appointment.Status.CANCELLED)
+            .order_by('appointment_time')
+            .select_related('patient', 'service')[:20]
+        )
 
         appointment_queue = []
         for appt in queue_qs:
@@ -409,10 +419,7 @@ class AdminAppointmentRequestsAPI(APIView):
 
         qs = (
             Appointment.objects.filter(status=Appointment.Status.PENDING)
-            .exclude(
-                payment_status=Appointment.PaymentStatus.PENDING,
-                consultation_fee__gt=0,
-            )
+            .exclude_unpaid_checkouts()
             .order_by('-created_at')
             .select_related('patient', 'doctor', 'service')[:50]
         )

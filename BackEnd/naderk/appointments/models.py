@@ -52,6 +52,43 @@ class MedicalService(models.Model):
     def __str__(self):
         return self.name
 
+class AppointmentQuerySet(models.QuerySet):
+    """
+    Shared definition of what counts as a real booking.
+
+    `POST /appointments/create/` writes the appointment row *before* Paystack is
+    initialized, so a failed or abandoned checkout leaves behind a PENDING row
+    with a fee and no payment. Those are not bookings and must not appear on the
+    patient's dashboard, the doctor's calendar or queue, or the admin queue.
+
+    The predicate was previously copy-pasted into five queries across three
+    modules, which is how the doctor's calendar ended up showing a booking that
+    every other widget on the same screen correctly hid.
+    """
+
+    def _unpaid_checkout_q(self):
+        # Resolved from self.model so the choice classes below stay the single
+        # source of truth for these values.
+        model = self.model
+        return models.Q(
+            status=model.Status.PENDING,
+            payment_status=model.PaymentStatus.PENDING,
+            consultation_fee__gt=0,
+        )
+
+    def unpaid_checkouts(self):
+        """Rows that exist only because a checkout was started and not finished."""
+        return self.filter(self._unpaid_checkout_q())
+
+    def exclude_unpaid_checkouts(self):
+        """Everything except abandoned checkouts — i.e. real bookings.
+
+        Free appointments (fee of 0) are always real, since they never go
+        through payment at all.
+        """
+        return self.exclude(self._unpaid_checkout_q())
+
+
 class Appointment(models.Model):
     class AppointmentType(models.TextChoices):
         PHYSICAL = 'PHYSICAL', 'Physical'
@@ -105,7 +142,9 @@ class Appointment(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    objects = AppointmentQuerySet.as_manager()
+
     class Meta:
         indexes = [
             models.Index(fields=['doctor']),

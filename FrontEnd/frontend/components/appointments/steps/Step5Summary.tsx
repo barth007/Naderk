@@ -24,7 +24,12 @@ export default function Step5Summary() {
 
   const { user } = useAuth();
   const createAppointmentMutation = useCreateAppointment();
-  const idempotencyKey = useRef(`appt-${crypto.randomUUID()}`).current;
+
+  // One key per *attempt*, not per mount. This was a useRef, so every retry on
+  // the same page reused the key — the backend then returned the cached Paystack
+  // reference from the first attempt and Paystack rejected it with
+  // "Duplicate Transaction Reference", leaving no way forward but a full reload.
+  const [idempotencyKey, setIdempotencyKey] = React.useState(() => `appt-${crypto.randomUUID()}`);
   const initPaymentMutation = useInitializeAppointmentPayment(idempotencyKey);
   const openPaystack = usePaystackPopup();
 
@@ -78,6 +83,7 @@ export default function Step5Summary() {
     }
 
     // Paid booking — 4-step flow
+    let appointmentId: string | undefined;
     try {
       // 1. Create appointment (payment_status=PENDING)
       setPhase('booking');
@@ -87,7 +93,7 @@ export default function Step5Summary() {
           { onSuccess: resolve, onError: reject }
         );
       });
-      const appointmentId = apptData?.id;
+      appointmentId = apptData?.id;
       if (!appointmentId) throw new Error('No appointment ID returned.');
       setPendingAppointmentId(appointmentId);
 
@@ -120,6 +126,20 @@ export default function Step5Summary() {
     } catch (err: any) {
       setPhase('idle');
       setErrorMsg(err?.response?.data?.detail || err?.message || 'Something went wrong. Please try again.');
+
+      // The appointment row is created before payment. If anything after that
+      // fails we must not leave an unpaid PENDING booking behind — it showed up
+      // on the patient's Appointments page looking like a real reservation.
+      if (appointmentId) {
+        apiClient.delete(`/appointments/${appointmentId}/`).catch(() => {
+          /* best effort; the server-side sweeper expires it as a backstop */
+        });
+        setPendingAppointmentId(null);
+      }
+
+      // A retry must use a fresh Paystack reference, otherwise the provider
+      // rejects it as a duplicate.
+      setIdempotencyKey(`appt-${crypto.randomUUID()}`);
     }
   };
 
@@ -245,8 +265,14 @@ export default function Step5Summary() {
           </div>
 
           {errorMsg && (
-            <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-sm">
-              {errorMsg}
+            <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl text-sm space-y-1.5">
+              <p className="font-bold">Booking could not be completed</p>
+              <p>{errorMsg}</p>
+              <p className="text-red-700">
+                Nothing has been charged and no appointment was reserved. Press
+                &ldquo;{requiresPayment ? 'Confirm &amp; Pay' : 'Confirm Appointment'}&rdquo; to try again,
+                or go back to pick another time.
+              </p>
             </div>
           )}
 
@@ -257,7 +283,10 @@ export default function Step5Summary() {
             </div>
           )}
 
-          {phase === 'idle' && !isFacility && (
+          {/* Only claim the slot is held when nothing has gone wrong. This banner
+              kept showing after a failed initialization, telling the patient their
+              slot was reserved when no booking existed at all. */}
+          {phase === 'idle' && !isFacility && !errorMsg && (
             <div className="bg-red-50 text-red-700 p-4 rounded-xl text-sm flex items-start">
               <svg className="w-5 h-5 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               <p>Your slot is currently reserved. Please confirm your booking within the next 5 minutes to guarantee this time.</p>

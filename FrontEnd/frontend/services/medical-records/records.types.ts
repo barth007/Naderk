@@ -4,21 +4,26 @@ export interface PatientRecord {
   name: string;
   email: string;
   phone_number: string;
-  last_visit: string;
+  // These are null when the patient genuinely has no such data. The API used to
+  // substitute plausible-looking placeholders (a real drug name, canned vitals),
+  // so a nullable type here is deliberate — render a dash, never invent a value.
+  last_visit: string | null;
   complaints: string[];
   complaints_summary: string;
-  mode: 'In-person' | 'Online';
-  status: string;
-  dob: string;
-  gender: string;
-  weight: string;
-  vitals: string;
-  last_appointment: string;
-  register_date: string;
-  next_appointment: string;
-  previous_rx: string;
-  current_rx: string;
-  address: string;
+  mode: 'In-person' | 'Online' | null;
+  status: string | null;
+  dob: string | null;
+  gender: string | null;
+  weight: string | null;
+  vitals: string | null;
+  last_appointment: string | null;
+  register_date: string | null;
+  next_appointment: string | null;
+  previous_rx: string | null;
+  current_rx: string | null;
+  address: string | null;
+  service_name: string | null;
+  insurance_provider: string | null;
 }
 
 export interface DoctorMinimal {

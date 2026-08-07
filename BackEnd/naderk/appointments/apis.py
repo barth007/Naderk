@@ -312,7 +312,8 @@ class AppointmentHistoryApi(APIView):
     def get(self, request):
         # Sync check as a fail-safe for local development if celery beat is not running
         try:
-            from .tasks import mark_missed_appointments
+            from .tasks import mark_missed_appointments, cancel_abandoned_unpaid_appointments
+            cancel_abandoned_unpaid_appointments()
             mark_missed_appointments()
         except Exception:
             pass
@@ -333,11 +334,13 @@ class AppointmentHistoryApi(APIView):
             except User.DoesNotExist:
                 pass
 
-        upcoming = Appointment.objects.filter(
-            patient=patient,
-            status__in=active_statuses
-        ).order_by('appointment_date', 'appointment_time')
-        
+        # Abandoned checkouts were surfacing as the patient's next visit.
+        upcoming = (
+            Appointment.objects.filter(patient=patient, status__in=active_statuses)
+            .exclude_unpaid_checkouts()
+            .order_by('appointment_date', 'appointment_time')
+        )
+
         past = Appointment.objects.filter(
             patient=patient
         ).exclude(

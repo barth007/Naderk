@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.utils import timezone
 from naderk.appointments.models import Appointment
 from naderk.ecommerce.models import Prescription
 from naderk.users.models import PatientProfile
@@ -50,14 +51,34 @@ def get_doctor_patient_records(*, user, search_query=""):
         pat = data['patient']
         pat_appointments = data['appointments']
         
-        # Sort appointments by date & time
-        # latest appointment (past or current status)
-        past_appointments = [a for a in pat_appointments if a.status in ['COMPLETED', 'CHECKED_IN', 'IN_PROGRESS', 'CANCELLED', 'RESCHEDULED', 'NO_SHOW']]
-        latest_appt = past_appointments[0] if past_appointments else pat_appointments[0]
-        
-        # next appointment (upcoming status)
-        upcoming_appointments = [a for a in pat_appointments if a.status in ['PENDING', 'CONFIRMED']]
-        next_appt = upcoming_appointments[-1] if upcoming_appointments else None
+        # The list was never actually sorted despite the old comment saying so,
+        # and "last" fell back to *any* appointment when there was no past visit
+        # — which is how a future date ended up displayed as the last visit while
+        # today's booking showed as the next one.
+        today = timezone.now().date()
+        pat_appointments = sorted(
+            pat_appointments, key=lambda a: (a.appointment_date, a.appointment_time)
+        )
+
+        # Last visit = the most recent appointment that has actually happened.
+        # A cancelled booking is not a visit, and a future date can never be one.
+        attended_statuses = ['COMPLETED', 'CHECKED_IN', 'IN_PROGRESS', 'NO_SHOW']
+        past_appointments = [
+            a for a in pat_appointments
+            if a.status in attended_statuses and a.appointment_date <= today
+        ]
+        latest_appt = past_appointments[-1] if past_appointments else None
+
+        # Next = the soonest upcoming booking, not the furthest away.
+        upcoming_appointments = [
+            a for a in pat_appointments
+            if a.status in ['PENDING', 'CONFIRMED'] and a.appointment_date >= today
+        ]
+        next_appt = upcoming_appointments[0] if upcoming_appointments else None
+
+        # Everything below that reads `latest_appt` must tolerate a patient who
+        # has booked but never yet been seen.
+        reference_appt = latest_appt or next_appt or (pat_appointments[0] if pat_appointments else None)
         
         # profile
         profile = getattr(pat, 'patient_profile', None)
@@ -70,23 +91,26 @@ def get_doctor_patient_records(*, user, search_query=""):
         if profile:
             address_parts = [profile.address, profile.city, profile.state]
             address = ", ".join(filter(None, address_parts))
-        if not address:
-            address = "1234 Street CRD Lugbe"  # Mock default
+        # No invented address — the UI shows a placeholder when this is blank.
+        address = address or None
             
         register_date = pat.date_joined if hasattr(pat, 'date_joined') else pat.created_at
 
         # complaints
         complaints_text = (profile.reason_for_visit if profile else "") or ""
-        if not complaints_text and latest_appt.notes:
-            complaints_text = latest_appt.notes
+        if not complaints_text and reference_appt and reference_appt.notes:
+            complaints_text = reference_appt.notes
+        # Previously fell back to a canned list of symptoms, which put
+        # complaints the patient never reported into their clinical record.
         complaints_list = [c.strip() for c in complaints_text.split(',') if c.strip()] if complaints_text else []
-        if not complaints_list:
-            complaints_list = ["Eye Sore", "Blurry vision", "Severe headache"]  # Fallback mock
 
         # prescriptions
+        # A patient with no prescription must show none. This used to default to
+        # a real drug name and dosage, so every patient without a prescription
+        # appeared — to both doctors and admins — to be on Lantanoprost 0.005%.
         prescriptions = Prescription.objects.filter(patient=pat).order_by('-created_at')
-        current_rx = "Lantanoprost 0.005%"
-        prev_rx = "Lantanoprost 0.005%"
+        current_rx = None
+        prev_rx = None
         if prescriptions.exists():
             latest_rx = prescriptions[0]
             current_rx = f"OD: SPH {latest_rx.right_sph or '0.00'} | OS: SPH {latest_rx.left_sph or '0.00'}"
@@ -94,14 +118,12 @@ def get_doctor_patient_records(*, user, search_query=""):
                 older_rx = prescriptions[1]
                 prev_rx = f"OD: SPH {older_rx.right_sph or '0.00'} | OS: SPH {older_rx.left_sph or '0.00'}"
             else:
-                prev_rx = "None"
+                prev_rx = None
 
         # Mode Mapping
-        mode = "In-person"
-        if latest_appt.appointment_type == Appointment.AppointmentType.TELEHEALTH:
-            mode = "Online"
-        elif latest_appt.appointment_type == Appointment.AppointmentType.PHYSICAL:
-            mode = "In-person"
+        mode = None
+        if reference_appt:
+            mode = "Online" if reference_appt.appointment_type == Appointment.AppointmentType.TELEHEALTH else "In-person"
             
         records.append({
             'patient_id': hospital_id,
@@ -109,21 +131,28 @@ def get_doctor_patient_records(*, user, search_query=""):
             'name': f"{pat.first_name} {pat.last_name}",
             'email': pat.email,
             'phone_number': phone or "Not provided",
-            'last_visit': latest_appt.appointment_date.strftime('%b %d, %Y') if latest_appt else "N/A",
+            'last_visit': latest_appt.appointment_date.strftime('%b %d, %Y') if latest_appt else None,
             'complaints': complaints_list,
             'complaints_summary': ", ".join(complaints_list[:2]),
             'mode': mode,
-            'status': latest_appt.get_status_display() if latest_appt else "Unknown",
-            'dob': dob.strftime('%b %d, %Y') if dob else "Feb 28, 1999",
-            'gender': gender or "Female",
-            'weight': "56KG", # Mock weight
-            'vitals': "120/150", # Mock vitals
-            'last_appointment': latest_appt.appointment_date.strftime('%b %d, %Y') if latest_appt else "N/A",
-            'register_date': register_date.strftime('%b %d, %Y') if register_date else "Dec 20, 2024",
-            'next_appointment': next_appt.appointment_date.strftime('%b %d, %Y') if next_appt else "None",
+            'status': reference_appt.get_status_display() if reference_appt else None,
+            'dob': dob.strftime('%b %d, %Y') if dob else None,
+            'gender': gender or None,
+            # Vitals are not captured anywhere yet; inventing them put fake
+            # clinical readings in front of doctors. Null until real data exists.
+            'weight': None,
+            'vitals': None,
+            'last_appointment': latest_appt.appointment_date.strftime('%b %d, %Y') if latest_appt else None,
+            'register_date': register_date.strftime('%b %d, %Y') if register_date else None,
+            'next_appointment': next_appt.appointment_date.strftime('%b %d, %Y') if next_appt else None,
             'previous_rx': prev_rx,
             'current_rx': current_rx,
-            'address': address
+            'address': address,
+            # Exposed so the admin Patient Records filters have real values to
+            # work with — "Department" previously filtered on the complaints
+            # string and "Insurance" had no data behind it at all.
+            'service_name': reference_appt.service.name if (reference_appt and reference_appt.service) else None,
+            'insurance_provider': (profile.insurance_provider if profile else None) or None
         })
 
     return records

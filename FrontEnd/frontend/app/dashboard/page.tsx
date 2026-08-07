@@ -181,10 +181,15 @@ export default function DashboardPage() {
                 <div className="flex-grow flex flex-col justify-between gap-4">
                   <div className="space-y-1.5">
                     <span className="text-[10px] font-extrabold text-[#E03E3E] tracking-wider uppercase">
-                      {upcomingAppt.service?.name || 'Comprehensive Eye Exam'}
+                      {upcomingAppt.service?.name ?? 'Appointment'}
                     </span>
+                    {/* Rendered "Dr. , OD" for facility bookings and for doctors
+                        with no name on file, and the ", OD" was hardcoded
+                        regardless of the doctor's actual specialization. */}
                     <h4 className="text-base font-extrabold text-gray-955 leading-tight">
-                      Dr. {upcomingAppt.doctor?.first_name} {upcomingAppt.doctor?.last_name}, OD
+                      {upcomingAppt.doctor
+                        ? `Dr. ${[upcomingAppt.doctor.first_name, upcomingAppt.doctor.last_name].filter(Boolean).join(' ').trim() || 'Assigned specialist'}`
+                        : 'No doctor required'}
                     </h4>
                     <p className="text-xs text-gray-500 font-semibold mt-0.5">{brand.name} main branch.</p>
                   </div>

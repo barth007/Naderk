@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   format, startOfMonth, startOfWeek, addDays,
   isSameMonth, isSameDay, subMonths, addMonths,
@@ -439,27 +440,29 @@ function AppointmentCalendar({ allAppointments, onReschedule }: CalendarProps) {
               {tooltip && isSameDay(tooltip.day, day) && tooltip.appts.length > 0 && (
                 <div className="absolute z-50 top-full left-1/2 -translate-x-1/2 mt-1 bg-gray-900 text-white text-xs rounded-lg p-3 w-52 shadow-xl pointer-events-none">
                   <p className="font-semibold mb-2">{format(day, 'MMMM d, yyyy')}</p>
+                  {/* Each appointment is individually actionable. This used to
+                      be a single "Reschedule first" button that silently acted on
+                      appts[0] — it read as an instruction ("reschedule first"),
+                      gave no way to pick which appointment, and explained nothing. */}
                   {tooltip.appts.slice(0, 4).map((a) => (
-                    <div key={a.id} className="flex items-center gap-1.5 mb-1">
+                    <div key={a.id} className="flex items-center gap-1.5 mb-1.5">
                       <span
                         className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                         style={{ background: DOT_COLORS[dotTypeFromAppt(a.type)] }}
                       />
-                      <span className="truncate">{a.title}</span>
+                      <span className="truncate flex-1">{a.title}</span>
+                      <button
+                        className="text-[10px] text-[#ff8a8a] hover:text-white font-semibold pointer-events-auto flex-shrink-0 underline"
+                        onMouseDown={() => onReschedule(a.id)}
+                        title={`Move ${a.title} to another date or time`}
+                      >
+                        Reschedule
+                      </button>
                     </div>
                   ))}
                   {tooltip.appts.length > 4 && (
                     <p className="text-gray-400 text-xs mt-1">+{tooltip.appts.length - 4} more</p>
                   )}
-                  <button
-                    className="mt-2 text-xs text-[#E03E3E] font-semibold pointer-events-auto"
-                    onMouseDown={() => {
-                      const first = tooltip.appts[0];
-                      if (first) onReschedule(first.id);
-                    }}
-                  >
-                    Reschedule first
-                  </button>
                 </div>
               )}
             </div>
@@ -473,9 +476,31 @@ function AppointmentCalendar({ allAppointments, onReschedule }: CalendarProps) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AdminAppointmentsPage() {
-  const { data: requests = [], isLoading: loadingRequests } = useAdminAppointmentRequests();
-  const { data: calendarAppts = [], isLoading: loadingCalendar } = useAdminAppointmentCalendar();
+  const { data: allRequests = [], isLoading: loadingRequests } = useAdminAppointmentRequests();
+  const { data: allCalendarAppts = [], isLoading: loadingCalendar } = useAdminAppointmentCalendar();
   const cancelMutation = useAdminCancelAppointment();
+
+  // The global navbar search writes ?q= to the URL, but this page never read it,
+  // so typing a patient name and pressing Enter changed nothing on screen.
+  const searchParams = useSearchParams();
+  const query = (searchParams.get('q') ?? '').trim().toLowerCase();
+
+  const requests = useMemo(() => {
+    if (!query) return allRequests;
+    return allRequests.filter(r =>
+      [r.patient_name, r.doctor_name, r.service_name]
+        .filter(Boolean)
+        .some(v => String(v).toLowerCase().includes(query)),
+    );
+  }, [allRequests, query]);
+
+  const calendarAppts = useMemo(() => {
+    if (!query) return allCalendarAppts;
+    // `title` is "Patient Name (Service)" — covers patient and service alike.
+    return allCalendarAppts.filter(a => a.title.toLowerCase().includes(query));
+  }, [allCalendarAppts, query]);
+
+  const matchCount = requests.length + calendarAppts.length;
 
   // Modal state
   const [scheduleTarget, setScheduleTarget] = useState<AdminAppointmentRequest | null>(null);
@@ -501,6 +526,11 @@ export default function AdminAppointmentsPage() {
       <div className="mb-4">
         <h1 className="text-xl font-bold text-gray-900">Appointments</h1>
         <p className="text-sm text-gray-500 mt-0.5">Manage clinic scheduling and appointment requests</p>
+        {query && (
+          <p className="text-xs font-semibold text-[#E03E3E] mt-1.5">
+            Showing {matchCount} result{matchCount === 1 ? '' : 's'} for &ldquo;{query}&rdquo; — clear the search box to see everything.
+          </p>
+        )}
       </div>
 
       {/* Two-column layout */}

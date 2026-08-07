@@ -156,12 +156,12 @@ export default function DoctorPatientRecordsPage() {
                       <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full border ${
                         record.mode === 'Online' ? 'text-indigo-700 bg-indigo-50 border-indigo-100' : 'text-gray-700 bg-gray-50 border-gray-150'
                       }`}>
-                        {record.mode}
+                        {record.mode ?? '—'}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full border ${getStatusStyle(record.status)}`}>
-                        {record.status}
+                      <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full border ${getStatusStyle(record.status ?? '')}`}>
+                        {record.status ?? '—'}
                       </span>
                     </td>
                   </tr>
