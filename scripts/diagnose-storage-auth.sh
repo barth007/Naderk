@@ -60,7 +60,12 @@ if [ -n "$WEB" ]; then
       for ip in $ips; do [ "$ip" = "$RESOLVED" ] && echo "$name"; done
     done | head -1)
     echo "  that IP belongs to: ${OWNER:-unknown}"
-    if [ -n "$OWNER" ] && [ "$OWNER" != "$MINIO" ]; then
+    if [ -z "$MINIO" ] && [ -n "$OWNER" ]; then
+      echo
+      echo "  >> This project has NO minio container, so the backend is writing"
+      echo "     to '$OWNER' — a different environment's storage — with this"
+      echo "     environment's credentials. Start this project's minio."
+    elif [ -n "$OWNER" ] && [ "$OWNER" != "$MINIO" ]; then
       echo
       echo "  >> MISMATCH. The backend is talking to '$OWNER', not this"
       echo "     project's '$MINIO'. That is why the credentials are rejected."
