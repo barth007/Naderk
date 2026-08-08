@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
@@ -11,6 +13,8 @@ from naderk.messaging.selectors import get_unread_message_count
 from naderk.telehealth.models import TelehealthSession
 from naderk.ecommerce.models import Order, Prescription
 from datetime import timedelta, date
+
+logger = logging.getLogger(__name__)
 
 class DoctorSummaryAPI(APIView):
     permission_classes = [IsAuthenticated]
@@ -743,14 +747,20 @@ class AdminProductCreateAPI(APIView):
             return build_success_response(message="Category not found.", data={}, status_code=404, success=False)
 
         image_urls = []
+        upload_errors = []
         for key in ['image_0', 'image_1', 'image_2', 'image_3', 'image_4']:
             file = request.FILES.get(key)
             if file:
                 try:
                     result = storage_service.upload_file(file, bucket_type='public', prefix='products', uploaded_by=request.user)
                     image_urls.append(result.url)
-                except Exception:
-                    pass
+                except Exception as e:
+                    # This used to be a bare `except: pass`. A failing upload
+                    # produced a product with images=[] and no trace anywhere —
+                    # the admin saw "created", the storefront showed no picture,
+                    # and nothing said why. Log it and tell the caller.
+                    logger.exception("Product image upload failed for %s: %s", key, e)
+                    upload_errors.append(f"{getattr(file, 'name', key)}: {e}")
 
         # Generate unique slug
         base_slug = slugify(name)
@@ -771,6 +781,10 @@ class AdminProductCreateAPI(APIView):
             low_stock_threshold=int(low_stock_threshold),
             is_active=True,
         )
+
+        if upload_errors:
+            logger.error("Product %s created with %d failed image upload(s): %s",
+                         product.id, len(upload_errors), '; '.join(upload_errors))
 
         # Create variants if provided
         import json

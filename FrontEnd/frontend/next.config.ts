@@ -38,6 +38,14 @@ const nextConfig: NextConfig = {
         hostname: "**",
         port: "9000",
       },
+      // Uploaded media served through the API host's /media/ proxy. This is on
+      // port 443, so it matched none of the patterns above — next/image refused
+      // it, breaking CMS team photos and trusted-client logos.
+      {
+        protocol: "https",
+        hostname: "**",
+        pathname: "/media/**",
+      },
     ],
   },
   async redirects() {
