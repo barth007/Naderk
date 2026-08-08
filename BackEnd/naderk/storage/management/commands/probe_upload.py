@@ -59,6 +59,26 @@ class Command(BaseCommand):
             self.stdout.write(bad('  >> PUBLIC_ENDPOINT is falling back to the internal endpoint.'))
             self.stdout.write(bad('     Stored URLs will not be reachable from a browser.'))
 
+        # Which MinIO are we actually talking to? `minio` is a Docker network
+        # alias, and dev/prod app containers can end up on a shared external
+        # network where that name resolves to the *other* environment's server.
+        # Credentials that look correct then fail with InvalidAccessKeyId.
+        self.stdout.write('\n── Who is answering at MINIO_ENDPOINT? ' + '─' * 31)
+        import socket
+        from urllib.parse import urlparse
+        host = urlparse(cfg['ENDPOINT']).hostname or ''
+        try:
+            ips = sorted({ai[4][0] for ai in socket.getaddrinfo(host, None)})
+            self.stdout.write(f"  '{host}' resolves to: {', '.join(ips)}")
+            self.stdout.write('  Map that IP to a container from the HOST with:')
+            self.stdout.write("    docker ps -q | xargs -I{} sh -c "
+                              "'docker inspect -f \"{{{{.Name}}}} {{{{range .NetworkSettings.Networks}}}}{{{{.IPAddress}}}} {{{{end}}}}\" {}'")
+            self.stdout.write('  If it is NOT this environment\'s minio container, the app is')
+            self.stdout.write('  pointed at the wrong server — that is the bug.')
+        except Exception as e:
+            self.stdout.write(bad(f"  could not resolve '{host}': {e}"))
+            self.stdout.write(warn('  The backend cannot even find MinIO on the network.'))
+
         self.stdout.write('\n── Upload (same code path as the admin panel) ' + '─' * 24)
         from naderk.common.storage.service import storage_service
         upload = SimpleUploadedFile('diagnostic.png', PNG_1X1, content_type='image/png')
@@ -67,10 +87,21 @@ class Command(BaseCommand):
                 upload, bucket_type='public', prefix='diag', uploaded_by=None,
             )
         except Exception as e:
+            msg = str(e)
             self.stdout.write(bad(f'  UPLOAD FAILED: {type(e).__name__}: {e}'))
-            self.stdout.write(warn('  The backend cannot write to MinIO at all. Check MINIO_ENDPOINT, '
-                                   'credentials, and that the minio container is reachable on the '
-                                   'Docker network.'))
+            if 'InvalidAccessKeyId' in msg or 'SignatureDoesNotMatch' in msg:
+                self.stdout.write(warn(
+                    '\n  The server answered, but rejected the credentials. Either:\n'
+                    '    (a) MINIO_ACCESS_KEY / MINIO_SECRET_KEY in this backend env file do\n'
+                    '        not match MINIO_ROOT_USER / MINIO_ROOT_PASSWORD on the minio\n'
+                    '        container, or\n'
+                    '    (b) the hostname resolved to a DIFFERENT environment\'s MinIO (see\n'
+                    '        the resolution above).\n'
+                    '  Compare them on the host:\n'
+                    '    docker exec <minio-container> printenv | grep MINIO_ROOT'))
+            else:
+                self.stdout.write(warn('  Check MINIO_ENDPOINT, credentials, and that the minio '
+                                       'container is reachable on the Docker network.'))
             return
         self.stdout.write(ok('  upload succeeded'))
         self.stdout.write(f'  stored URL: {result.url}')
