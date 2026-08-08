@@ -14,6 +14,7 @@ import {
   TableContainer, Table, TableHead, TableBody, TableRow, Th, Td,
 } from '@/components/ui/table';
 import { Pagination } from '@/components/ui/pagination';
+import ImageUploader from '@/components/admin/ImageUploader';
 import {
   useAdminInventorySummary,
   useAdminAllOrders,
@@ -377,6 +378,8 @@ function EditProductModal({ product, onClose, onSuccess }: { product: AdminProdu
   const [qty, setQty] = useState('');
   const [threshold, setThreshold] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [images, setImages] = useState<string[]>([]);
+  const [isActive, setIsActive] = useState(true);
   const [hydrated, setHydrated] = useState(false);
   const [error, setError] = useState('');
 
@@ -389,6 +392,8 @@ function EditProductModal({ product, onClose, onSuccess }: { product: AdminProdu
       setQty(String(detail.quantity_available));
       setThreshold(String(detail.low_stock_threshold));
       setCategoryId(detail.category_id);
+      setImages(detail.images ?? []);
+      setIsActive(detail.is_active);
       setHydrated(true);
     }
   }, [detail, hydrated]);
@@ -398,7 +403,11 @@ function EditProductModal({ product, onClose, onSuccess }: { product: AdminProdu
     if (!price || parseFloat(price) <= 0) { setError('Enter a valid price.'); return; }
     setError('');
     updateProduct(
-      { id: product.id, name: name.trim(), description: description.trim(), price, quantity_available: parseInt(qty), low_stock_threshold: parseInt(threshold), category_id: categoryId },
+      {
+        id: product.id, name: name.trim(), description: description.trim(), price,
+        quantity_available: parseInt(qty), low_stock_threshold: parseInt(threshold),
+        category_id: categoryId, images, is_active: isActive,
+      },
       {
         onSuccess: () => { onSuccess('Product updated successfully!'); onClose(); },
         onError: () => setError('Failed to update product.'),
@@ -450,6 +459,51 @@ function EditProductModal({ product, onClose, onSuccess }: { product: AdminProdu
                 <input type="number" min="1" value={threshold} onChange={(e) => setThreshold(e.target.value)} className={inputCls} />
               </div>
             </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-700 block mb-1">Product Images</label>
+              <ImageUploader value={images} onChange={setImages} max={5} prefix="products" />
+              <p className="text-[11px] text-gray-400 mt-1">
+                The first image is the one shown on the marketplace card.
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2.5 border border-gray-200 rounded-md px-3 py-2.5 cursor-pointer hover:border-gray-300 transition-colors">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setIsActive(e.target.checked)}
+                className="w-4 h-4 accent-[#E03E3E] rounded"
+              />
+              <div>
+                <p className="text-xs font-semibold text-gray-800">Visible in the marketplace</p>
+                <p className="text-[11px] text-gray-400">Uncheck to hide this product from shoppers.</p>
+              </div>
+            </label>
+
+            {/* Variants are created with the product; surfaced here so the edit
+                view is not silently missing data the product actually has. */}
+            {detail?.variants && detail.variants.length > 0 && (
+              <div>
+                <label className="text-xs font-semibold text-gray-700 block mb-1">
+                  Variants ({detail.variants.length})
+                </label>
+                <div className="border border-gray-100 rounded-md divide-y divide-gray-100">
+                  {detail.variants.map((v) => (
+                    <div key={v.id} className="px-3 py-2 flex items-center justify-between text-xs">
+                      <span className="font-semibold text-gray-700 truncate">{v.variant_name}</span>
+                      <span className="text-gray-400 shrink-0 ml-2">
+                        {v.quantity_available} in stock
+                        {parseFloat(v.price_modifier) !== 0 && ` · +₦${parseFloat(v.price_modifier).toLocaleString()}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Variant stock is adjusted from the product&apos;s stock view.
+                </p>
+              </div>
+            )}
+
             {error && <p className="text-xs text-red-500">{error}</p>}
           </div>
         )}
