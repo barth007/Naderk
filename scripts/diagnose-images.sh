@@ -176,9 +176,13 @@ cat <<'EOS'
          MINIO_PUBLIC_ENDPOINT=https://<your-api-host>/media
        matching the port your nginx `location /media/` proxies to (step 4).
 
-    2. Restart the backend:
-         ENVIRONMENT=$ENVIRONMENT docker compose \
-           -f docker-compose.yml -f docker-compose.prod.yml up -d web
+    2. Restart the backend. Pass the ports too — they default to the
+       PRODUCTION values (8000/3000) and will collide with the live stack:
+         ENVIRONMENT=<env> BACKEND_PORT=<port> FRONTEND_PORT=<port> \
+           docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+           up -d --force-recreate web celery-worker celery-beat
+       Better: pin them once in a .env file in this directory, then plain
+       `docker compose ...` just works. See scripts/setup-vps.sh step 2.
 
     3. Existing images keep their old broken URLs — only new uploads get the
        correct prefix. Re-upload them, or rewrite the stored URLs in place.
