@@ -8,6 +8,7 @@ import { useBookingStore } from '@/store/useBookingStore';
 import {
   useInitializeAppointmentPayment,
   usePollAppointmentPayment,
+  useVerifyAppointmentPayment,
   usePaystackPopup,
 } from '@/services/payments/payments.hooks';
 import { useAuth } from '@/hooks/useAuth';
@@ -31,17 +32,21 @@ export default function Step5Summary() {
   // "Duplicate Transaction Reference", leaving no way forward but a full reload.
   const [idempotencyKey, setIdempotencyKey] = React.useState(() => `appt-${crypto.randomUUID()}`);
   const initPaymentMutation = useInitializeAppointmentPayment(idempotencyKey);
+  const verifyPayment = useVerifyAppointmentPayment();
   const openPaystack = usePaystackPopup();
 
   const [phase, setPhase] = React.useState<Phase>('idle');
   const [pendingAppointmentId, setPendingAppointmentId] = React.useState<string | null>(null);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  // True when we genuinely could not confirm a payment that may have gone
+  // through. Never tell someone nothing was charged unless we know it.
+  const [unconfirmed, setUnconfirmed] = React.useState(false);
 
   const pollQuery = usePollAppointmentPayment(
     phase === 'confirming' ? pendingAppointmentId : null
   );
 
-  // When webhook confirms payment, advance booking flow
+  // When payment is confirmed (by our verify call or the webhook), advance.
   useEffect(() => {
     if (phase === 'confirming' && pollQuery.data?.payment_status === 'PAID') {
       setPhase('idle');
@@ -53,6 +58,23 @@ export default function Step5Summary() {
       setPendingAppointmentId(null);
     }
   }, [pollQuery.data?.payment_status, phase]);
+
+  // Polling had no time limit, so if confirmation never arrived the patient sat
+  // on "Confirming payment…" indefinitely with no idea whether they had been
+  // charged. Give up after 90s and say something true and actionable.
+  useEffect(() => {
+    if (phase !== 'confirming') return;
+    const timer = setTimeout(() => {
+      setPhase('idle');
+      setUnconfirmed(true);
+      setErrorMsg(
+        'We have not had confirmation from the payment provider yet. If you were ' +
+        'charged, your booking will appear under My Appointments shortly — please ' +
+        'do not pay again. Contact support if it does not show up within a few minutes.',
+      );
+    }, 90_000);
+    return () => clearTimeout(timer);
+  }, [phase]);
 
   const isFacility = !service?.requires_doctor;
 
@@ -67,6 +89,7 @@ export default function Step5Summary() {
   const handleConfirm = async () => {
     if (!service || !date || !time) return;
     setErrorMsg(null);
+    setUnconfirmed(false);
 
     const doctorId = isFacility ? null : doctor?.id;
 
@@ -110,8 +133,14 @@ export default function Step5Summary() {
         reference: payData.reference,
         accessCode: payData.access_code,
         onSuccess: () => {
-          // Webhook is source of truth — start polling
           setPhase('confirming');
+          // Confirm directly rather than waiting on the webhook, which may be
+          // pointed at a different environment. Polling continues underneath as
+          // a backstop, so a failure here is not fatal.
+          verifyPayment.mutate(
+            { reference: payData.reference },
+            { onError: () => { /* poll/webhook still in play */ } },
+          );
         },
         onClose: () => {
           // User closed popup without paying — delete the pending appointment
@@ -266,13 +295,15 @@ export default function Step5Summary() {
 
           {errorMsg && (
             <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl text-sm space-y-1.5">
-              <p className="font-bold">Booking could not be completed</p>
+              <p className="font-bold">{unconfirmed ? 'Payment not confirmed yet' : 'Booking could not be completed'}</p>
               <p>{errorMsg}</p>
-              <p className="text-red-700">
-                Nothing has been charged and no appointment was reserved. Press
-                &ldquo;{requiresPayment ? 'Confirm &amp; Pay' : 'Confirm Appointment'}&rdquo; to try again,
-                or go back to pick another time.
-              </p>
+              {!unconfirmed && (
+                <p className="text-red-700">
+                  Nothing has been charged and no appointment was reserved. Press
+                  &ldquo;{requiresPayment ? 'Confirm &amp; Pay' : 'Confirm Appointment'}&rdquo; to try again,
+                  or go back to pick another time.
+                </p>
+              )}
             </div>
           )}
 

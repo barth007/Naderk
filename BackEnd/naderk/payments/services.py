@@ -78,3 +78,31 @@ def verify_and_confirm(
         raw_response=result.metadata,
     )
     return result
+
+
+def confirm_appointment_payment(*, appointment, reference: str) -> bool:
+    """
+    Apply the paid state to an appointment. Idempotent.
+
+    Shared by the Paystack webhook and the client-driven verify endpoint so the
+    two paths can never drift apart. Returns True if this call transitioned the
+    appointment, False if it was already paid.
+    """
+    from django.db import transaction as db_transaction
+    from naderk.appointments.models import Appointment
+    from naderk.appointments.services import ConsultationService
+
+    if appointment.payment_status == Appointment.PaymentStatus.PAID:
+        return False
+
+    with db_transaction.atomic():
+        appointment.payment_status = Appointment.PaymentStatus.PAID
+        appointment.payment_reference = reference
+        # status stays PENDING — the doctor still has to accept the request.
+        appointment.save(update_fields=['payment_status', 'payment_reference'])
+        ConsultationService.create_service_plan(
+            patient=appointment.patient,
+            service=appointment.service,
+            payment_reference=reference,
+        )
+    return True

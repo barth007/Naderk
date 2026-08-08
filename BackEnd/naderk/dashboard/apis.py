@@ -19,9 +19,15 @@ class DoctorSummaryAPI(APIView):
         doctor = request.user
         today = timezone.now().date()
         
-        total_appointments = Appointment.objects.filter(doctor=doctor).count()
-        appointments_today = Appointment.objects.filter(doctor=doctor, appointment_date=today).count()
-        new_appointments = Appointment.objects.filter(doctor=doctor, status=Appointment.Status.PENDING).count()
+        # These were the last counters still bypassing exclude_unpaid_checkouts,
+        # so an abandoned checkout showed as "1 appointment / 1 new request" on
+        # the dashboard while DoctorRequestsAPI — which does exclude them — had
+        # nothing to list. The doctor could see the number but had nothing to
+        # accept or reject.
+        doctor_appts = Appointment.objects.filter(doctor=doctor).exclude_unpaid_checkouts()
+        total_appointments = doctor_appts.count()
+        appointments_today = doctor_appts.filter(appointment_date=today).count()
+        new_appointments = doctor_appts.filter(status=Appointment.Status.PENDING).count()
         cancelled_appointments = Appointment.objects.filter(doctor=doctor, status=Appointment.Status.CANCELLED).count()
         
         # Messaging metrics
