@@ -103,3 +103,110 @@ class VerifyAppointmentPaymentTests(TestCase):
         self.client.force_authenticate(user=self.doctor)
         res = self.client.get(reverse('dashboard:doctor-requests'))
         self.assertIn(str(self.appt.id), [r['id'] for r in res.json()['data']])
+
+
+class ReconcilePendingTransactionsTests(TestCase):
+    """PaymentTransaction.status only left INITIATED in the webhook, so a missed
+    webhook left every real payment showing as "Pending" on admin billing."""
+
+    def setUp(self):
+        self.patient = User.objects.create_user(email='rp@x.com', password='pw12345!')
+        self.doctor = User.objects.create_user(email='rd@x.com', password='pw12345!', role=User.Role.DOCTOR)
+        DoctorProfile.objects.filter(user=self.doctor).update(specialization='GENERAL_PRACTITIONER')
+        self.service = MedicalService.objects.create(
+            name='Recon Consult', slug='recon-gp', requires_doctor=True,
+            required_specialization='GENERAL_PRACTITIONER', fee=8500,
+        )
+        self.appt = Appointment.objects.create(
+            patient=self.patient, doctor=self.doctor, service=self.service,
+            appointment_date=timezone.now().date() + datetime.timedelta(days=1),
+            appointment_time=datetime.time(9, 0), status=Appointment.Status.PENDING,
+            payment_status=Appointment.PaymentStatus.PENDING, consultation_fee=8500,
+        )
+
+    def _txn(self, age_minutes=30, **over):
+        data = dict(
+            user=self.patient, provider='PAYSTACK', reference='NDK-RECON1',
+            amount_kobo=850000, appointment=self.appt,
+            status=PaymentTransaction.Status.INITIATED, raw_response={},
+        )
+        data.update(over)
+        txn = PaymentTransaction.objects.create(**data)
+        PaymentTransaction.objects.filter(pk=txn.pk).update(
+            created_at=timezone.now() - datetime.timedelta(minutes=age_minutes))
+        txn.refresh_from_db()
+        return txn
+
+    def _verify(self, status='success'):
+        def _fake(reference, provider_name='PAYSTACK'):
+            PaymentTransaction.objects.filter(reference=reference).update(
+                status=(PaymentTransaction.Status.SUCCESS if status == 'success'
+                        else PaymentTransaction.Status.FAILED))
+            return type('R', (), {'status': status, 'metadata': {}})()
+        return patch('naderk.payments.services.verify_and_confirm', side_effect=_fake)
+
+    def test_stale_successful_payment_is_confirmed(self):
+        from naderk.payments.tasks import reconcile_pending_transactions
+        txn = self._txn()
+        with self._verify():
+            reconcile_pending_transactions()
+        txn.refresh_from_db(); self.appt.refresh_from_db()
+        self.assertEqual(txn.status, PaymentTransaction.Status.SUCCESS)
+        self.assertEqual(self.appt.payment_status, Appointment.PaymentStatus.PAID)
+
+    def test_recent_transaction_is_left_for_the_webhook(self):
+        from naderk.payments.tasks import reconcile_pending_transactions
+        txn = self._txn(age_minutes=1)
+        with self._verify() as m:
+            reconcile_pending_transactions()
+        m.assert_not_called()
+        txn.refresh_from_db()
+        self.assertEqual(txn.status, PaymentTransaction.Status.INITIATED)
+
+    def test_ancient_transaction_is_not_rechecked(self):
+        from naderk.payments.tasks import reconcile_pending_transactions
+        self._txn(age_minutes=60 * 24 * 30)
+        with self._verify() as m:
+            reconcile_pending_transactions()
+        m.assert_not_called()
+
+    def test_failed_payment_does_not_mark_appointment_paid(self):
+        from naderk.payments.tasks import reconcile_pending_transactions
+        self._txn()
+        with self._verify(status='failed'):
+            reconcile_pending_transactions()
+        self.appt.refresh_from_db()
+        self.assertEqual(self.appt.payment_status, Appointment.PaymentStatus.PENDING)
+
+    def test_provider_error_on_one_does_not_abort_the_batch(self):
+        from naderk.payments.tasks import reconcile_pending_transactions
+        bad = self._txn(reference='NDK-BAD')
+        good_appt = Appointment.objects.create(
+            patient=self.patient, doctor=self.doctor, service=self.service,
+            appointment_date=timezone.now().date() + datetime.timedelta(days=2),
+            appointment_time=datetime.time(10, 0), status=Appointment.Status.PENDING,
+            payment_status=Appointment.PaymentStatus.PENDING, consultation_fee=8500,
+        )
+        self._txn(reference='NDK-GOOD', appointment=good_appt)
+
+        def _flaky(reference, provider_name='PAYSTACK'):
+            if reference == 'NDK-BAD':
+                raise RuntimeError('provider down')
+            PaymentTransaction.objects.filter(reference=reference).update(
+                status=PaymentTransaction.Status.SUCCESS)
+            return type('R', (), {'status': 'success', 'metadata': {}})()
+
+        with patch('naderk.payments.services.verify_and_confirm', side_effect=_flaky):
+            reconcile_pending_transactions()
+
+        bad.refresh_from_db(); good_appt.refresh_from_db()
+        self.assertEqual(bad.status, PaymentTransaction.Status.INITIATED)
+        self.assertEqual(good_appt.payment_status, Appointment.PaymentStatus.PAID,
+                         'a failure on one reference must not skip the rest')
+
+    def test_already_successful_transaction_is_not_reprocessed(self):
+        from naderk.payments.tasks import reconcile_pending_transactions
+        self._txn(status=PaymentTransaction.Status.SUCCESS)
+        with self._verify() as m:
+            reconcile_pending_transactions()
+        m.assert_not_called()
