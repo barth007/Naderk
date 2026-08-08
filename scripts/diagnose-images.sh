@@ -36,53 +36,66 @@ if [ -z "$ENVIRONMENT" ]; then
 fi
 export ENVIRONMENT
 
-WEB=$(docker ps --filter "name=web" --format '{{.Names}}' | head -1)
-MINIO=$(docker ps --filter "name=minio" --format '{{.Names}}' | head -1)
+# Resolve containers via Compose, scoped to THIS project. A bare
+# `docker ps --filter name=web` matches the production container too and
+# `head -1` then picks whichever Docker lists first — which meant running this
+# on the dev box happily reported production's database.
+COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
+WEB=$("${COMPOSE[@]}" ps -q web 2>/dev/null | head -1)
+MINIO=$("${COMPOSE[@]}" ps -q minio 2>/dev/null | head -1)
+[ -z "$MINIO" ] && MINIO=$(docker compose -f docker-compose.yml ps -q minio 2>/dev/null | head -1)
+
+WEB_NAME=$(docker inspect --format '{{.Name}}' "$WEB" 2>/dev/null | sed 's|^/||')
+MINIO_NAME=$(docker inspect --format '{{.Name}}' "$MINIO" 2>/dev/null | sed 's|^/||')
+# The network is project-scoped too, so derive it rather than assuming.
+NET=$(docker inspect --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$MINIO" 2>/dev/null | head -1)
 
 step "1. Containers"
-[ -n "$WEB" ]   && echo -e "$PASS web:   $WEB"   || { echo -e "$FAIL no running 'web' container"; exit 1; }
-[ -n "$MINIO" ] && echo -e "$PASS minio: $MINIO" || echo -e "$FAIL no running 'minio' container — uploads cannot be stored or served"
+[ -n "$WEB" ]   && echo -e "$PASS web:   $WEB_NAME"   || { echo -e "$FAIL no 'web' container in this project"; exit 1; }
+[ -n "$MINIO" ] && echo -e "$PASS minio: $MINIO_NAME (network: ${NET:-unknown})" || echo -e "$FAIL no 'minio' container in this project"
 
 step "2. What Django is configured to hand out as image URLs"
-docker exec "$WEB" python -c "
+docker exec "$WEB" python - <<'PYEOF' 2>&1 | sed 's/^/  /'
+import django
+django.setup()
 from django.conf import settings
-import django; django.setup()
 s = settings.STORAGE
-print(f\"  MINIO_ENDPOINT        = {s['ENDPOINT']}\")
-print(f\"  MINIO_PUBLIC_ENDPOINT = {s['PUBLIC_ENDPOINT']}\")
-print(f\"  PUBLIC_BUCKET         = {s['PUBLIC_BUCKET']}\")
-same = s['PUBLIC_ENDPOINT'] == s['ENDPOINT']
+print(f"MINIO_ENDPOINT        = {s['ENDPOINT']}")
+print(f"MINIO_PUBLIC_ENDPOINT = {s['PUBLIC_ENDPOINT']}")
+print(f"PUBLIC_BUCKET         = {s['PUBLIC_BUCKET']}")
 print()
-if same:
-    print('  >> PUBLIC_ENDPOINT is falling back to the internal ENDPOINT.')
-    print('     Every uploaded image is stored with a URL only reachable from')
-    print('     inside the Docker network. This is the usual cause.')
+if s['PUBLIC_ENDPOINT'] == s['ENDPOINT']:
+    print(">> PUBLIC_ENDPOINT is falling back to the internal ENDPOINT.")
+    print("   Every uploaded image gets a URL only reachable inside Docker.")
+    print("   This is the usual cause.")
 else:
-    print('  >> PUBLIC_ENDPOINT is set independently. Good.')
-" 2>/dev/null || echo -e "$FAIL could not read settings from the web container"
+    print(">> PUBLIC_ENDPOINT is set independently. Good.")
+PYEOF
 
 step "3. URLs actually stored on recent uploads"
-docker exec "$WEB" python -c "
-import django; django.setup()
+docker exec "$WEB" python - <<'PYEOF' 2>&1 | sed 's/^/  /'
+import django
+django.setup()
 from naderk.ecommerce.models import Product, Frame
 from naderk.storage.models import StoredFile
 
 rows = list(Product.objects.exclude(images=[]).order_by('-created_at')[:3])
 if not rows:
-    print('  (no products with images)')
+    print("(no products with images in THIS database)")
 for p in rows:
-    print(f\"  product '{p.name[:28]}' -> {(p.images or ['(none)'])[0]}\")
+    print(f"product '{p.name[:26]}' -> {(p.images or ['(none)'])[0]}")
 for f in Frame.objects.exclude(front_image=None).order_by('-created_at')[:2]:
-    print(f\"  frame   '{f.name[:28]}' -> {f.front_image}\")
+    print(f"frame   '{f.name[:26]}' -> {f.front_image}")
+
 print()
-sf = StoredFile.objects.order_by('-id')[:3]
+sf = list(StoredFile.objects.order_by('-id')[:3])
 if sf:
-    print('  most recent StoredFile rows (bucket / object key):')
-    for s in sf:
-        print(f\"    {s.bucket} / {s.object_key}\")
+    print("most recent uploads (bucket / key):")
+    for x in sf:
+        print(f"  {x.bucket} / {x.object_key}")
 else:
-    print('  no StoredFile rows — nothing has been uploaded through the storage service')
-" 2>/dev/null || echo -e "$FAIL could not query the database"
+    print("no StoredFile rows — nothing uploaded through the storage service yet")
+PYEOF
 
 step "4. Is MinIO reachable from the host, and on which port?"
 for port in 9000 9001 9002; do
@@ -98,31 +111,54 @@ echo "  Published ports on the minio container:"
 docker port "$MINIO" 2>/dev/null | sed 's/^/    /' || echo "    (none)"
 
 step "5. Bucket exists and allows anonymous download?"
-if [ -n "$MINIO" ]; then
-  docker run --rm --network naderk_net --entrypoint sh minio/mc:latest -c "
-    mc alias set n http://minio:9000 \${MINIO_ACCESS_KEY:-minioadmin} \${MINIO_SECRET_KEY:-minioadmin123} >/dev/null 2>&1
-    echo '  buckets:'; mc ls n 2>/dev/null | sed 's/^/    /'
-    echo '  anonymous policy on naderk-public:'
-    mc anonymous get n/naderk-public 2>&1 | sed 's/^/    /'
-  " 2>/dev/null || echo -e "$INFO could not run mc (non-fatal)"
+if [ -n "$MINIO" ] && [ -n "$NET" ]; then
+  AK=$(docker exec "$MINIO" printenv MINIO_ROOT_USER 2>/dev/null || echo minioadmin)
+  SK=$(docker exec "$MINIO" printenv MINIO_ROOT_PASSWORD 2>/dev/null || echo minioadmin123)
+  # Join the same network the minio container is actually on — hardcoding
+  # `naderk_net` fails on dev, whose network is project-prefixed.
+  docker run --rm --network "$NET" --entrypoint sh minio/mc:latest -c \
+    "mc alias set n http://${MINIO_NAME}:9000 '$AK' '$SK' >/dev/null 2>&1 || exit 1; \
+     echo 'buckets:'; mc ls n 2>&1; \
+     echo 'anonymous policy on naderk-public:'; mc anonymous get n/naderk-public 2>&1" \
+    2>/dev/null | sed 's/^/  /' \
+    || echo -e "$INFO could not run mc against $NET (non-fatal — step 7 is the real test)"
+else
+  echo -e "$INFO skipped (minio container or network not resolved)"
 fi
 
 step "6. End-to-end fetch of a real object over HTTPS"
-docker exec "$WEB" python -c "
-import django; django.setup()
-from naderk.ecommerce.models import Product
+URL=$(docker exec "$WEB" python - <<'PYEOF' 2>/dev/null
+import django
+django.setup()
+from django.conf import settings
+from naderk.ecommerce.models import Product, Frame
+from naderk.storage.models import StoredFile
+
 p = Product.objects.exclude(images=[]).order_by('-created_at').first()
-print((p.images or [''])[0] if p else '')
-" 2>/dev/null | tr -d '\r' | while read -r url; do
-  [ -z "$url" ] && { echo -e "$INFO no product image URL to test"; continue; }
-  echo "  stored URL: $url"
-  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$url" 2>/dev/null)
+if p and p.images:
+    print(p.images[0]); raise SystemExit
+f = Frame.objects.exclude(front_image=None).order_by('-created_at').first()
+if f and f.front_image:
+    print(f.front_image); raise SystemExit
+# Nothing in the catalogue yet — build a URL for the newest raw upload so the
+# hop can still be tested end to end.
+x = StoredFile.objects.order_by('-id').first()
+if x:
+    print(f"{settings.STORAGE['PUBLIC_ENDPOINT'].rstrip('/')}/{x.bucket}/{x.object_key}")
+PYEOF
+)
+URL=$(echo "$URL" | tr -d '\r' | head -1)
+if [ -z "$URL" ]; then
+  echo -e "$INFO nothing uploaded yet to test"
+else
+  echo "  stored URL: $URL"
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "$URL" 2>/dev/null)
   if [ "$code" = "200" ]; then
-    echo -e "$PASS fetches successfully (HTTP 200) — the URL is fine"
+    echo -e "$PASS fetches successfully (HTTP 200) — browsers can load this"
   else
     echo -e "$FAIL HTTP '$code' — a browser cannot load this either"
   fi
-done
+fi
 
 if [ -n "$HOSTNAME_ARG" ]; then
   step "7. Does the nginx /media/ route work?"
