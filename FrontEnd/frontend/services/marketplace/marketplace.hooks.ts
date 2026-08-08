@@ -29,7 +29,11 @@ export const useProducts = (params?: ProductFilterParams) => {
     queryFn: async () => {
       const response = await apiClient.get('/marketplace/products/', { params });
       return response.data.data as Product[];
-    }
+    },
+    // The global default is a 60s staleTime, so navigating back to the shop
+    // within a minute served a cached list that omitted a just-added product.
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 };
 
@@ -59,6 +63,8 @@ export const useInfiniteProducts = (params?: ProductFilterParams) => {
       return response.data.data as ProductPage;
     },
     getNextPageParam: (last) => (last.has_more ? last.offset + last.limit : undefined),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 };
 
@@ -82,7 +88,9 @@ export const useFrames = (search?: string) => {
         params: search ? { search } : undefined
       });
       return response.data.data as Frame[];
-    }
+    },
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 };
 

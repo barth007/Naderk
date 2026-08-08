@@ -56,9 +56,12 @@ const BASE = '/dashboard/admin/frames/';
 // write must drop the storefront caches too — otherwise a newly added frame is
 // missing from the marketplace until the cache expires.
 const invalidateFrameCaches = (qc: ReturnType<typeof useQueryClient>) => {
-  qc.invalidateQueries({ queryKey: ['admin-frames'] });
-  qc.invalidateQueries({ queryKey: ['marketplace-frames'] });
-  qc.invalidateQueries({ queryKey: ['marketplace-frame'] });
+  // refetchType: 'all' so lists that are currently unmounted (the admin table
+  // while you are on a create/edit screen) are refetched rather than merely
+  // marked stale — otherwise the new frame is missing when you navigate back.
+  ['admin-frames', 'marketplace-frames', 'marketplace-frame'].forEach((key) =>
+    qc.invalidateQueries({ queryKey: [key], refetchType: 'all' }),
+  );
 };
 
 export const useAdminFrames = () =>

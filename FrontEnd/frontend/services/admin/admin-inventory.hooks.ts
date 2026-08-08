@@ -74,6 +74,27 @@ export interface AdminProductsData {
   summary: AdminProductsSummary;
 }
 
+/**
+ * Every cache a product write can invalidate.
+ *
+ * Two things were wrong before. First, no product mutation touched the
+ * patient-facing marketplace keys, so a new product never appeared to shoppers
+ * until its cache aged out. Second, plain invalidateQueries only *refetches*
+ * queries that are currently mounted — products are created on
+ * /admin/inventory/new, so the table on /admin/inventory is unmounted at that
+ * moment and was merely marked stale. `refetchType: 'all'` refetches inactive
+ * queries too, so the list is already fresh by the time you land on it.
+ */
+const invalidateProductCaches = (qc: ReturnType<typeof useQueryClient>) => {
+  [
+    'admin-products',
+    'admin-inventory-summary',
+    'marketplace-products',
+    'marketplace-products-infinite',
+    'marketplace-product',
+  ].forEach((key) => qc.invalidateQueries({ queryKey: [key], refetchType: 'all' }));
+};
+
 export const useAdminProducts = () =>
   useQuery({
     queryKey: ['admin-products'],
@@ -81,6 +102,8 @@ export const useAdminProducts = () =>
       const res = await apiClient.get('/dashboard/admin/products/');
       return res.data.data as AdminProductsData;
     },
+    staleTime: 0,
+    refetchOnMount: 'always',
     refetchInterval: 60_000,
   });
 
@@ -92,8 +115,7 @@ export const useAdminCreateProduct = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-products'] });
-      qc.invalidateQueries({ queryKey: ['admin-inventory-summary'] });
+      invalidateProductCaches(qc);
     },
   });
 };
@@ -137,7 +159,7 @@ export const useAdminUpdateProduct = () => {
     mutationFn: ({ id, ...data }: { id: string; [key: string]: unknown }) =>
       apiClient.patch(`/dashboard/admin/products/${id}/`, data),
     onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ['admin-products'] });
+      invalidateProductCaches(qc);
       qc.invalidateQueries({ queryKey: ['admin-product-detail', vars.id] });
     },
   });
@@ -148,8 +170,7 @@ export const useAdminDeleteProduct = () => {
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`/dashboard/admin/products/${id}/`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-products'] });
-      qc.invalidateQueries({ queryKey: ['admin-inventory-summary'] });
+      invalidateProductCaches(qc);
     },
   });
 };
@@ -170,8 +191,7 @@ export const useAdminRestockProduct = () => {
     mutationFn: ({ id, quantity }: { id: string; quantity: number }) =>
       apiClient.post(`/dashboard/admin/products/${id}/restock/`, { quantity }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-products'] });
-      qc.invalidateQueries({ queryKey: ['admin-inventory-summary'] });
+      invalidateProductCaches(qc);
     },
   });
 };
@@ -182,7 +202,7 @@ export const useAdminToggleProductStatus = () => {
     mutationFn: (id: string) =>
       apiClient.post(`/dashboard/admin/products/${id}/toggle-status/`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-products'] });
+      invalidateProductCaches(qc);
     },
   });
 };
