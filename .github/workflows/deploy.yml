@@ -53,7 +53,19 @@ jobs:
       - name: 🎯 Set deployment config
         run: |
           ENV="${{ github.event.inputs.environment }}"
-          echo "ENVIRONMENT=$ENV" >> $GITHUB_ENV
+
+          # ENVIRONMENT is the *env-file suffix*, not the menu label. The input
+          # says "prod" but the env file on the server is `.env.production`
+          # (see setup-vps.sh) and docker-compose.prod.yml defaults to
+          # `production` when the variable is unset. Emitting "prod" here made
+          # those three disagree, so a prod deploy looked for a `.env.prod`
+          # nobody was told to create.
+          if [ "$ENV" = "prod" ]; then
+            ENVIRONMENT=production
+          else
+            ENVIRONMENT=dev
+          fi
+          echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_ENV
 
           if [ "$ENV" = "prod" ]; then
             echo "DEPLOY_PATH=/var/www/naderk" >> $GITHUB_ENV

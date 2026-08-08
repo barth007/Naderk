@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { apiClient } from '@/lib/api';
 import { ProblemDetailsResponse } from '@/types';
+import { useBrand } from '@/services/cms/admin-cms.hooks';
 
 const registerSchema = z.object({
   full_name: z.string().min(2, "Full name is required."),
@@ -30,6 +31,7 @@ const registerSchema = z.object({
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
+  const brand = useBrand();
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -99,7 +101,7 @@ export default function RegisterPage() {
             </h1>
             
             <p className="text-base text-white/90 mb-8 max-w-md mx-auto drop-shadow">
-                Join NaderkEye Center's patient portal to manage appointments, view medical records, and communicate directly with your eyecare specialists.
+                Join {brand.name}&apos;s patient portal to manage appointments, view medical records, and communicate directly with your eyecare specialists.
             </p>
             
             <div className="grid grid-cols-2 gap-4 text-left max-w-sm mx-auto">
@@ -194,7 +196,7 @@ export default function RegisterPage() {
             <div className="flex items-start gap-2.5">
                 <Checkbox {...register('terms')} id="terms" />
                 <label htmlFor="terms" className="text-xs text-gray-500 leading-snug cursor-pointer pt-0.5">
-                    By creating an account, you agree to NaderkEye Center's <Link href="/terms" className="text-[#E03E3E] hover:underline">Terms of Service</Link> and <Link href="/privacy" className="text-[#E03E3E] hover:underline">Privacy Policy</Link>.
+                    By creating an account, you agree to {brand.name}&apos;s <Link href="/terms" className="text-[#E03E3E] hover:underline">Terms of Service</Link> and <Link href="/privacy" className="text-[#E03E3E] hover:underline">Privacy Policy</Link>.
                 </label>
             </div>
             {errors.terms && <p className="text-xs text-red-500 mt-1 ml-6">{errors.terms.message}</p>}

@@ -1,12 +1,14 @@
 'use client'
 
 import Link from "next/link";
+import { useBrand } from "@/services/cms/admin-cms.hooks";
 import { useTestimonials } from '@/services/cms/admin-cms.hooks';
 import { TestimonialsColumn } from "./TestimonialsColumn";
 import { COLUMN_1_TESTIMONIALS, COLUMN_2_TESTIMONIALS } from "./testimonials-wall.constants";
 import type { TestimonialType } from "./testimonials-wall.types";
 
 export function TestimonialsWallSection() {
+  const brand = useBrand();
   const { data: apiTestimonials } = useTestimonials();
 
   let col1: TestimonialType[];
@@ -49,7 +51,7 @@ export function TestimonialsWallSection() {
               We believe in restoring clear vision.
             </h2>
             <p className="text-base leading-relaxed text-muted-foreground md:text-lg max-w-xl mb-4">
-              At NaderkEye, our mission is built on patient trust, modern care, and transformational experiences. Our goal is to create a service that you're absolutely satisfied with, ensuring your world remains a clearer place.
+              At {brand.name}, our mission is built on patient trust, modern care, and transformational experiences. Our goal is to create a service that you're absolutely satisfied with, ensuring your world remains a clearer place.
             </p>
             <Link
               href="/coming-soon"

@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { apiClient } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import DashboardNavbar from '@/components/layout/DashboardNavbar';
+import { useBrand } from '@/services/cms/admin-cms.hooks';
 
 const profileSchema = z.object({
   full_name: z.string().min(2, "Full name is required."),
@@ -43,6 +44,7 @@ const profileSchema = z.object({
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
 export default function CompleteProfilePage() {
+  const brand = useBrand();
   const router = useRouter();
   const { user, isAuthenticated, setUser } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
@@ -289,7 +291,7 @@ export default function CompleteProfilePage() {
 
         {/* Footer */}
         <footer className="mt-12 mb-8 text-center text-xs text-gray-500 space-y-3">
-          <p>© {new Date().getFullYear()} NaderkEye Care. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} {brand.name}. All rights reserved.</p>
           <div className="flex items-center justify-center gap-6">
             <a href="#" className="hover:text-gray-900">• Privacy Policy</a>
             <a href="#" className="hover:text-gray-900">• Terms of Service</a>

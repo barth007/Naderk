@@ -290,18 +290,28 @@ export default function AdminRecordsPage() {
   const [visitRangeFilter, setVisitRangeFilter] = useState('Anytime');
   const [insuranceFilter, setInsuranceFilter] = useState('Any Provider');
 
+  // Was built from `complaints_summary` — a free-text symptom list, not a
+  // department — so the dropdown offered values no record could match.
   const departments = useMemo(() => {
     const set = new Set<string>();
-    allPatients.forEach((p) => { if (p.complaints_summary) set.add(p.complaints_summary); });
-    return ['All Department', ...Array.from(set).slice(0, 10)];
+    allPatients.forEach((p) => { if (p.service_name) set.add(p.service_name); });
+    return ['All Department', ...Array.from(set).sort()];
+  }, [allPatients]);
+
+  const insuranceProviders = useMemo(() => {
+    const set = new Set<string>();
+    allPatients.forEach((p) => { if (p.insurance_provider) set.add(p.insurance_provider); });
+    return ['Any Provider', ...Array.from(set).sort()];
   }, [allPatients]);
 
   const filteredPatients = useMemo(() => {
     return allPatients.filter((p) => {
       if (statusFilter === 'Active' && !isActive(p)) return false;
       if (statusFilter === 'Inactive' && isActive(p)) return false;
-      if (departmentFilter !== 'All Department' && p.complaints_summary !== departmentFilter) return false;
+      if (departmentFilter !== 'All Department' && p.service_name !== departmentFilter) return false;
       if (!visitInRange(p.last_visit, visitRangeFilter)) return false;
+      // Was listed as a dependency but never actually applied.
+      if (insuranceFilter !== 'Any Provider' && p.insurance_provider !== insuranceFilter) return false;
       return true;
     });
   }, [allPatients, statusFilter, departmentFilter, visitRangeFilter, insuranceFilter]);
@@ -374,7 +384,7 @@ export default function AdminRecordsPage() {
             <FilterSelect
               label="Insurance Provider"
               value={insuranceFilter}
-              options={['Any Provider']}
+              options={insuranceProviders}
               onChange={(v) => { setInsuranceFilter(v); setPage(1); }}
             />
           </div>

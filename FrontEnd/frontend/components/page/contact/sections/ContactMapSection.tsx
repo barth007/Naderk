@@ -1,4 +1,7 @@
-export function ContactMapSection() {
+import { getSiteBrand } from "@/lib/site-brand";
+
+export async function ContactMapSection() {
+  const brand = await getSiteBrand();
   return (
     <section className="bg-background pb-24 md:pb-32">
       <div className="container mx-auto px-4 md:px-6 max-w-7xl">
@@ -12,7 +15,7 @@ export function ContactMapSection() {
             allowFullScreen={false} 
             loading="lazy" 
             referrerPolicy="no-referrer-when-downgrade"
-            title="NaderkEye Location Map"
+            title={`${brand.name} Location Map`}
             className="absolute inset-0"
           ></iframe>
         </div>

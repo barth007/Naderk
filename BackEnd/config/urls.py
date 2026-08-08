@@ -23,7 +23,40 @@ def health_check(request):
     return JsonResponse({"status": "ok"})
 
 
+def api_root(request):
+    """
+    Landing response for the bare API host.
+
+    Nothing was routed at `/`, and the API vhosts only proxied `/api/`,
+    `/admin/` and `/ws/`, so hitting https://dev-api.naderkela.com/ fell through
+    to nginx's default site and showed the stock "Welcome to nginx!" page — which
+    looks like the deployment is broken. This gives the host an identity and a
+    couple of useful pointers.
+    """
+    from django.conf import settings
+
+    brand = getattr(settings, 'BRAND_NAME', 'Naderk')
+    try:
+        # Prefer the name the CMS is configured with, so renaming the platform
+        # is reflected here too. Never let this take the endpoint down.
+        from naderk.cms.models import SiteSettings
+        configured = SiteSettings.objects.values_list('company_name', flat=True).first()
+        if configured:
+            brand = configured
+    except Exception:
+        pass
+
+    return JsonResponse({
+        "message": f"Welcome to the {brand} API.",
+        "status": "ok",
+        "api_root": "/api/v1/",
+        "health": "/api/health/",
+        "admin": "/admin/",
+    })
+
+
 urlpatterns = [
+    path('', api_root, name='api-root'),
     path('api/health/', health_check, name='health-check'),
     path('admin/', admin.site.urls),
     path('api/v1/auth/', include('naderk.authentication.urls')),

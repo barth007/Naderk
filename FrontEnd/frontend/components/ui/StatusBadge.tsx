@@ -14,7 +14,7 @@ export default function StatusBadge({ status, label }: StatusBadgeProps) {
       displayStatus = displayStatus || 'Pending';
       return (
         <div className="tooltip tooltip-top" data-tip={displayStatus}>
-          <div className="badge gap-1.5 font-bold text-[11px] px-2.5 py-1 rounded-md bg-yellow-50 text-yellow-700 border-none whitespace-nowrap truncate max-w-[120px]">
+          <div className="badge gap-1.5 font-bold text-[10px] px-2 py-0.5 rounded-md bg-yellow-50 text-yellow-700 border-none whitespace-nowrap truncate max-w-[110px]">
             <span className="w-1.5 h-1.5 rounded-md bg-yellow-500 shrink-0"></span>
             {displayStatus}
           </div>
@@ -24,7 +24,7 @@ export default function StatusBadge({ status, label }: StatusBadgeProps) {
       displayStatus = displayStatus || 'Confirmed';
       return (
         <div className="tooltip tooltip-top" data-tip={displayStatus}>
-          <div className="badge gap-1.5 font-bold text-[11px] px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 border-none whitespace-nowrap truncate max-w-[120px]">
+          <div className="badge gap-1.5 font-bold text-[10px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border-none whitespace-nowrap truncate max-w-[110px]">
             <span className="w-1.5 h-1.5 rounded-md bg-blue-500 shrink-0"></span>
             {displayStatus}
           </div>
@@ -34,7 +34,7 @@ export default function StatusBadge({ status, label }: StatusBadgeProps) {
       displayStatus = displayStatus || 'Checked In';
       return (
         <div className="tooltip tooltip-top" data-tip={displayStatus}>
-          <div className="badge gap-1.5 font-bold text-[11px] px-2.5 py-1 rounded-md bg-cyan-50 text-cyan-700 border-none whitespace-nowrap truncate max-w-[120px]">
+          <div className="badge gap-1.5 font-bold text-[10px] px-2 py-0.5 rounded-md bg-cyan-50 text-cyan-700 border-none whitespace-nowrap truncate max-w-[110px]">
             <span className="w-1.5 h-1.5 rounded-md bg-cyan-500 shrink-0"></span>
             {displayStatus}
           </div>
@@ -44,7 +44,7 @@ export default function StatusBadge({ status, label }: StatusBadgeProps) {
       displayStatus = displayStatus || 'In Progress';
       return (
         <div className="tooltip tooltip-top" data-tip={displayStatus}>
-          <div className="badge gap-1.5 font-bold text-[11px] px-2.5 py-1 rounded-md bg-purple-50 text-purple-700 border-none whitespace-nowrap truncate max-w-[120px]">
+          <div className="badge gap-1.5 font-bold text-[10px] px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border-none whitespace-nowrap truncate max-w-[110px]">
             <span className="w-1.5 h-1.5 rounded-md bg-purple-500 shrink-0"></span>
             {displayStatus}
           </div>
@@ -54,7 +54,7 @@ export default function StatusBadge({ status, label }: StatusBadgeProps) {
       displayStatus = displayStatus || 'Completed';
       return (
         <div className="tooltip tooltip-top" data-tip={displayStatus}>
-          <div className="badge gap-1.5 font-bold text-[11px] px-2.5 py-1 rounded-md bg-green-50 text-green-600 border-none whitespace-nowrap truncate max-w-[120px]">
+          <div className="badge gap-1.5 font-bold text-[10px] px-2 py-0.5 rounded-md bg-green-50 text-green-600 border-none whitespace-nowrap truncate max-w-[110px]">
             <span className="w-1.5 h-1.5 rounded-md bg-green-500 shrink-0"></span>
             {displayStatus}
           </div>
@@ -64,7 +64,7 @@ export default function StatusBadge({ status, label }: StatusBadgeProps) {
       displayStatus = displayStatus || 'Missed';
       return (
         <div className="tooltip tooltip-top" data-tip={displayStatus}>
-          <div className="badge gap-1.5 font-bold text-[11px] px-2.5 py-1 rounded-md bg-red-50 text-red-600 border-none whitespace-nowrap truncate max-w-[120px]">
+          <div className="badge gap-1.5 font-bold text-[10px] px-2 py-0.5 rounded-md bg-red-50 text-red-600 border-none whitespace-nowrap truncate max-w-[110px]">
             <span className="w-1.5 h-1.5 rounded-md bg-red-500 shrink-0"></span>
             {displayStatus}
           </div>
@@ -74,7 +74,7 @@ export default function StatusBadge({ status, label }: StatusBadgeProps) {
       displayStatus = displayStatus || 'Cancelled';
       return (
         <div className="tooltip tooltip-top" data-tip={displayStatus}>
-          <div className="badge gap-1.5 font-bold text-[11px] px-2.5 py-1 rounded-md bg-gray-100 text-gray-700 border-none whitespace-nowrap truncate max-w-[120px]">
+          <div className="badge gap-1.5 font-bold text-[10px] px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 border-none whitespace-nowrap truncate max-w-[110px]">
             <span className="w-1.5 h-1.5 rounded-md bg-gray-500 shrink-0"></span>
             {displayStatus}
           </div>
@@ -83,7 +83,7 @@ export default function StatusBadge({ status, label }: StatusBadgeProps) {
     default:
       return (
         <div className="tooltip tooltip-top" data-tip={displayStatus || status}>
-          <div className="badge gap-1.5 font-bold text-[11px] px-2.5 py-1 rounded-md bg-gray-100 text-gray-700 border-none whitespace-nowrap truncate max-w-[120px]">
+          <div className="badge gap-1.5 font-bold text-[10px] px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 border-none whitespace-nowrap truncate max-w-[110px]">
             {displayStatus || status}
           </div>
         </div>

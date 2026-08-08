@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Send, Paperclip, X, FileText, Image as ImageIcon, Loader2, Smile } from 'lucide-react';
+import { Send, Paperclip, X, FileText, Loader2, Smile } from 'lucide-react';
 import { useUploadAttachment } from '@/services/messaging/messaging.hooks';
 import { toast } from 'sonner';
 
@@ -68,7 +68,7 @@ export function MessageComposer({ onSend, disabled = false }: MessageComposerPro
   };
 
   return (
-    <div className="border-t border-gray-100 p-4 bg-white shrink-0">
+    <div className="border-t border-gray-100 p-2.5 sm:p-4 bg-white shrink-0">
       {/* File input (hidden) */}
       <input
         type="file"
@@ -81,7 +81,7 @@ export function MessageComposer({ onSend, disabled = false }: MessageComposerPro
       <form onSubmit={handleSend} className="flex flex-col gap-2">
         {/* Attachment preview bar */}
         {attachmentName && (
-          <div className="flex items-center justify-between p-2 rounded-xl bg-gray-50 border border-gray-100 max-w-md mb-2 animate-in fade-in slide-in-from-bottom-1 duration-200">
+          <div className="flex items-center justify-between p-2 rounded-md bg-gray-50 border border-gray-100 max-w-full sm:max-w-md mb-2 animate-in fade-in slide-in-from-bottom-1 duration-200">
             <div className="flex items-center gap-2 overflow-hidden text-xs font-semibold text-gray-700">
               {uploadMutation.isPending ? (
                 <Loader2 className="w-4 h-4 text-[#E03E3E] animate-spin" />
@@ -106,62 +106,53 @@ export function MessageComposer({ onSend, disabled = false }: MessageComposerPro
           </div>
         )}
 
-        {/* Integrated Composer Box */}
-        <div className="bg-gray-50 border border-gray-100 focus-within:border-gray-200 focus-within:bg-gray-100/50 rounded-md p-1.5 pr-2 pl-3 flex items-center gap-1 transition-all">
-          {/* Paperclip Button */}
+        {/* Integrated Composer Box.
+            There used to be separate paperclip and image buttons that opened the
+            same picker with the same accept list — two identical controls eating
+            width the input needed on a phone. One attach button now covers both. */}
+        <div className="bg-gray-50 border border-gray-100 focus-within:border-gray-200 focus-within:bg-gray-100/50 rounded-md p-1.5 pl-2 flex items-center gap-1 transition-all">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled || uploadMutation.isPending}
-            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-50"
-            title="Attach Document (PDF)"
+            aria-label="Attach a file"
+            className="p-2 text-gray-400 hover:text-gray-600 rounded-md transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+            title="Attach image or PDF"
           >
-            <Paperclip className="w-4.5 h-4.5" />
+            <Paperclip className="w-4 h-4" />
           </button>
 
-          {/* Image Upload Button */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled || uploadMutation.isPending}
-            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-50"
-            title="Attach Image (JPG, PNG)"
-          >
-            <ImageIcon className="w-4.5 h-4.5" />
-          </button>
-
-          {/* Text Input */}
           <input
             type="text"
-            placeholder="Type your message here..."
+            placeholder="Message…"
             value={content}
             onChange={(e) => setContent(e.target.value)}
             disabled={disabled || uploadMutation.isPending}
-            className="flex-grow bg-transparent border-none text-sm text-gray-800 focus:outline-none placeholder-gray-400 px-3 h-10"
+            className="flex-grow min-w-0 bg-transparent border-none text-sm text-gray-800 focus:outline-none placeholder-gray-400 px-1.5 h-10"
           />
 
-          {/* Emoji/Smiley Button */}
+          {/* Emoji is a nicety, not worth the width on a narrow screen. */}
           <button
             type="button"
-            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+            className="hidden sm:block p-2 text-gray-400 hover:text-gray-600 rounded-md transition-colors cursor-pointer shrink-0 disabled:opacity-50"
             title="Add Emoji"
+            aria-label="Add emoji"
             onClick={() => setContent(prev => prev + '😊')}
           >
-            <Smile className="w-4.5 h-4.5" />
+            <Smile className="w-4 h-4" />
           </button>
 
-          {/* Send Button */}
           <button
             type="submit"
             disabled={disabled || uploadMutation.isPending || (!content.trim() && !attachmentUrl)}
-            className="p-2.5 bg-[#E03E3E] text-white rounded-md hover:bg-red-700 transition-colors disabled:bg-gray-200 disabled:text-gray-400 focus:outline-none shadow-sm cursor-pointer shrink-0 flex items-center justify-center"
+            aria-label="Send message"
+            className="w-10 h-10 bg-[#E03E3E] text-white rounded-md hover:bg-red-700 transition-colors disabled:bg-gray-200 disabled:text-gray-400 focus:outline-none shadow-sm cursor-pointer shrink-0 flex items-center justify-center"
           >
             <Send className="w-4 h-4" />
           </button>
         </div>
-        
-        {/* Encryption Footnote */}
-        <span className="text-[10px] text-gray-400 font-semibold mt-1.5 block text-center uppercase tracking-wider">
+
+        <span className="hidden sm:block text-[10px] text-gray-400 font-semibold mt-1.5 text-center uppercase tracking-wider">
           All messages are end-to-end encrypted.
         </span>
       </form>

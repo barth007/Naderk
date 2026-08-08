@@ -4,6 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { DEFAULT_NAV_ITEMS } from "@/components/layout/navbar/navbar.constants"
 import { useBrand, useSiteSettings } from "@/services/cms/admin-cms.hooks"
+import BrandLogo from "@/components/layout/BrandLogo"
 
 const servicesLinks =
   DEFAULT_NAV_ITEMS.find((item) => item.label === "Services")?.dropdown?.map((item) => ({
@@ -23,7 +24,6 @@ export function Footer() {
   const brand = useBrand()
   const { data: settings } = useSiteSettings()
 
-  const logoSrc = brand.logoUrl ?? '/naderk_logo.png'
   const address = settings?.address || 'Abuja, Nigeria'
   const email = settings?.email_general || settings?.email_support || 'info@naderkeye.com'
 
@@ -33,15 +33,7 @@ export function Footer() {
         <div className="grid grid-cols-1 gap-10 md:grid-cols-[1.6fr_1fr_1fr_1fr] md:gap-8">
           <aside className="max-w-xl">
             <Link href="/" aria-label="Go to homepage" className="inline-flex items-center">
-              <Image
-                src={logoSrc}
-                alt={brand.name}
-                width={110}
-                height={70}
-                loading="eager"
-                className="object-contain"
-                unoptimized={!!brand.logoUrl}
-              />
+              <BrandLogo size="lg" />
             </Link>
             <p className="mt-6 text-md leading-relaxed text-white/80 sm:text-md">
               At {brand.name}, we are committed to providing high-quality eye care services using advanced technology and experienced specialists.

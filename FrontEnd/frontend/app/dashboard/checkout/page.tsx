@@ -20,6 +20,7 @@ import { CartItem } from '@/services/marketplace/marketplace.types';
 import { cn } from '@/lib/cn';
 import { apiClient } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
+import { useBrand } from '@/services/cms/admin-cms.hooks';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -140,6 +141,7 @@ type PaymentPhase = 'idle' | 'initializing' | 'popup_open' | 'waiting_webhook';
 // ── Checkout page ─────────────────────────────────────────────────────────────
 
 export default function CheckoutPage() {
+  const brand = useBrand();
   const router = useRouter();
   const { user } = useAuth();
   const { data: cart, isLoading } = useCart();
@@ -481,7 +483,7 @@ export default function CheckoutPage() {
             <div className="bg-gray-50 border border-gray-100 rounded-md p-4 flex gap-2.5">
               <ShieldCheck className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
               <p className="text-[10px] text-gray-500 font-semibold leading-relaxed">
-                Payments processed securely by Paystack. Orders are confirmed only after payment verification. Naderk never stores your card details.
+                Payments processed securely by Paystack. Orders are confirmed only after payment verification. {brand.name} never stores your card details.
               </p>
             </div>
           </div>

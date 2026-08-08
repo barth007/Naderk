@@ -26,7 +26,6 @@ export const ROLE_CONFIGS: Record<string, RoleConfig> = {
     sidebarItems: [
       { name: 'Dashboard', href: '/dashboard', iconName: 'LayoutGrid' },
       { name: 'Appointments', href: '/dashboard/appointments', iconName: 'Calendar' },
-      { name: 'Services', href: '/dashboard/services', iconName: 'Stethoscope' },
       { name: 'Medical Records', href: '/dashboard/records', iconName: 'FileText' },
       { name: 'Messages', href: '/dashboard/messages', iconName: 'MessageSquare' },
       { name: 'Telehealth', href: '/dashboard/telehealth', iconName: 'Video' },

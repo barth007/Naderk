@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 
-from naderk.common.responses.builders import build_success_response, build_error_response
+from naderk.common.responses.builders import build_success_response, build_error_response, _problems_url
 from naderk.common.storage.service import storage_service
 from naderk.common.storage.exceptions import StorageValidationError, StorageProviderError
 from .selectors import get_stored_file

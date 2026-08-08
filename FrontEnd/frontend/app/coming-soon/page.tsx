@@ -2,7 +2,7 @@ import Link from "next/link"
 import { Button, Badge } from "@/components/ui"
 
 export const metadata = {
-  title: "Coming Soon - NaderkEye",
+  title: "Coming Soon",
   description: "This page is currently under development.",
 }
 

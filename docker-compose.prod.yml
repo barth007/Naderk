@@ -2,8 +2,8 @@
 # Infrastructure (db, redis, livekit) is managed by docker-compose.yml.
 #
 # Env files on the server:
-#   Production  → BackEnd/.env.production      FrontEnd/fronend/.env.production
-#   Staging/Dev → BackEnd/.env.dev             FrontEnd/fronend/.env.dev
+#   Production  → BackEnd/.env.production      FrontEnd/frontend/.env.production
+#   Staging/Dev → BackEnd/.env.dev             FrontEnd/frontend/.env.dev
 #
 # The ENVIRONMENT variable is injected by the deploy workflow.
 # Default falls back to "production" for manual local use.

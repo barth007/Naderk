@@ -210,6 +210,81 @@ class InitializeAppointmentPaymentApi(APIView):
         })
 
 
+class VerifyAppointmentPaymentApi(APIView):
+    """
+    POST /api/v1/payments/verify-appointment/  { "reference": "NDK-..." }
+
+    Confirms a payment straight from the browser after Paystack's inline popup
+    reports success, by verifying the reference against Paystack server-side.
+
+    Previously the webhook was the *only* thing that could mark an appointment
+    paid. A Paystack account has one webhook URL, so staging and production
+    cannot both receive it — on whichever environment misses out, the patient
+    paid and then watched a spinner forever because payment_status never left
+    PENDING. This endpoint removes that single point of failure; the webhook
+    stays as the backstop for patients who close the tab mid-payment.
+
+    Safe to call repeatedly: the underlying transition is idempotent, and the
+    reference is verified with Paystack rather than trusted from the client.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        reference = (request.data.get('reference') or '').strip()
+        if not reference:
+            return build_error_response("validation-error", "reference is required", 400,
+                                        "Provide the Paystack transaction reference.")
+
+        from .models import PaymentTransaction
+        from naderk.appointments.models import Appointment
+        from .services import confirm_appointment_payment
+
+        try:
+            txn = PaymentTransaction.objects.select_related('appointment').get(
+                reference=reference, user=request.user,
+            )
+        except PaymentTransaction.DoesNotExist:
+            return build_error_response("not-found", "Transaction not found", 404,
+                                        "No payment found for that reference.")
+
+        if not txn.appointment:
+            return build_error_response("bad-request", "Not an appointment payment", 400,
+                                        "That reference is not linked to an appointment.")
+
+        appointment = txn.appointment
+
+        # Already settled (webhook may have won the race) — report success.
+        if appointment.payment_status == Appointment.PaymentStatus.PAID:
+            return build_success_response("Payment already confirmed", {
+                'payment_status': appointment.payment_status,
+                'appointment_id': str(appointment.id),
+            })
+
+        try:
+            result = verify_and_confirm(reference=reference, provider_name='PAYSTACK')
+        except Exception as e:
+            logger.exception("Verify failed for %s: %s", reference, e)
+            return build_error_response("provider-error", "Could not verify payment", 502,
+                                        "We could not reach the payment provider. "
+                                        "If you were charged, your booking will be confirmed shortly.")
+
+        if result.status != 'success':
+            return build_success_response("Payment not successful", {
+                'payment_status': appointment.payment_status,
+                'provider_status': result.status,
+                'appointment_id': str(appointment.id),
+            })
+
+        confirm_appointment_payment(appointment=appointment, reference=reference)
+        appointment.refresh_from_db()
+        logger.info("Verify: appointment %s marked PAID via client verification.", appointment.id)
+
+        return build_success_response("Payment confirmed", {
+            'payment_status': appointment.payment_status,
+            'appointment_id': str(appointment.id),
+        })
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class PaystackWebhookApi(APIView):
     """
@@ -276,17 +351,8 @@ class PaystackWebhookApi(APIView):
                 logger.info("Webhook: appointment %s already paid, skipping.", appt.id)
                 return build_success_response("Already processed", {})
             try:
-                with db_transaction.atomic():
-                    appt.payment_status = Appointment.PaymentStatus.PAID
-                    appt.payment_reference = reference
-                    # status stays PENDING — doctor must still accept the request.
-                    # DoctorRequestsAPI only surfaces paid (or free) pending appointments.
-                    appt.save()
-                    ConsultationService.create_service_plan(
-                        patient=appt.patient,
-                        service=appt.service,
-                        payment_reference=reference,
-                    )
+                from .services import confirm_appointment_payment
+                confirm_appointment_payment(appointment=appt, reference=reference)
                 logger.info("Webhook: appointment %s marked PAID, awaiting doctor acceptance.", appt.id)
             except Exception as e:
                 logger.exception("Webhook: appointment processing failed for %s: %s", reference, e)

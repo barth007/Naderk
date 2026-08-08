@@ -86,7 +86,11 @@ class RoleAwarePortalTestCase(TestCase):
             consultation_fee=150.00
         )
         
-        # Create a pending appointment
+        # Create a pending appointment that has been PAID and is awaiting the
+        # doctor's acceptance. payment_status matters now: a PENDING appointment
+        # with a fee and no payment is an abandoned checkout, not a booking, and
+        # is excluded from these counters so the dashboard total can never
+        # disagree with the requests list the doctor can actually act on.
         Appointment.objects.create(
             patient=self.patient,
             doctor=self.doctor,
@@ -94,6 +98,7 @@ class RoleAwarePortalTestCase(TestCase):
             appointment_date=timezone.now().date(),
             appointment_time=timezone.now().time(),
             status=Appointment.Status.PENDING,
+            payment_status=Appointment.PaymentStatus.PAID,
             consultation_fee=150.00
         )
         
@@ -106,6 +111,21 @@ class RoleAwarePortalTestCase(TestCase):
         self.assertEqual(data['appointments_today'], 2)
         self.assertEqual(data['new_appointments'], 1) # PENDING count
         self.assertEqual(data['cancelled_appointments'], 0)
+
+        # An abandoned checkout must not inflate the counters.
+        Appointment.objects.create(
+            patient=self.patient,
+            doctor=self.doctor,
+            service=self.service,
+            appointment_date=timezone.now().date(),
+            appointment_time=timezone.now().time(),
+            status=Appointment.Status.PENDING,
+            payment_status=Appointment.PaymentStatus.PENDING,
+            consultation_fee=150.00
+        )
+        data = self.client.get('/api/v1/dashboard/doctor/summary/').data['data']
+        self.assertEqual(data['total_appointments'], 2)
+        self.assertEqual(data['new_appointments'], 1)
 
     def test_doctor_scratchpad_retention_rules(self):
         """

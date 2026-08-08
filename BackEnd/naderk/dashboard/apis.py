@@ -19,9 +19,15 @@ class DoctorSummaryAPI(APIView):
         doctor = request.user
         today = timezone.now().date()
         
-        total_appointments = Appointment.objects.filter(doctor=doctor).count()
-        appointments_today = Appointment.objects.filter(doctor=doctor, appointment_date=today).count()
-        new_appointments = Appointment.objects.filter(doctor=doctor, status=Appointment.Status.PENDING).count()
+        # These were the last counters still bypassing exclude_unpaid_checkouts,
+        # so an abandoned checkout showed as "1 appointment / 1 new request" on
+        # the dashboard while DoctorRequestsAPI — which does exclude them — had
+        # nothing to list. The doctor could see the number but had nothing to
+        # accept or reject.
+        doctor_appts = Appointment.objects.filter(doctor=doctor).exclude_unpaid_checkouts()
+        total_appointments = doctor_appts.count()
+        appointments_today = doctor_appts.filter(appointment_date=today).count()
+        new_appointments = doctor_appts.filter(status=Appointment.Status.PENDING).count()
         cancelled_appointments = Appointment.objects.filter(doctor=doctor, status=Appointment.Status.CANCELLED).count()
         
         # Messaging metrics
@@ -69,9 +75,12 @@ class DoctorCalendarAPI(APIView):
 
     def get(self, request):
         doctor = request.user
-        appointments = Appointment.objects.filter(
-            doctor=doctor
-        ).exclude(status=Appointment.Status.CANCELLED).order_by('appointment_date', 'appointment_time')[:100]
+        appointments = (
+            Appointment.objects.filter(doctor=doctor)
+            .exclude_unpaid_checkouts()
+            .exclude(status=Appointment.Status.CANCELLED)
+            .order_by('appointment_date', 'appointment_time')[:100]
+        )
         
         results = []
         for appt in appointments:
@@ -91,10 +100,17 @@ class DoctorAppointmentsAPI(APIView):
     def get(self, request):
         doctor = request.user
         today = timezone.now().date()
-        appointments = Appointment.objects.filter(
-            doctor=doctor,
-            appointment_date=today
-        ).exclude(status__in=[Appointment.Status.CANCELLED, Appointment.Status.PENDING]).order_by('appointment_time')
+        # PENDING is kept here on purpose. It used to be excluded, so a paid
+        # appointment awaiting the doctor's acceptance showed on the calendar
+        # for today while this queue said "no patients waiting" — two widgets on
+        # one screen contradicting each other about the same booking. Unpaid
+        # rows are still filtered out, so only real bookings appear.
+        appointments = (
+            Appointment.objects.filter(doctor=doctor, appointment_date=today)
+            .exclude_unpaid_checkouts()
+            .exclude(status=Appointment.Status.CANCELLED)
+            .order_by('appointment_time')
+        )
         
         results = []
         for appt in appointments:
@@ -115,14 +131,12 @@ class DoctorRequestsAPI(APIView):
 
     def get(self, request):
         doctor = request.user
-        pending_requests = Appointment.objects.filter(
-            doctor=doctor,
-            status=Appointment.Status.PENDING,
-        ).exclude(
-            # Hide appointments awaiting payment — only surface to doctor once paid (or free).
-            payment_status=Appointment.PaymentStatus.PENDING,
-            consultation_fee__gt=0,
-        ).order_by('appointment_date', 'appointment_time')
+        # Only surface a request to the doctor once it is paid (or free).
+        pending_requests = (
+            Appointment.objects.filter(doctor=doctor, status=Appointment.Status.PENDING)
+            .exclude_unpaid_checkouts()
+            .order_by('appointment_date', 'appointment_time')
+        )
         
         results = []
         for appt in pending_requests:
@@ -314,11 +328,13 @@ class AdminDashboardSummaryAPI(APIView):
 
         # --- Appointment queue: today's appointments (must match the summary count above,
         # which counts all non-cancelled appointments, including PENDING) ---
-        queue_qs = Appointment.objects.filter(
-            appointment_date=today
-        ).exclude(
-            status=Appointment.Status.CANCELLED
-        ).order_by('appointment_time').select_related('patient', 'service')[:20]
+        queue_qs = (
+            Appointment.objects.filter(appointment_date=today)
+            .exclude_unpaid_checkouts()
+            .exclude(status=Appointment.Status.CANCELLED)
+            .order_by('appointment_time')
+            .select_related('patient', 'service')[:20]
+        )
 
         appointment_queue = []
         for appt in queue_qs:
@@ -409,10 +425,7 @@ class AdminAppointmentRequestsAPI(APIView):
 
         qs = (
             Appointment.objects.filter(status=Appointment.Status.PENDING)
-            .exclude(
-                payment_status=Appointment.PaymentStatus.PENDING,
-                consultation_fee__gt=0,
-            )
+            .exclude_unpaid_checkouts()
             .order_by('-created_at')
             .select_related('patient', 'doctor', 'service')[:50]
         )
@@ -552,7 +565,7 @@ class AdminDoctorListAPI(APIView):
             {
                 "id": str(p.user.id),
                 "name": f"Dr. {p.user.first_name} {p.user.last_name}".strip(),
-                "specialization": p.get_specialization_display(),
+                "specialization": p.specialization_display,
             }
             for p in profiles
         ]
@@ -1262,8 +1275,8 @@ class AdminStaffListAPI(APIView):
                 avatar = profile.profile_picture
 
             employee_id = (profile.employee_id if profile else None) or f"NDK{str(u.id).replace('-','')[:5].upper()}"
-            department = (profile.department if profile else None) or (doc.get_specialization_display() if doc else u.get_role_display())
-            job_title = doc.get_specialization_display() if doc else u.get_role_display()
+            department = (profile.department if profile else None) or (doc.specialization_display if doc else u.get_role_display())
+            job_title = doc.specialization_display if doc else u.get_role_display()
 
             data.append({
                 'id': str(u.id),
@@ -1322,6 +1335,18 @@ class AdminStaffListAPI(APIView):
                 type_uri='validation-error', title='Validation Error', status_code=400,
                 detail="A user with this email already exists.",
             )
+        # A doctor with no specialization silently inherits the signal default and
+        # then never matches the services they were hired for — require it here.
+        if role == 'DOCTOR':
+            if not specialization:
+                return build_error_response(
+                    type_uri='validation-error', title='Validation Error', status_code=400,
+                    detail="Specialization is required for doctors.",
+                    errors={'specialization': ['Please select a specialization.']},
+                )
+            err = _validate_specialization_code(specialization, field='specialization')
+            if err:
+                return err
 
         ROLE_DISPLAY = {
             'DOCTOR': 'Doctor',
@@ -1356,6 +1381,12 @@ class AdminStaffListAPI(APIView):
                 if role == 'DOCTOR' and specialization and hasattr(user, 'doctor_profile'):
                     user.doctor_profile.specialization = specialization
                     user.doctor_profile.save(update_fields=['specialization'])
+                    # Without a schedule the doctor gets recommended (the
+                    # assignment fallback covers unscheduled doctors) but shows
+                    # zero bookable slots. Seed the same Mon–Fri 8–5 default the
+                    # self-onboarding path uses; they can edit it afterwards.
+                    from naderk.users.apis import _seed_default_availability
+                    _seed_default_availability(user)
 
                 # Create a 24-hour invite token (reuses PasswordResetToken).
                 token = secrets.token_urlsafe(32)
@@ -1590,6 +1621,164 @@ class AdminDepartmentDetailAPI(APIView):
         return build_success_response(message="Department removed.", data={}, status_code=200)
 
 
+# ── Specialization Management ─────────────────────────────────────────────────
+
+def _serialize_specialization(s, usage=None):
+    data = {
+        'id': str(s.id),
+        'code': s.code,
+        'name': s.name,
+        'description': s.description or '',
+        'is_active': s.is_active,
+    }
+    if usage is not None:
+        doctors, services = usage
+        # doctor_count lets the service form warn before an admin creates a
+        # service no doctor can ever be assigned to.
+        data['doctor_count'] = doctors
+        data['service_count'] = services
+        data['in_use'] = doctors + services
+    return data
+
+
+def _validate_specialization_code(code, field='required_specialization'):
+    """Returns an error response if `code` isn't an active specialization, else None.
+    Booking matches doctors on this exact string, so an unknown code produces a
+    service nobody can ever be assigned to."""
+    from naderk.users.models import Specialization
+    if Specialization.objects.filter(code=code, is_active=True).exists():
+        return None
+    valid = list(Specialization.objects.filter(is_active=True).values_list('code', flat=True))
+    msg = f'Invalid specialization. Must be one of: {", ".join(valid) if valid else "(none configured)"}.'
+    return build_error_response('validation-error', 'Validation Error', 400, msg, errors={field: [msg]})
+
+
+def _specialization_usage(code):
+    """How many doctors and services currently point at this code."""
+    from naderk.users.models import DoctorProfile
+    from naderk.appointments.models import MedicalService
+    return (
+        DoctorProfile.objects.filter(specialization=code).count(),
+        MedicalService.objects.filter(required_specialization=code).count(),
+    )
+
+
+class SpecializationListAPI(APIView):
+    """
+    GET  — list specializations. Readable by any signed-in user, because the
+           doctor onboarding and profile forms need it, not just admins.
+    POST — create one (admin only).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from naderk.users.models import Specialization
+        qs = Specialization.objects.all()
+        # Only admins managing the list need to see deactivated entries; every
+        # other caller is filling a dropdown and must only get valid choices.
+        if _admin_only(request) or request.query_params.get('include_inactive') != 'true':
+            qs = qs.filter(is_active=True)
+        data = [
+            _serialize_specialization(s, usage=_specialization_usage(s.code))
+            for s in qs
+        ]
+        return build_success_response(message="Specializations retrieved.", data=data, status_code=200)
+
+    def post(self, request):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        from naderk.users.models import Specialization
+        import re
+
+        name = (request.data.get('name') or '').strip()
+        if not name:
+            return build_error_response('validation-error', 'Validation Error', 400,
+                                        'Name is required.', errors={'name': ['Name is required.']})
+
+        # Derive the stored code from the name unless one was supplied. Codes are
+        # what the booking engine matches on, so normalise hard: A–Z and _ only.
+        raw_code = (request.data.get('code') or name).strip().upper()
+        code = re.sub(r'[^A-Z0-9]+', '_', raw_code).strip('_')
+        if not code:
+            return build_error_response('validation-error', 'Validation Error', 400,
+                                        'Could not derive a code from that name.',
+                                        errors={'name': ['Use at least one letter or number.']})
+        if len(code) > 50:
+            return build_error_response('validation-error', 'Validation Error', 400,
+                                        'Name is too long.', errors={'name': ['Name is too long.']})
+        if Specialization.objects.filter(code=code).exists():
+            return build_error_response('validation-error', 'Validation Error', 400,
+                                        f'A specialization with code "{code}" already exists.',
+                                        errors={'name': ['This specialization already exists.']})
+
+        spec = Specialization.objects.create(
+            code=code, name=name,
+            description=(request.data.get('description') or '').strip() or None,
+        )
+        return build_success_response(message="Specialization created.",
+                                      data=_serialize_specialization(spec, usage=(0, 0)), status_code=201)
+
+
+class SpecializationDetailAPI(APIView):
+    """PATCH renames/reactivates; DELETE deactivates. The `code` is never
+    editable — doctors and services store it, so changing it would silently
+    orphan every row pointing at the old value."""
+    permission_classes = [IsAuthenticated]
+
+    def _get(self, pk):
+        from naderk.users.models import Specialization
+        return Specialization.objects.filter(id=pk).first()
+
+    def patch(self, request, pk):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        spec = self._get(pk)
+        if not spec:
+            return build_error_response('not-found', 'Not Found', 404, 'Specialization not found.')
+
+        if 'name' in request.data:
+            name = (request.data.get('name') or '').strip()
+            if not name:
+                return build_error_response('validation-error', 'Validation Error', 400,
+                                            'Name cannot be empty.', errors={'name': ['Name is required.']})
+            spec.name = name
+        if 'description' in request.data:
+            spec.description = (request.data.get('description') or '').strip() or None
+        if 'is_active' in request.data:
+            spec.is_active = bool(request.data['is_active'])
+        spec.save()
+
+        return build_success_response(
+            message="Specialization updated.",
+            data=_serialize_specialization(spec, usage=_specialization_usage(spec.code)),
+            status_code=200,
+        )
+
+    def delete(self, request, pk):
+        if _admin_only(request):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
+        spec = self._get(pk)
+        if not spec:
+            return build_error_response('not-found', 'Not Found', 404, 'Specialization not found.')
+
+        doctors, services = _specialization_usage(spec.code)
+        if doctors or services:
+            parts = []
+            if doctors:
+                parts.append(f"{doctors} doctor{'s' if doctors != 1 else ''}")
+            if services:
+                parts.append(f"{services} service{'s' if services != 1 else ''}")
+            return build_error_response(
+                'conflict', 'Specialization in use', 409,
+                f'"{spec.name}" is still assigned to {" and ".join(parts)}. '
+                f'Reassign them first, or deactivate it to hide it from new selections.',
+            )
+
+        spec.is_active = False
+        spec.save(update_fields=['is_active'])
+        return build_success_response(message="Specialization removed.", data={}, status_code=200)
+
+
 # ── Role Permissions Management ───────────────────────────────────────────────
 
 SYSTEM_PERMISSIONS = [
@@ -1705,14 +1894,11 @@ class AdminServiceListAPI(APIView):
             msg = 'Specialization is required when a doctor is needed.'
             return build_error_response('validation-error', 'Validation Error', 400, msg,
                                         errors={'required_specialization': [msg]})
-        # Specialization must be a real DoctorProfile choice or no doctor will ever match
+        # Must be an active specialization code, or no doctor will ever match
         if specialization:
-            from naderk.users.models import DoctorProfile
-            valid_specs = DoctorProfile.Specialization.values
-            if specialization not in valid_specs:
-                msg = f'Invalid specialization. Must be one of: {", ".join(valid_specs)}.'
-                return build_error_response('validation-error', 'Validation Error', 400, msg,
-                                            errors={'required_specialization': [msg]})
+            err = _validate_specialization_code(specialization)
+            if err:
+                return err
 
         VALID_BILLING = ['PER_VISIT', 'MONTHLY', 'SESSION_PACK']
         if billing_type not in VALID_BILLING:
@@ -1830,14 +2016,11 @@ class AdminServiceDetailAPI(APIView):
                 return build_error_response('validation-error', 'Validation Error', 400, msg,
                                             errors={'name': [msg]})
 
-        # Validate specialization matches a real DoctorProfile choice
+        # Must be an active specialization code, or no doctor will ever match
         if request.data.get('required_specialization'):
-            from naderk.users.models import DoctorProfile
-            spec = request.data['required_specialization']
-            if spec not in DoctorProfile.Specialization.values:
-                msg = f'Invalid specialization. Must be one of: {", ".join(DoctorProfile.Specialization.values)}.'
-                return build_error_response('validation-error', 'Validation Error', 400, msg,
-                                            errors={'required_specialization': [msg]})
+            err = _validate_specialization_code(request.data['required_specialization'])
+            if err:
+                return err
 
         fields = ['name', 'description', 'requires_doctor', 'available_online', 'required_specialization',
                   'duration_minutes', 'buffer_time_before', 'buffer_time_after', 'is_active']

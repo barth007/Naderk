@@ -8,7 +8,7 @@ import {
 } from "@/components/page/services/telehealth/sections"
 
 export const metadata: Metadata = {
-  title: "Telehealth & Virtual Eye Care | Naderk Eye Centre",
+  title: "Telehealth & Virtual Eye Care",
   description:
     "Connect with our leading ophthalmologists through a secure, high-definition video platform. Professional eye care consultations from the comfort of your home.",
 }

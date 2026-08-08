@@ -1,6 +1,8 @@
 import Image from "next/image";
+import { getSiteBrand } from "@/lib/site-brand";
 
-export function ContactHeroSection() {
+export async function ContactHeroSection() {
+  const brand = await getSiteBrand();
   return (
     <section className="bg-background pt-24 pb-12 md:pt-32 md:pb-16 min-h-[697px] flex flex-col justify-center">
       <div className="container mx-auto px-4 md:px-6 max-w-7xl">
@@ -20,7 +22,7 @@ export function ContactHeroSection() {
         <div className="relative w-full h-[400px] md:h-[500px] rounded-[2rem] overflow-hidden shadow-sm">
           <Image
             src="/images/home-consultation.png"
-            alt="NaderkEye Specialist Team"
+            alt={`${brand.name} Specialist Team`}
             fill
             className="object-cover"
             priority

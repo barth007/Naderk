@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from naderk.common.responses.builders import build_success_response, build_error_response
+from naderk.common.responses.builders import build_success_response, build_error_response, _problems_url
 from ..models import BlogPost, BlogCategory
 from ..serializers import (
     BlogCategorySerializer,
@@ -99,9 +99,14 @@ class BlogDetailAPI(APIView):
         try:
             blog = get_blog_by_slug(slug)
         except Exception:
-            from naderk.common.exceptions.custom_exceptions import NotFoundException
-            raise NotFoundException("Blog post not found.")
-            
+            return build_error_response(
+                type_uri=_problems_url('not-found'),
+                title="Not Found",
+                status_code=404,
+                detail="Blog post not found.",
+                instance=request.path,
+            )
+
         # Increment view count
         from ..services.blog import increment_blog_views
         increment_blog_views(blog)

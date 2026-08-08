@@ -2,8 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient as api } from '@/lib/api';
 import { 
   MedicalService, 
-  AssignSpecialistResponse, 
-  AvailableSlotsResponse, 
+  AssignSpecialistResponse,
   ReserveSlotResponse,
   AppointmentHistoryResponse,
   Appointment
@@ -15,16 +14,42 @@ export const useMedicalServices = () => {
     queryFn: async () => {
       const response = await api.get('/appointments/services/');
       return response.data.data.results as MedicalService[];
-    }
+    },
+    // An admin activating a service must show up here without a hard reload, so
+    // don't serve this from the 60s global staleTime when the page remounts.
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 };
 
-export const useAssignSpecialist = () => {
-  return useMutation({
-    mutationFn: async (data: { service_id: string; date: string }) => {
-      const response = await api.post('/appointments/assign-specialist/', data);
+/**
+ * Recommends a doctor for a service on a given date.
+ *
+ * This is a query, not a mutation, so it re-runs whenever the patient changes the
+ * date or switches between physical and telehealth — the assignment depends on
+ * both (weekday availability, and whether the doctor takes telehealth).
+ * A 404 from the API means "nobody free that day", which is a normal empty
+ * result here, not an error to retry.
+ */
+export const useAssignedSpecialist = (
+  serviceId: string | undefined,
+  date: string | undefined,
+  appointmentType: string,
+  enabled: boolean,
+) => {
+  return useQuery({
+    queryKey: ['assigned-specialist', serviceId, date, appointmentType],
+    queryFn: async () => {
+      const response = await api.post('/appointments/assign-specialist/', {
+        service_id: serviceId,
+        date,
+        appointment_type: appointmentType,
+      });
       return response.data.data as AssignSpecialistResponse;
-    }
+    },
+    enabled: enabled && !!serviceId && !!date,
+    retry: false,
+    staleTime: 30 * 1000,
   });
 };
 

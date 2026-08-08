@@ -6,7 +6,7 @@ import {
 import { FAQSection } from "@/components/page/home/sections/faq"; // Reusing the FAQ section
 
 export const metadata = {
-  title: "Contact Us - NaderkEye",
+  title: "Contact Us",
   description: "Reach out to our dedicated team for appointments, inquiries, or emergency vision care.",
 };
 

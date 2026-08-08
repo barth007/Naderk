@@ -119,7 +119,7 @@ export default function OrderDetailPage() {
     <div className="w-full max-w-4xl mx-auto pb-20 animate-in fade-in duration-300">
 
       {/* Breadcrumb */}
-      <div className="bg-white px-6 rounded-xl border border-gray-100 mb-6"><Breadcrumbs /></div>
+      <div className="bg-white px-6 rounded-md border border-gray-200 mb-6"><Breadcrumbs labels={{ [order.id]: `Order #${order.id.slice(0, 8).toUpperCase()}` }} /></div>
 
       {/* Back + header */}
       <div className="flex items-center gap-3 mb-8">

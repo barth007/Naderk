@@ -1,5 +1,8 @@
 from naderk.common.storage.service import storage_service
 import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -240,9 +243,13 @@ def send_message(
             conversation=conversation
         )
         
-    # Broadcast to WebSocket Channel Layer
-    _broadcast_message_ws(message)
-    
+    # Broadcast to WebSocket Channel Layer — never let a WS/Redis hiccup fail the
+    # message send (the message is already persisted; the broadcast is best-effort).
+    try:
+        _broadcast_message_ws(message)
+    except Exception:
+        logger.exception("Failed to broadcast message %s over websocket", message.id)
+
     return message
 
 @transaction.atomic

@@ -5,6 +5,7 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { User, Phone, Briefcase, Clock, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { apiClient } from '@/lib/api';
 import { toast } from 'sonner';
+import { useSpecializations } from '@/services/admin/admin-specializations.hooks';
 
 interface SectionProps {
   register: UseFormRegister<any>;
@@ -104,6 +105,9 @@ export function ContactInformationSection({ register, errors }: SectionProps) {
 }
 
 export function ProfessionalInformationSection({ register, errors, watch }: SectionProps & { role: string }) {
+  // Specializations are admin-managed, so fetch rather than hardcode.
+  const { data: specializations = [], isLoading: loadingSpecs } = useSpecializations();
+
   return (
     <section className="space-y-6">
       <div className="flex items-center gap-3 border-b border-gray-100 pb-3">
@@ -117,11 +121,10 @@ export function ProfessionalInformationSection({ register, errors, watch }: Sect
             {...register('specialization')}
             className="flex h-11 md:h-12 w-full rounded-md border border-gray-200 bg-white px-4 py-2 text-sm text-gray-900 shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#E03E3E]"
           >
-            <option value="">Select Specialization</option>
-            <option value="OPTOMETRIST">Optometrist</option>
-            <option value="OPHTHALMOLOGIST">Ophthalmologist</option>
-            <option value="ENT">ENT Specialist</option>
-            <option value="GENERAL_PRACTITIONER">General Practitioner</option>
+            <option value="">{loadingSpecs ? 'Loading…' : 'Select Specialization'}</option>
+            {specializations.map((s) => (
+              <option key={s.id} value={s.code}>{s.name}</option>
+            ))}
           </select>
           {errors.specialization && <p className="text-xs text-red-500 mt-1.5">{errors.specialization.message as string}</p>}
         </div>

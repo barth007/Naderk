@@ -103,7 +103,10 @@ export const useWebSocket = (activeConversationId?: string) => {
 
     intentionalCloseRef.current = false;
 
-    const baseUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://127.0.0.1:8000';
+    // NEXT_PUBLIC_WS_URL may or may not already include a trailing "/ws" (e.g. the
+    // prod value is ".../ws"). Strip it so we don't build ".../ws/ws/messaging/".
+    const rawWsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://127.0.0.1:8000';
+    const baseUrl = rawWsUrl.replace(/\/ws\/?$/, '').replace(/\/$/, '');
     const url = `${baseUrl}/ws/messaging/?token=${accessToken}`;
 
     let ws: WebSocket;

@@ -27,6 +27,7 @@ import {
   useAdminDeleteDepartment,
   Department,
 } from '@/services/admin/admin-departments.hooks';
+import { useSpecializations } from '@/services/admin/admin-specializations.hooks';
 import {
   useAdminPermissions,
   useAdminUpdatePermissions,
@@ -190,9 +191,10 @@ function ShiftProgress() {
 function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (msg: string) => void }) {
   const { mutate: createStaff, isPending } = useAdminCreateStaff();
   const { data: departments = [] } = useAdminDepartments();
+  const { data: specializations = [] } = useSpecializations();
   const [form, setForm] = useState({
     first_name: '', last_name: '', email: '', phone_number: '',
-    role: '', department: '',
+    role: '', department: '', specialization: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -206,6 +208,8 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
     if (!form.first_name.trim()) newErrors.first_name = 'First name is required.';
     if (!form.email.trim()) newErrors.email = 'Email is required.';
     if (!form.role) newErrors.role = 'Please select a role.';
+    if (form.role === 'DOCTOR' && !form.specialization)
+      newErrors.specialization = 'Specialization is required for doctors.';
     if (Object.keys(newErrors).length) { setErrors(newErrors); return; }
     setErrors({});
     createStaff(
@@ -216,6 +220,7 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
         phone_number: form.phone_number.trim() || undefined,
         role: form.role,
         department: form.department || undefined,
+        specialization: form.role === 'DOCTOR' ? form.specialization : undefined,
       },
       {
         onSuccess: () => { onSuccess('Staff member added successfully!'); onClose(); },
@@ -304,6 +309,25 @@ function AddStaffModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
                 ))}
               </select>
             </div>
+            {/* Doctors only. Without this the new doctor silently inherits the
+                default specialization and never matches the services they were
+                hired for. */}
+            {form.role === 'DOCTOR' && (
+              <div>
+                <label className="text-xs font-semibold text-gray-700 block mb-1">Specialization *</label>
+                <select
+                  value={form.specialization}
+                  onChange={(e) => set('specialization', e.target.value)}
+                  className={`${inputCls} bg-white`}
+                >
+                  <option value="">Select specialization</option>
+                  {specializations.map((s) => (
+                    <option key={s.id} value={s.code}>{s.name}</option>
+                  ))}
+                </select>
+                {errors.specialization && <p className="text-xs text-red-500 mt-1">{errors.specialization}</p>}
+              </div>
+            )}
           </div>
           {errors._form && (
             <div className="p-3 rounded-md bg-red-50 border border-red-100 flex items-start gap-2">

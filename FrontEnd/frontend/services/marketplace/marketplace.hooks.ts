@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import {
   StoreCategory, Product, Frame, LensType, LensOption,
@@ -30,6 +30,35 @@ export const useProducts = (params?: ProductFilterParams) => {
       const response = await apiClient.get('/marketplace/products/', { params });
       return response.data.data as Product[];
     }
+  });
+};
+
+export interface ProductPage {
+  results: Product[];
+  total: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
+}
+
+const PRODUCT_PAGE_SIZE = 12;
+
+/**
+ * Paged product list for the storefront's infinite scroll. Passing `limit`
+ * switches the API to its envelope shape; without it the endpoint still returns
+ * a plain array for other callers.
+ */
+export const useInfiniteProducts = (params?: ProductFilterParams) => {
+  return useInfiniteQuery({
+    queryKey: ['marketplace-products-infinite', params],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
+      const response = await apiClient.get('/marketplace/products/', {
+        params: { ...params, limit: PRODUCT_PAGE_SIZE, offset: pageParam },
+      });
+      return response.data.data as ProductPage;
+    },
+    getNextPageParam: (last) => (last.has_more ? last.offset + last.limit : undefined),
   });
 };
 

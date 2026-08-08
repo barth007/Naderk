@@ -85,6 +85,13 @@ class AppointmentSerializer(serializers.ModelSerializer):
 class AssignSpecialistRequestSerializer(serializers.Serializer):
     service_id = serializers.UUIDField()
     date = serializers.DateField()
+    # Telehealth bookings must land on a doctor who actually takes video calls,
+    # so the assignment depends on the type the patient picked.
+    appointment_type = serializers.ChoiceField(
+        choices=Appointment.AppointmentType.choices,
+        required=False,
+        default=Appointment.AppointmentType.PHYSICAL,
+    )
 
 class AvailableSlotsRequestSerializer(serializers.Serializer):
     doctor_id = serializers.UUIDField(required=False, allow_null=True)

@@ -212,7 +212,9 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [env('REDIS_URL', default='redis://localhost:6379/0')],
+            # Fall back to CELERY_BROKER_URL (already points at the redis service in
+            # every environment) so the channel layer isn't stuck on localhost.
+            "hosts": [env('REDIS_URL', default=env('CELERY_BROKER_URL', default='redis://localhost:6379/0'))],
         },
     },
 }

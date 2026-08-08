@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import { getSiteBrand } from '@/lib/site-brand';
 import Link from 'next/link';
 import { Calendar, Clock, ArrowLeft, Share2 } from 'lucide-react';
 import { notFound } from 'next/navigation';
@@ -65,6 +66,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 }
 
 export default async function BlogDetailPage({ params }: { params: { slug: string } }) {
+  const brand = await getSiteBrand();
   const blog = await getBlog(params.slug);
 
   if (!blog) {
@@ -144,7 +146,7 @@ export default async function BlogDetailPage({ params }: { params: { slug: strin
             </div>
             <div>
               <h4 className="font-bold text-gray-900 text-lg mb-1">{blog.author.first_name} {blog.author.last_name}</h4>
-              <p className="text-gray-500 text-sm">Healthcare professional and contributor at NaderkEye.</p>
+              <p className="text-gray-500 text-sm">Healthcare professional and contributor at {brand.name}.</p>
             </div>
         </div>
       </div>

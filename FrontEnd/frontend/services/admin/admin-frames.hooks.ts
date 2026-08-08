@@ -52,6 +52,15 @@ export interface FramePayload {
 
 const BASE = '/dashboard/admin/frames/';
 
+// A frame written from the admin panel also changes what shoppers see, so every
+// write must drop the storefront caches too — otherwise a newly added frame is
+// missing from the marketplace until the cache expires.
+const invalidateFrameCaches = (qc: ReturnType<typeof useQueryClient>) => {
+  qc.invalidateQueries({ queryKey: ['admin-frames'] });
+  qc.invalidateQueries({ queryKey: ['marketplace-frames'] });
+  qc.invalidateQueries({ queryKey: ['marketplace-frame'] });
+};
+
 export const useAdminFrames = () =>
   useQuery({
     queryKey: ['admin-frames'],
@@ -59,13 +68,17 @@ export const useAdminFrames = () =>
       const res = await apiClient.get(BASE);
       return res.data.data as Frame[];
     },
+    // A frame the admin just created must be in this list on return, never a
+    // 60s-stale copy from the global default.
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
 export const useAdminCreateFrame = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: FramePayload) => apiClient.post(BASE, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-frames'] }),
+    onSuccess: () => invalidateFrameCaches(qc),
   });
 };
 
@@ -74,7 +87,7 @@ export const useAdminUpdateFrame = () => {
   return useMutation({
     mutationFn: ({ id, ...data }: Partial<FramePayload> & { id: string }) =>
       apiClient.patch(`${BASE}${id}/`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-frames'] }),
+    onSuccess: () => invalidateFrameCaches(qc),
   });
 };
 
@@ -82,7 +95,7 @@ export const useAdminToggleFrame = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiClient.post(`${BASE}${id}/toggle/`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-frames'] }),
+    onSuccess: () => invalidateFrameCaches(qc),
   });
 };
 
@@ -90,6 +103,6 @@ export const useAdminDeleteFrame = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiClient.delete(`${BASE}${id}/`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-frames'] }),
+    onSuccess: () => invalidateFrameCaches(qc),
   });
 };

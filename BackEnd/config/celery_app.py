@@ -26,6 +26,14 @@ app.conf.beat_schedule = {
         'task': 'naderk.appointments.tasks.mark_missed_appointments',
         'schedule': crontab(minute='*/30'),  # Run every 30 minutes
     },
+    'cancel-abandoned-unpaid-appointments-every-10-minutes': {
+        'task': 'naderk.appointments.tasks.cancel_abandoned_unpaid_appointments',
+        'schedule': crontab(minute='*/10'),
+    },
+    'reconcile-pending-transactions-every-10-minutes': {
+        'task': 'naderk.payments.tasks.reconcile_pending_transactions',
+        'schedule': crontab(minute='*/10'),
+    },
     'check-missed-telehealth-sessions-every-30-minutes': {
         'task': 'naderk.telehealth.tasks.check_missed_sessions',
         'schedule': crontab(minute='*/30'),

@@ -82,13 +82,29 @@ class ConsultationService:
 
 class DoctorAssignmentService:
     @staticmethod
-    def assign_best_doctor(specialization, requested_date):
+    def assign_best_doctor(specialization, requested_date, require_telehealth=False):
+        """
+        Pick the least-loaded doctor who can take this service on this date.
+
+        A doctor qualifies when their profile specialization matches the service's
+        required_specialization, they are accepting patients, and — for telehealth
+        bookings — they have telehealth enabled. Doctors with explicit availability
+        for the weekday are preferred; those who haven't configured a schedule yet
+        are used as a fallback so a service is never unbookable just because the
+        roster is incomplete.
+        """
         weekday = requested_date.weekday()
+
+        base_filters = {
+            'specialization': specialization,
+            'is_accepting_patients': True,
+        }
+        if require_telehealth:
+            base_filters['telehealth_enabled'] = True
 
         # Primary: doctors who have explicit availability for this weekday
         available_doctors = DoctorProfile.objects.filter(
-            specialization=specialization,
-            is_accepting_patients=True,
+            **base_filters,
             user__availabilities__weekday=weekday,
             user__availabilities__is_active=True
         ).distinct()
@@ -96,10 +112,7 @@ class DoctorAssignmentService:
         # Fallback: any accepting doctor with matching specialization
         # (covers doctors who haven't configured their schedule yet)
         if not available_doctors.exists():
-            available_doctors = DoctorProfile.objects.filter(
-                specialization=specialization,
-                is_accepting_patients=True,
-            ).distinct()
+            available_doctors = DoctorProfile.objects.filter(**base_filters).distinct()
 
         if not available_doctors.exists():
             return None

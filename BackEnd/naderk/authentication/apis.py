@@ -164,7 +164,7 @@ class MeAPI(APIView):
             if user.role == 'DOCTOR':
                 try:
                     doc_profile = user.doctor_profile
-                    data["specialization"] = doc_profile.get_specialization_display()
+                    data["specialization"] = doc_profile.specialization_display
                     if not data["profile_picture"]:
                         data["profile_picture"] = doc_profile.profile_picture or doc_profile.avatar
                     if not data["cover_photo"]:

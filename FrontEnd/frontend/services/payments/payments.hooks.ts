@@ -109,6 +109,27 @@ export function useInitializeAppointmentPayment(idempotencyKey: string) {
   });
 }
 
+/**
+ * Confirms a payment straight after Paystack's popup succeeds, instead of
+ * waiting for the webhook. A Paystack account has a single webhook URL, so
+ * staging and production cannot both receive it — without this, patients on the
+ * environment that misses out pay and then watch a spinner forever.
+ */
+export interface VerifyAppointmentPaymentResult {
+  payment_status: string;
+  appointment_id: string;
+  provider_status?: string;
+}
+
+export function useVerifyAppointmentPayment() {
+  return useMutation<VerifyAppointmentPaymentResult, Error, { reference: string }>({
+    mutationFn: async (payload) => {
+      const res = await apiClient.post('/payments/verify-appointment/', payload);
+      return (res.data?.data ?? res.data) as VerifyAppointmentPaymentResult;
+    },
+  });
+}
+
 export function usePollAppointmentPayment(appointmentId: string | null) {
   return useQuery<any>({
     queryKey: ['appointment-payment-poll', appointmentId],

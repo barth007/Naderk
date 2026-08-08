@@ -3,7 +3,7 @@ from django.utils import timezone
 from django.db import transaction
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from naderk.common.responses.builders import build_success_response, build_error_response
+from naderk.common.responses.builders import build_success_response, build_error_response, _problems_url
 from .models import MedicalService, Appointment, AppointmentSlotReservation
 from .serializers import (
     MedicalServiceSerializer,
@@ -42,17 +42,32 @@ class AssignSpecialistApi(APIView):
             
         service_id = serializer.validated_data['service_id']
         requested_date = serializer.validated_data['date']
-        
+        appointment_type = serializer.validated_data['appointment_type']
+
         try:
             service = MedicalService.objects.get(id=service_id, is_active=True)
         except MedicalService.DoesNotExist:
             return build_error_response("not-found", "Service not found", 404, "Invalid service ID")
-            
-        best_doctor = DoctorAssignmentService.assign_best_doctor(service.required_specialization, requested_date)
-        
+
+        is_telehealth = appointment_type == Appointment.AppointmentType.TELEHEALTH
+        if is_telehealth and not service.available_online:
+            return build_error_response(
+                "validation-error", "Telehealth unavailable", 400,
+                f'"{service.name}" is not available online. Book a physical visit instead.',
+                errors={'appointment_type': ['This service is not available for telehealth.']},
+            )
+
+        best_doctor = DoctorAssignmentService.assign_best_doctor(
+            service.required_specialization, requested_date, require_telehealth=is_telehealth,
+        )
+
         if not best_doctor:
-            return build_error_response("unavailable", "No specialists available", 404, "No available specialists found for this date.")
-            
+            kind = "telehealth specialists" if is_telehealth else "specialists"
+            return build_error_response(
+                "unavailable", "No specialists available", 404,
+                f"No {kind} are available on {requested_date.isoformat()}. Try another date.",
+            )
+
         fee = ConsultationService.calculate_fee(request.user, service)
         is_valid = ConsultationService.has_active_plan(request.user, service)
         
@@ -161,11 +176,21 @@ class CreateAppointmentApi(APIView):
         doctor_id = serializer.validated_data.get('doctor_id')
         date = serializer.validated_data['date']
         time = serializer.validated_data['time']
+        appointment_type = serializer.validated_data['appointment_type']
 
         try:
             service = MedicalService.objects.get(id=service_id)
         except MedicalService.DoesNotExist:
             return build_error_response("not-found", "Resource not found", 404, "Invalid service ID")
+
+        # available_online is the single switch for telehealth; enforce it here so
+        # the rule holds even if a client sends a type the wizard wouldn't offer.
+        if appointment_type == Appointment.AppointmentType.TELEHEALTH and not service.available_online:
+            return build_error_response(
+                "validation-error", "Telehealth unavailable", 400,
+                f'"{service.name}" is not available online. Book a physical visit instead.',
+                errors={'appointment_type': ['This service is not available for telehealth.']},
+            )
 
         # Facility-based services have no doctor
         is_facility = not service.requires_doctor
@@ -287,7 +312,8 @@ class AppointmentHistoryApi(APIView):
     def get(self, request):
         # Sync check as a fail-safe for local development if celery beat is not running
         try:
-            from .tasks import mark_missed_appointments
+            from .tasks import mark_missed_appointments, cancel_abandoned_unpaid_appointments
+            cancel_abandoned_unpaid_appointments()
             mark_missed_appointments()
         except Exception:
             pass
@@ -308,11 +334,13 @@ class AppointmentHistoryApi(APIView):
             except User.DoesNotExist:
                 pass
 
-        upcoming = Appointment.objects.filter(
-            patient=patient,
-            status__in=active_statuses
-        ).order_by('appointment_date', 'appointment_time')
-        
+        # Abandoned checkouts were surfacing as the patient's next visit.
+        upcoming = (
+            Appointment.objects.filter(patient=patient, status__in=active_statuses)
+            .exclude_unpaid_checkouts()
+            .order_by('appointment_date', 'appointment_time')
+        )
+
         past = Appointment.objects.filter(
             patient=patient
         ).exclude(
