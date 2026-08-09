@@ -47,8 +47,11 @@ const BASE = '/dashboard/admin/services/';
 // Activating/deactivating a service changes what patients see in the booking
 // wizard, so every write here must also drop the patient-facing services cache.
 const invalidateServiceCaches = (qc: ReturnType<typeof useQueryClient>) => {
-  qc.invalidateQueries({ queryKey: ['admin-services'] });
-  qc.invalidateQueries({ queryKey: ['medical-services'] });
+  // refetchType: 'all' — see the note in admin-inventory.hooks.ts. Without it,
+  // a list that is unmounted at the moment of the write is only flagged stale.
+  ['admin-services', 'medical-services'].forEach((key) =>
+    qc.invalidateQueries({ queryKey: [key], refetchType: 'all' }),
+  );
 };
 
 export const useAdminServices = () =>

@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
@@ -11,6 +13,8 @@ from naderk.messaging.selectors import get_unread_message_count
 from naderk.telehealth.models import TelehealthSession
 from naderk.ecommerce.models import Order, Prescription
 from datetime import timedelta, date
+
+logger = logging.getLogger(__name__)
 
 class DoctorSummaryAPI(APIView):
     permission_classes = [IsAuthenticated]
@@ -191,7 +195,10 @@ class DoctorAcceptRequestAPI(APIView):
 
             return build_success_response(message="Appointment request accepted.", data={"id": str(appt.id)}, status_code=200)
         except Appointment.DoesNotExist:
-            return build_success_response(message="Appointment not found or not pending.", status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Appointment not found or not pending.',
+            )
 
 class DoctorRejectRequestAPI(APIView):
     permission_classes = [IsAuthenticated]
@@ -204,7 +211,10 @@ class DoctorRejectRequestAPI(APIView):
             appt.save()
             return build_success_response(message="Appointment request rejected.", data={"id": str(appt.id)}, status_code=200)
         except Appointment.DoesNotExist:
-            return build_success_response(message="Appointment not found or not pending.", status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Appointment not found or not pending.',
+            )
 
 class DoctorTelehealthAPI(APIView):
     permission_classes = [IsAuthenticated]
@@ -281,7 +291,10 @@ class AdminDashboardSummaryAPI(APIView):
 
     def get(self, request):
         if request.user.role not in ('ADMIN', 'SUPER_ADMIN'):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         today = timezone.now().date()
         yesterday = today - timedelta(days=1)
@@ -421,7 +434,10 @@ class AdminAppointmentRequestsAPI(APIView):
 
     def get(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         qs = (
             Appointment.objects.filter(status=Appointment.Status.PENDING)
@@ -466,7 +482,10 @@ class AdminAppointmentCalendarAPI(APIView):
 
     def get(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         qs = (
             Appointment.objects.exclude(status=Appointment.Status.CANCELLED)
@@ -493,7 +512,10 @@ class AdminScheduleAppointmentAPI(APIView):
 
     def post(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         import datetime as dt
         from naderk.core.models import User as UserModel
@@ -501,19 +523,28 @@ class AdminScheduleAppointmentAPI(APIView):
         try:
             appt = Appointment.objects.select_related('patient').get(id=pk, status=Appointment.Status.PENDING)
         except Appointment.DoesNotExist:
-            return build_success_response(message="Appointment not found or not pending.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Appointment not found or not pending.',
+            )
 
         doctor_id = request.data.get('doctor_id')
         new_date = request.data.get('date')
         new_time = request.data.get('time')
 
         if not all([doctor_id, new_date, new_time]):
-            return build_success_response(message="doctor_id, date and time are required.", data={}, status_code=400, success=False)
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='doctor_id, date and time are required.',
+            )
 
         try:
             doctor = UserModel.objects.get(id=doctor_id, role='DOCTOR')
         except UserModel.DoesNotExist:
-            return build_success_response(message="Doctor not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Doctor not found.',
+            )
 
         appt.doctor = doctor
         appt.appointment_date = new_date
@@ -553,7 +584,10 @@ class AdminDoctorListAPI(APIView):
 
     def get(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         from naderk.users.models import DoctorProfile
         profiles = (
@@ -579,7 +613,10 @@ class AdminInventorySummaryAPI(APIView):
 
     def get(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         from naderk.ecommerce.models import Product
         products = Product.objects.filter(is_active=True).select_related('category')
@@ -593,10 +630,14 @@ class AdminInventorySummaryAPI(APIView):
             .order_by('-total')
         )
 
+        # Compare against each product's own threshold rather than a hardcoded
+        # 15. The old [:10] cap also meant a newly-low product only appeared if
+        # it was among the ten lowest in the catalogue — which is why an alert
+        # could refuse to show no matter how many times the page was refreshed.
         low_stock = list(
-            products.filter(quantity_available__lt=15)
+            products.filter(quantity_available__lte=F('low_stock_threshold'))
             .order_by('quantity_available')
-            .values('id', 'name', 'quantity_available', 'category__name')[:10]
+            .values('id', 'name', 'quantity_available', 'low_stock_threshold', 'category__name')[:50]
         )
         for item in low_stock:
             item['id'] = str(item['id'])
@@ -618,7 +659,10 @@ class AdminProductsAPI(APIView):
 
     def get(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         from naderk.ecommerce.models import Product, OrderItem
 
@@ -667,9 +711,13 @@ class AdminProductsAPI(APIView):
             sparkline_raw[pid][row['day']] = row['count']
         days_range = [today - timedelta(days=i) for i in range(6, -1, -1)]
 
+        # Newest first. This was ordered alphabetically by category then name,
+        # so a product you just created landed wherever it fell in the alphabet —
+        # frequently past the 50-row page boundary, which looked like it had not
+        # been created at all.
         products = (
             Product.objects.select_related('category')
-            .order_by('category__name', 'name')
+            .order_by('-created_at')
         )
 
         data = []
@@ -695,7 +743,9 @@ class AdminProductsAPI(APIView):
                 'units_sold_today': units_sold_today,
                 'revenue': round(revenue, 2),
                 'sparkline': sparkline,
-                'low_stock': p.quantity_available < 15,
+                # Was a hardcoded < 15, ignoring the per-product
+                # low_stock_threshold the admin can actually set.
+                'low_stock': p.quantity_available <= p.low_stock_threshold,
                 'is_active': p.is_active,
             })
 
@@ -718,7 +768,10 @@ class AdminProductCreateAPI(APIView):
 
     def post(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         from naderk.common.storage.service import storage_service
         from django.utils.text import slugify
@@ -732,25 +785,34 @@ class AdminProductCreateAPI(APIView):
         low_stock_threshold = request.data.get('low_stock_threshold', 5)
 
         if not all([name, description, category_id, price]):
-            return build_success_response(
-                message="name, description, category_id and price are required.",
-                data={}, status_code=400, success=False
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='name, description, category_id and price are required.',
             )
 
         try:
             category = StoreCategory.objects.get(id=category_id)
         except StoreCategory.DoesNotExist:
-            return build_success_response(message="Category not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Category not found.',
+            )
 
         image_urls = []
+        upload_errors = []
         for key in ['image_0', 'image_1', 'image_2', 'image_3', 'image_4']:
             file = request.FILES.get(key)
             if file:
                 try:
                     result = storage_service.upload_file(file, bucket_type='public', prefix='products', uploaded_by=request.user)
                     image_urls.append(result.url)
-                except Exception:
-                    pass
+                except Exception as e:
+                    # This used to be a bare `except: pass`. A failing upload
+                    # produced a product with images=[] and no trace anywhere —
+                    # the admin saw "created", the storefront showed no picture,
+                    # and nothing said why. Log it and tell the caller.
+                    logger.exception("Product image upload failed for %s: %s", key, e)
+                    upload_errors.append(f"{getattr(file, 'name', key)}: {e}")
 
         # Generate unique slug
         base_slug = slugify(name)
@@ -771,6 +833,10 @@ class AdminProductCreateAPI(APIView):
             low_stock_threshold=int(low_stock_threshold),
             is_active=True,
         )
+
+        if upload_errors:
+            logger.error("Product %s created with %d failed image upload(s): %s",
+                         product.id, len(upload_errors), '; '.join(upload_errors))
 
         # Create variants if provided
         import json
@@ -806,17 +872,26 @@ class AdminProductRestockAPI(APIView):
 
     def post(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         from naderk.ecommerce.models import Product
         try:
             product = Product.objects.get(id=pk)
         except Product.DoesNotExist:
-            return build_success_response(message="Product not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Product not found.',
+            )
 
         quantity = int(request.data.get('quantity', 0))
         if quantity <= 0:
-            return build_success_response(message="Quantity must be positive.", data={}, status_code=400, success=False)
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='Quantity must be positive.',
+            )
 
         product.quantity_available += quantity
         product.save(update_fields=['quantity_available'])
@@ -833,13 +908,19 @@ class AdminProductToggleStatusAPI(APIView):
 
     def post(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         from naderk.ecommerce.models import Product
         try:
             product = Product.objects.get(id=pk)
         except Product.DoesNotExist:
-            return build_success_response(message="Product not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Product not found.',
+            )
 
         product.is_active = not product.is_active
         product.save(update_fields=['is_active'])
@@ -856,12 +937,18 @@ class AdminProductDetailAPI(APIView):
 
     def get(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.ecommerce.models import Product
         try:
             product = Product.objects.prefetch_related('variants').select_related('category').get(id=pk)
         except Product.DoesNotExist:
-            return build_success_response(message="Not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Not found.',
+            )
         return build_success_response(message="Product retrieved.", data={
             'id': str(product.id),
             'name': product.name,
@@ -890,12 +977,18 @@ class AdminProductDetailAPI(APIView):
 
     def patch(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.ecommerce.models import Product, StoreCategory
         try:
             product = Product.objects.get(id=pk)
         except Product.DoesNotExist:
-            return build_success_response(message="Not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Not found.',
+            )
         if 'name' in request.data:
             product.name = request.data['name'].strip()
         if 'description' in request.data:
@@ -910,18 +1003,41 @@ class AdminProductDetailAPI(APIView):
             try:
                 product.category = StoreCategory.objects.get(id=request.data['category_id'])
             except StoreCategory.DoesNotExist:
-                return build_success_response(message="Category not found.", data={}, status_code=400, success=False)
+                return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='Category not found.',
+            )
+        # Images and active state were not editable at all — the edit form could
+        # change a product's text and price but never its picture, so a product
+        # created with a failed upload could not be repaired without deleting it.
+        # URLs come from POST /storage/upload/, same as the create form.
+        if 'images' in request.data:
+            imgs = request.data.get('images') or []
+            if not isinstance(imgs, list):
+                return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='images must be a list of URLs.',
+            )
+            product.images = [u for u in imgs if isinstance(u, str) and u.strip()][:5]
+        if 'is_active' in request.data:
+            product.is_active = bool(request.data['is_active'])
         product.save()
         return build_success_response(message="Product updated.", data={'id': str(product.id)}, status_code=200)
 
     def delete(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.ecommerce.models import Product
         try:
             product = Product.objects.get(id=pk)
         except Product.DoesNotExist:
-            return build_success_response(message="Not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Not found.',
+            )
         product.delete()
         return build_success_response(message="Product deleted.", data={}, status_code=200)
 
@@ -931,7 +1047,10 @@ class AdminProductHistoryAPI(APIView):
 
     def get(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         from naderk.ecommerce.models import OrderItem
         items = (
@@ -961,7 +1080,10 @@ class AdminAllOrdersAPI(APIView):
 
     def get(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         status_filter = request.query_params.get('status')
         qs = (
@@ -1008,7 +1130,10 @@ class AdminCategoryListAPI(APIView):
 
     def get(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.ecommerce.models import StoreCategory
         cats = StoreCategory.objects.filter(parent=None).prefetch_related('children').order_by('name')
         data = []
@@ -1024,12 +1149,18 @@ class AdminCategoryListAPI(APIView):
 
     def post(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.ecommerce.models import StoreCategory
         from django.utils.text import slugify
         name = (request.data.get('name') or '').strip()
         if not name:
-            return build_success_response(message="Name is required.", data={}, status_code=400, success=False)
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='Name is required.',
+            )
         description = (request.data.get('description') or '').strip()
         base_slug = slugify(name)
         slug = base_slug
@@ -1050,12 +1181,18 @@ class AdminCategoryDetailAPI(APIView):
 
     def patch(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.ecommerce.models import StoreCategory
         try:
             cat = StoreCategory.objects.get(id=pk)
         except StoreCategory.DoesNotExist:
-            return build_success_response(message="Category not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Category not found.',
+            )
         if 'name' in request.data:
             cat.name = request.data['name'].strip()
         if 'description' in request.data:
@@ -1069,15 +1206,22 @@ class AdminCategoryDetailAPI(APIView):
 
     def delete(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.ecommerce.models import StoreCategory
         try:
             cat = StoreCategory.objects.get(id=pk)
         except StoreCategory.DoesNotExist:
-            return build_success_response(message="Category not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Category not found.',
+            )
         if cat.products.exists():
-            return build_success_response(
-                message="Cannot delete a category that has products.", data={}, status_code=400, success=False
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='Cannot delete a category that has products.',
             )
         cat.delete()
         return build_success_response(message="Category deleted.", data={}, status_code=200)
@@ -1090,7 +1234,10 @@ class AdminFlashSaleListAPI(APIView):
 
     def get(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.ecommerce.models import FlashSale
         now = timezone.now()
         sales = FlashSale.objects.prefetch_related('products').order_by('-created_at')
@@ -1112,7 +1259,10 @@ class AdminFlashSaleListAPI(APIView):
 
     def post(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.ecommerce.models import FlashSale, Product
         name = (request.data.get('name') or '').strip()
         discount_percent = request.data.get('discount_percent')
@@ -1121,22 +1271,28 @@ class AdminFlashSaleListAPI(APIView):
         product_ids = request.data.get('product_ids', [])
 
         if not all([name, discount_percent, starts_at, ends_at]):
-            return build_success_response(
-                message="name, discount_percent, starts_at, ends_at are required.",
-                data={}, status_code=400, success=False
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='name, discount_percent, starts_at, ends_at are required.',
             )
         try:
             discount_percent = float(discount_percent)
             if not (0 < discount_percent <= 100):
                 raise ValueError
         except (ValueError, TypeError):
-            return build_success_response(message="discount_percent must be between 1 and 100.", data={}, status_code=400, success=False)
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='discount_percent must be between 1 and 100.',
+            )
 
         from django.utils.dateparse import parse_datetime
         starts = parse_datetime(starts_at)
         ends = parse_datetime(ends_at)
         if not starts or not ends or ends <= starts:
-            return build_success_response(message="Invalid date range.", data={}, status_code=400, success=False)
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='Invalid date range.',
+            )
 
         sale = FlashSale.objects.create(
             name=name,
@@ -1161,12 +1317,18 @@ class AdminFlashSaleDetailAPI(APIView):
 
     def patch(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.ecommerce.models import FlashSale, Product
         try:
             sale = FlashSale.objects.get(id=pk)
         except FlashSale.DoesNotExist:
-            return build_success_response(message="Flash sale not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Flash sale not found.',
+            )
         for field in ['name', 'is_active']:
             if field in request.data:
                 setattr(sale, field, request.data[field])
@@ -1185,12 +1347,18 @@ class AdminFlashSaleDetailAPI(APIView):
 
     def delete(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.ecommerce.models import FlashSale
         try:
             sale = FlashSale.objects.get(id=pk)
         except FlashSale.DoesNotExist:
-            return build_success_response(message="Flash sale not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Flash sale not found.',
+            )
         sale.delete()
         return build_success_response(message="Flash sale deleted.", data={}, status_code=200)
 
@@ -1241,7 +1409,10 @@ class AdminStaffListAPI(APIView):
 
     def get(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         from naderk.core.models import User
         staff_roles = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'ADMIN', 'SUPER_ADMIN']
@@ -1298,7 +1469,10 @@ class AdminStaffListAPI(APIView):
 
     def post(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         from django.db import transaction
         from django.conf import settings
@@ -1451,13 +1625,19 @@ class AdminStaffToggleAPI(APIView):
 
     def post(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         from naderk.core.models import User
         try:
             user = User.objects.get(id=pk)
         except User.DoesNotExist:
-            return build_success_response(message="User not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='User not found.',
+            )
 
         user.is_active = not user.is_active
         user.save(update_fields=['is_active'])
@@ -1473,7 +1653,10 @@ class AdminWeekScheduleAPI(APIView):
 
     def get(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
 
         from collections import defaultdict
         from naderk.core.models import User
@@ -1567,7 +1750,10 @@ class AdminDepartmentListAPI(APIView):
 
     def get(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.users.models import Department
         depts = Department.objects.filter(is_active=True)
         data = [{'id': str(d.id), 'name': d.name, 'description': d.description or ''} for d in depts]
@@ -1575,13 +1761,22 @@ class AdminDepartmentListAPI(APIView):
 
     def post(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.users.models import Department
         name = (request.data.get('name') or '').strip()
         if not name:
-            return build_success_response(message="Name is required.", data={}, status_code=400, success=False)
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='Name is required.',
+            )
         if Department.objects.filter(name__iexact=name).exists():
-            return build_success_response(message="Department already exists.", data={}, status_code=400, success=False)
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='Department already exists.',
+            )
         dept = Department.objects.create(name=name, description=(request.data.get('description') or '').strip() or None)
         return build_success_response(
             message="Department created.",
@@ -1595,12 +1790,18 @@ class AdminDepartmentDetailAPI(APIView):
 
     def patch(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.users.models import Department
         try:
             dept = Department.objects.get(id=pk)
         except Department.DoesNotExist:
-            return build_success_response(message="Not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Not found.',
+            )
         if 'name' in request.data:
             dept.name = request.data['name'].strip()
         if 'description' in request.data:
@@ -1610,12 +1811,18 @@ class AdminDepartmentDetailAPI(APIView):
 
     def delete(self, request, pk):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.users.models import Department
         try:
             dept = Department.objects.get(id=pk)
         except Department.DoesNotExist:
-            return build_success_response(message="Not found.", data={}, status_code=404, success=False)
+            return build_error_response(
+                type_uri='not-found', title='Not Found', status_code=404,
+                detail='Not found.',
+            )
         dept.is_active = False
         dept.save(update_fields=['is_active'])
         return build_success_response(message="Department removed.", data={}, status_code=200)
@@ -1804,7 +2011,10 @@ class AdminPermissionsAPI(APIView):
 
     def get(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.users.models import RolePermissionConfig
         configs = {c.role: c.permissions for c in RolePermissionConfig.objects.filter(role__in=MANAGEABLE_ROLES)}
         roles = []
@@ -1818,12 +2028,18 @@ class AdminPermissionsAPI(APIView):
 
     def post(self, request):
         if _admin_only(request):
-            return build_success_response(message="Forbidden.", data={}, status_code=403, success=False)
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
         from naderk.users.models import RolePermissionConfig
         role = (request.data.get('role') or '').strip()
         permissions = request.data.get('permissions', [])
         if role not in MANAGEABLE_ROLES:
-            return build_success_response(message="Invalid role.", data={}, status_code=400, success=False)
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='Invalid role.',
+            )
         valid_ids = {p['id'] for p in SYSTEM_PERMISSIONS}
         clean_perms = [p for p in permissions if p in valid_ids]
         config, _ = RolePermissionConfig.objects.get_or_create(role=role, defaults={'permissions': []})
