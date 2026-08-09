@@ -72,10 +72,20 @@ services:
     networks:
       - naderk_net
 
+# Project-scoped, matching docker-compose.yml. This was `external: true`, which
+# made every environment's containers join one shared `naderk_net`. With dev and
+# prod on the same host that meant `db`, `redis` and `minio` each resolved to TWO
+# containers, and Docker's DNS round-robins between them — so production was
+# reading and writing to the dev database roughly half the time, and products
+# appeared to vanish at random.
+#
+# Compose now creates `<project>_naderk_net` per deploy directory, so each
+# environment can only see its own services.
 networks:
   naderk_net:
-    external: true
+    driver: bridge
 
+# Likewise project-scoped. A shared external volume would put two Postgres
+# servers on one data directory.
 volumes:
   postgres_data:
-    external: true

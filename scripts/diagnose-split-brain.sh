@@ -69,6 +69,18 @@ echo
 echo "  >> If the counts differ, your product data is split across two databases."
 echo "     Whichever one a request lands on decides whether a product 'exists'."
 
+step "4. Which volume is each database writing to?"
+for c in $(docker ps -q); do
+  svc=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$c" 2>/dev/null)
+  [ "$svc" != "db" ] && continue
+  vol=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$c")
+  printf '  %-30s volume=%s\n' "$(name_of "$c")" "${vol:-<none/bind>}"
+done
+echo
+echo "  >> If BOTH databases name the SAME volume, two Postgres servers are"
+echo "     writing to one data directory. That risks corruption and must be"
+echo "     separated before anything else."
+
 step "What this means"
 cat <<'EOS'
   Nothing is cached server-side — there is no Django CACHES setting and Redis
