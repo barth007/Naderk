@@ -1,3 +1,5 @@
+from unittest.mock import patch, Mock
+
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -196,37 +198,37 @@ class EcommerceTestCase(TestCase):
         self.assertIn('non_field_errors', serializer.errors)
         self.assertTrue(any("is incompatible" in str(err) for err in serializer.errors['non_field_errors']))
 
-    def test_add_to_cart_requires_approved_prescription(self):
+    def test_add_to_cart_requires_prescription_but_not_approval(self):
         """
-        Verify that adding eyewear with a prescription lens requires an APPROVED, non-expired prescription.
+        Adding prescription eyewear requires a prescription to be attached (and
+        unexpired), but it need NOT be APPROVED at cart-add time — clinical
+        review deliberately happens after payment, when the order enters
+        PRESCRIPTION_REVIEW. See AddToCartSerializer.validate().
         """
-        # 1. Create a pending prescription
+        data = {
+            'frame_variant_id': str(self.frame_variant.id),
+            'lens_type_id': str(self.lens_type_prescription.id),
+            'quantity': 1,
+        }
+
+        # 1. Omitting the prescription entirely fails validation.
+        serializer = AddToCartSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('non_field_errors', serializer.errors)
+        self.assertTrue(any("prescription is required" in str(err).lower()
+                            for err in serializer.errors['non_field_errors']))
+
+        # 2. A pending (not-yet-approved) prescription is accepted — approval is
+        #    enforced later, during post-payment review.
         pres = prescription_create(
             patient=self.patient,
             pupillary_distance=Decimal('64.0')
         )
-        
-        # Attempt to add to cart: should FAIL because prescription is not APPROVED
-        data = {
-            'frame_variant_id': str(self.frame_variant.id),
-            'lens_type_id': str(self.lens_type_prescription.id),
-            'prescription_id': str(pres.id),
-            'quantity': 1
-        }
-        serializer = AddToCartSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('non_field_errors', serializer.errors)
-        self.assertTrue(any("must be APPROVED" in str(err) for err in serializer.errors['non_field_errors']))
-        
-        # 2. Approve prescription
-        prescription_assign_for_review(prescription=pres, optician=self.optician)
-        prescription_review_complete(prescription=pres, optician=self.optician, status=Prescription.Status.APPROVED)
-        
-        # Re-attempt: should succeed
-        serializer2 = AddToCartSerializer(data=data)
-        self.assertTrue(serializer2.is_valid())
-        
-        # Actually add to cart via service
+        serializer2 = AddToCartSerializer(data={**data, 'prescription_id': str(pres.id)})
+        self.assertTrue(serializer2.is_valid(), serializer2.errors)
+
+        # 3. Adding via the service produces the correctly priced item:
+        #    base frame 120.00 + lens type 40.00 + lens option 15.00 = 175.00
         cart_item = cart_add_item(
             user=self.patient,
             frame_variant_id=self.frame_variant.id,
@@ -236,8 +238,6 @@ class EcommerceTestCase(TestCase):
             quantity=1
         )
         self.assertIsNotNone(cart_item)
-        # Verify calculated price: base frame price + lens type + lens option modifier
-        # 120.00 + 40.00 + 15.00 = 175.00
         self.assertEqual(cart_item.price, Decimal('175.00'))
 
     def test_checkout_prescription_expiration_and_snapshot(self):
@@ -320,10 +320,13 @@ class EcommerceTestCase(TestCase):
         )
         
         order = order_create_from_cart(user=self.patient, shipping_address="123 Test Street")
-        
-        # Process payment
-        order_process_payment(order=order, actor=self.patient, payment_reference="PAY-1234")
-        
+
+        # Process payment. Stub the provider verification so the test exercises
+        # stock allocation without making a live Paystack API call.
+        with patch('naderk.payments.services.verify_and_confirm',
+                   return_value=Mock(status='success')):
+            order_process_payment(order=order, actor=self.patient, payment_reference="PAY-1234")
+
         # Refresh from db
         self.variant.refresh_from_db()
         self.frame_variant.refresh_from_db()
