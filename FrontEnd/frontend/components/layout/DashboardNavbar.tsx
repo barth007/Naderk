@@ -241,13 +241,15 @@ export default function DashboardNavbar() {
                             <p className="text-sm font-semibold text-gray-900 truncate">{user?.first_name} {user?.last_name}</p>
                             <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                         </div>
-                        <Link
-                            href="/dashboard/orders"
-                            onClick={() => setIsDropdownOpen(false)}
-                            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                        >
-                            <Package className="w-4 h-4" /> Orders
-                        </Link>
+                        {user?.role === 'PATIENT' && (
+                            <Link
+                                href="/dashboard/orders"
+                                onClick={() => setIsDropdownOpen(false)}
+                                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                                <Package className="w-4 h-4" /> Orders
+                            </Link>
+                        )}
                         <Link
                             href="/profile"
                             onClick={() => setIsDropdownOpen(false)}

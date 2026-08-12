@@ -378,6 +378,11 @@ export default function ProfileLayout() {
   const [draftState, setDraftState]               = useState('');
   const [draftCountry, setDraftCountry]           = useState('');
 
+  // Insurance edit
+  const [savingInsurance, setSavingInsurance]           = useState(false);
+  const [draftInsuranceProvider, setDraftInsuranceProvider] = useState('');
+  const [draftPolicyNumber, setDraftPolicyNumber]       = useState('');
+
   const countries = useMemo(() => Country.getAllCountries(), []);
   const states    = useMemo(
     () => draftCountry ? State.getStatesOfCountry(draftCountry) : [],
@@ -413,6 +418,39 @@ export default function ProfileLayout() {
       toast.error('Failed to save delivery address.');
     } finally {
       setSavingDelivery(false);
+    }
+  };
+
+  const startEditInsurance = () => {
+    setDraftInsuranceProvider(profileData?.insurance_provider || '');
+    setDraftPolicyNumber(profileData?.policy_number || '');
+    setIsInsuranceModalOpen(true);
+  };
+
+  const handleSaveInsurance = async () => {
+    if (!draftInsuranceProvider.trim() || !draftPolicyNumber.trim()) {
+      toast.error('Provider name and policy number are required.');
+      return;
+    }
+    setSavingInsurance(true);
+    try {
+      const payload = {
+        insurance_provider: draftInsuranceProvider.trim(),
+        policy_number: draftPolicyNumber.trim(),
+      };
+      await apiClient.put('/users/profile/', payload);
+      setProfileData((prev: any) => ({ ...prev, ...payload }));
+      setIsInsuranceModalOpen(false);
+      toast.success('Insurance information updated successfully.');
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.detail ||
+        err?.response?.data?.errors?.insurance_provider?.[0] ||
+        err?.response?.data?.errors?.policy_number?.[0] ||
+        'Failed to update insurance information.';
+      toast.error(msg);
+    } finally {
+      setSavingInsurance(false);
     }
   };
 
@@ -638,7 +676,7 @@ export default function ProfileLayout() {
                 </div>
               ))}
             </div>
-            <button onClick={() => setIsInsuranceModalOpen(true)} className="text-[#E03E3E] text-xs font-semibold hover:underline mx-auto block">
+            <button onClick={startEditInsurance} className="text-[#E03E3E] text-xs font-semibold hover:underline mx-auto block">
               Update Insurance
             </button>
           </div>
@@ -721,25 +759,39 @@ export default function ProfileLayout() {
       {isInsuranceModalOpen && (
         <dialog className="modal modal-open">
           <div className="modal-box bg-white rounded-3xl max-w-md">
-            <h3 className="font-bold text-xl text-gray-900 mb-4">Add Secondary Insurance</h3>
+            <h3 className="font-bold text-xl text-gray-900 mb-4">Update Insurance</h3>
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-gray-700">Provider Name</label>
-                <Input placeholder="e.g. XYZ Health" />
+                <Input
+                  placeholder="e.g. XYZ Health"
+                  value={draftInsuranceProvider}
+                  onChange={(e) => setDraftInsuranceProvider(e.target.value)}
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-gray-700">Policy Number</label>
-                <Input placeholder="e.g. XYZ-987654321" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-gray-700">Group Number (Optional)</label>
-                <Input placeholder="e.g. GRP-123" />
+                <Input
+                  placeholder="e.g. XYZ-987654321"
+                  value={draftPolicyNumber}
+                  onChange={(e) => setDraftPolicyNumber(e.target.value)}
+                />
               </div>
             </div>
             <div className="modal-action mt-6">
-              <button className="btn btn-ghost rounded-md" onClick={() => setIsInsuranceModalOpen(false)}>Cancel</button>
-              <button className="btn bg-[#E03E3E] text-white hover:bg-[#c93636] border-none rounded-md px-6" onClick={() => setIsInsuranceModalOpen(false)}>
-                Add Insurance
+              <button
+                className="btn btn-ghost rounded-md"
+                onClick={() => setIsInsuranceModalOpen(false)}
+                disabled={savingInsurance}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn bg-[#E03E3E] text-white hover:bg-[#c93636] border-none rounded-md px-6"
+                onClick={handleSaveInsurance}
+                disabled={savingInsurance}
+              >
+                {savingInsurance ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update'}
               </button>
             </div>
           </div>
