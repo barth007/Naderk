@@ -156,7 +156,7 @@ export default function AppointmentsHistoryPage() {
                   <button className="text-[#E03E3E] text-[11px] font-bold hover:underline">View All History</button>
                 </div>
 
-                <AppointmentHistoryTable history={history?.past || []} />
+                <AppointmentHistoryTable history={history?.past || []} onReschedule={handleReschedule} />
               </div>
 
             </div>

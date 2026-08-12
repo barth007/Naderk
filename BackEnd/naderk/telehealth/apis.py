@@ -105,7 +105,17 @@ class JoinSessionApi(APIView):
         appointment = session.appointment
         if request.user.id not in [appointment.patient.id, appointment.doctor.id]:
             return build_error_response("forbidden", "Access Denied", 403, "You are not authorized to join this session")
-            
+
+        # Enforce the join window so patients can't enter early. Doctors may open
+        # the room ahead of time to prepare.
+        is_patient = request.user.id == appointment.patient_id
+        if is_patient and not session.is_within_join_window():
+            return build_error_response(
+                "too-early", "Consultation not open yet", 403,
+                f"You can join up to {TelehealthSession.JOIN_WINDOW_MINUTES} minutes "
+                "before the scheduled start time."
+            )
+
         try:
             # Generate LiveKit Token
             token = generate_livekit_token(session=session, user=request.user)

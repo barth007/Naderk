@@ -393,9 +393,14 @@ class RescheduleAppointmentApi(APIView):
         except Appointment.DoesNotExist:
             return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")
             
-        if appointment.status in [Appointment.Status.CANCELLED, Appointment.Status.COMPLETED, Appointment.Status.NO_SHOW]:
+        # A missed (NO_SHOW) appointment is deliberately reschedulable: the patient
+        # already paid, so we let them pick a new slot instead of forcing a rebook.
+        # Only truly terminal states are blocked.
+        if appointment.status in [Appointment.Status.CANCELLED, Appointment.Status.COMPLETED]:
             return build_error_response("invalid-state", "Cannot reschedule", 400, "Appointment is already completed or cancelled")
-            
+
+        was_missed = appointment.status == Appointment.Status.NO_SHOW
+
         new_date = serializer.validated_data['date']
         new_time = serializer.validated_data['time']
         
@@ -427,8 +432,13 @@ class RescheduleAppointmentApi(APIView):
                  
             appointment.appointment_date = new_date
             appointment.appointment_time = new_time
+            if was_missed:
+                # Bring it back into the active set. Payment carries forward
+                # (payment_status is untouched), so no new charge is required.
+                appointment.status = Appointment.Status.CONFIRMED
+                appointment.missed_at = None
             appointment.save()
-            
+
         return build_success_response("Appointment rescheduled successfully", AppointmentSerializer(appointment).data)
 
 class AppointmentDetailApi(APIView):

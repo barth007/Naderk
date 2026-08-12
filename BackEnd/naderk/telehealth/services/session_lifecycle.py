@@ -268,4 +268,10 @@ def end_session(*, session: TelehealthSession, user) -> TelehealthSession:
         conversation=session.conversation
     )
 
+    # Archive the consultation thread now that the session is over, so it leaves
+    # the doctor's and admin's active queues.
+    if session.conversation:
+        from naderk.messaging.services import close_telehealth_conversation
+        close_telehealth_conversation(conversation=session.conversation)
+
     return session

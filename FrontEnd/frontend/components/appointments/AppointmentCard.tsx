@@ -150,6 +150,18 @@ export default function AppointmentCard({
                   Join Consultation
                 </Button>
               )}
+              {apt.is_telehealth && !apt.can_join &&
+                (apt.status === 'CONFIRMED' || apt.status === 'CHECKED_IN') && (
+                <Button
+                  variant="default"
+                  size="md"
+                  disabled
+                  title="Available 30 minutes before the scheduled time"
+                  className="font-bold px-4 w-full sm:w-auto cursor-not-allowed"
+                >
+                  Join Consultation
+                </Button>
+              )}
               {apt.is_physical && apt.status === 'CONFIRMED' && (
                 <Button variant="default" size="md" className="font-bold px-4 w-full sm:w-auto">
                   Check-in Online
