@@ -24,7 +24,8 @@ from .selectors import (
 from .services import (
     prescription_create, prescription_assign_for_review, prescription_review_complete,
     cart_add_item, cart_update_item_quantity, cart_remove_item, cart_clear,
-    wishlist_toggle_item, order_create_from_cart, order_process_payment
+    wishlist_toggle_item, order_create_from_cart, order_process_payment,
+    order_update_status
 )
 
 class CategoryListApi(APIView):
@@ -659,6 +660,74 @@ class OrderPrescriptionReviewApi(APIView):
             metadata={'reviewed_by': str(request.user.id), 'notes': notes}
         )
         return build_success_response("Order review complete", OrderSerializer(order).data)
+
+
+class OrderStatusUpdateApi(APIView):
+    """
+    PATCH /api/v1/marketplace/orders/<pk>/status/  { "status": "IN_PRODUCTION", "notes": "..." }
+
+    Staff-only. Advances an order along the fulfillment flow
+    (FRAME_RESERVED -> IN_PRODUCTION -> ... -> SHIPPED -> DELIVERED) or cancels it.
+    Transitions are forward-only and validated in order_update_status.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        if getattr(request.user, 'role', None) not in STAFF_ROLES:
+            return build_error_response("forbidden", "Access denied", 403, "Staff only.")
+
+        new_status = (request.data.get('status') or '').strip().upper()
+        if not new_status:
+            return build_error_response("validation-error", "Validation Error", 400, "status is required.")
+
+        try:
+            order = Order.objects.get(id=pk)
+        except Order.DoesNotExist:
+            return build_error_response("not-found", "Order not found", 404, "Invalid order ID.")
+
+        try:
+            order = order_update_status(
+                order=order, actor=request.user,
+                new_status=new_status, notes=request.data.get('notes', ''),
+            )
+        except (DjangoValidationError, DRFValidationError) as e:
+            return build_error_response("invalid-state", "Invalid transition", 400, str(e))
+
+        return build_success_response("Order status updated", OrderSerializer(order).data)
+
+
+class OrderConfirmDeliveryApi(APIView):
+    """
+    POST /api/v1/marketplace/orders/<pk>/confirm-delivery/
+
+    Lets the order's owner confirm receipt, moving SHIPPED -> DELIVERED so the
+    order lands in their Completed bucket. Only the customer may confirm, and
+    only once the order has actually shipped.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            order = Order.objects.get(id=pk)
+        except Order.DoesNotExist:
+            return build_error_response("not-found", "Order not found", 404, "Invalid order ID.")
+
+        if order.user_id != request.user.id:
+            return build_error_response("forbidden", "Access denied", 403,
+                                        "You can only confirm delivery of your own orders.")
+
+        if order.status != Order.Status.SHIPPED:
+            return build_error_response("invalid-state", "Not confirmable", 400,
+                                        "Only a shipped order can be confirmed as delivered.")
+
+        try:
+            order = order_update_status(
+                order=order, actor=request.user, new_status=Order.Status.DELIVERED,
+            )
+        except (DjangoValidationError, DRFValidationError) as e:
+            return build_error_response("invalid-state", "Invalid transition", 400, str(e))
+
+        return build_success_response("Delivery confirmed", OrderSerializer(order).data)
 
 
 # --- Glasses Builder Configuration (admin + client) ---

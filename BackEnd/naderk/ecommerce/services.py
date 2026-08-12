@@ -399,6 +399,70 @@ def order_process_payment(*, order: Order, actor: User, payment_reference: str, 
     return order
 
 
+# --- Order fulfillment state machine -----------------------------------------
+
+# The forward-only path a paid order travels from production to delivery. Staff
+# advance it stage by stage; a patient can confirm receipt (SHIPPED -> DELIVERED).
+ORDER_FULFILLMENT_FLOW = [
+    Order.Status.PAID,
+    Order.Status.PRESCRIPTION_REVIEW,
+    Order.Status.FRAME_RESERVED,
+    Order.Status.IN_PRODUCTION,
+    Order.Status.LENS_CUTTING,
+    Order.Status.FRAME_ASSEMBLY,
+    Order.Status.QUALITY_CHECK,
+    Order.Status.READY_FOR_PICKUP,
+    Order.Status.SHIPPED,
+    Order.Status.DELIVERED,
+]
+
+
+@transaction.atomic
+def order_update_status(*, order: Order, actor: User, new_status: str, notes: str = '') -> Order:
+    """
+    Move an order forward along the fulfillment flow, or cancel it.
+
+    Rules:
+      * Forward-only — a status can only advance to a later stage, never back.
+      * CANCELLED is allowed from any stage that isn't already terminal
+        (DELIVERED/CANCELLED).
+      * Re-setting the current status is a no-op.
+
+    Every change is recorded as an OrderActivity so the timeline stays truthful.
+    """
+    order = Order.objects.select_for_update().get(pk=order.pk)
+    current = order.status
+
+    if new_status == current:
+        return order
+
+    valid_targets = set(Order.Status.values)
+    if new_status not in valid_targets:
+        raise ValidationError(f"Unknown order status: {new_status}")
+
+    if new_status == Order.Status.CANCELLED:
+        if current in (Order.Status.DELIVERED, Order.Status.CANCELLED):
+            raise ValidationError("A delivered or cancelled order cannot be cancelled.")
+    else:
+        if current not in ORDER_FULFILLMENT_FLOW or new_status not in ORDER_FULFILLMENT_FLOW:
+            raise ValidationError(f"Cannot transition from {current} to {new_status}.")
+        if ORDER_FULFILLMENT_FLOW.index(new_status) <= ORDER_FULFILLMENT_FLOW.index(current):
+            raise ValidationError("Order status can only move forward.")
+
+    order.status = new_status
+    if notes:
+        order.production_notes = notes
+    order.save(update_fields=['status', 'production_notes', 'updated_at'])
+
+    OrderActivity.objects.create(
+        order=order,
+        actor=actor,
+        action=f'STATUS_{new_status}',
+        metadata={'from': current, 'to': new_status, 'notes': notes or ''}
+    )
+    return order
+
+
 # --- Glasses Builder: prescription-driven lens recommendation engine ---
 
 from decimal import Decimal, InvalidOperation

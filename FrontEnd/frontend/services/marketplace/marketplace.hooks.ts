@@ -395,6 +395,40 @@ export const usePayOrder = (id: string) => {
   });
 };
 
+export const useConfirmOrderDelivery = (id: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.post(`/marketplace/orders/${id}/confirm-delivery/`, {});
+      return response.data.data as Order;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketplace-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace-order', id] });
+    }
+  });
+};
+
+export interface UpdateOrderStatusPayload {
+  status: string;
+  notes?: string;
+}
+
+export const useUpdateOrderStatus = (id: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: UpdateOrderStatusPayload) => {
+      const response = await apiClient.patch(`/marketplace/orders/${id}/status/`, payload);
+      return response.data.data as Order;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketplace-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace-order', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+    }
+  });
+};
+
 export const useOrderReviewQueue = () => {
   return useQuery({
     queryKey: ['marketplace-order-review-queue'],

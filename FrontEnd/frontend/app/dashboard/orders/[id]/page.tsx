@@ -10,10 +10,11 @@ import {
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Breadcrumbs } from '@/components/ui/breadcrumb';
-import { useOrder } from '@/services/marketplace/marketplace.hooks';
+import { useOrder, useConfirmOrderDelivery } from '@/services/marketplace/marketplace.hooks';
 import { Order } from '@/services/marketplace/marketplace.types';
 import { cn } from '@/lib/cn';
 import { format, parseISO } from 'date-fns';
+import { toast } from 'sonner';
 
 // ── Timeline ──────────────────────────────────────────────────────────────────
 
@@ -89,6 +90,16 @@ export default function OrderDetailPage() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
   const { data: order, isLoading, isError } = useOrder(id);
+  const confirmDelivery = useConfirmOrderDelivery(id);
+
+  const handleConfirmDelivery = async () => {
+    try {
+      await confirmDelivery.mutateAsync();
+      toast.success('Delivery confirmed. Thank you!');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Could not confirm delivery. Please try again.');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -135,7 +146,21 @@ export default function OrderDetailPage() {
             Placed {format(parseISO(order.created_at), 'MMMM d, yyyy · h:mm a')}
           </p>
         </div>
-        <div className="ml-auto"><PaymentBadge status={order.payment_status} /></div>
+        <div className="ml-auto flex items-center gap-3">
+          {order.status === 'SHIPPED' && (
+            <Button
+              onClick={handleConfirmDelivery}
+              disabled={confirmDelivery.isPending}
+              className="rounded-md bg-[#ff052f] hover:bg-[#d90022] text-white font-semibold gap-1.5"
+            >
+              {confirmDelivery.isPending
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <CheckCircle2 className="w-4 h-4" />}
+              Confirm Delivery
+            </Button>
+          )}
+          <PaymentBadge status={order.payment_status} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">

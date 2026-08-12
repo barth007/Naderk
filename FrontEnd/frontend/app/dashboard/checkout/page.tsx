@@ -242,9 +242,18 @@ export default function CheckoutPage() {
       amount:     amtKobo,
       reference:  creds.reference,
       accessCode: creds.access_code,
-      onSuccess: () => {
+      onSuccess: async () => {
         setPaymentPhase('waiting_webhook');
         toast.info('Payment submitted! Confirming your order…');
+        // Confirm straight away instead of waiting for the Paystack webhook,
+        // which only reaches one environment. This marks the order PAID and
+        // deducts stock; the poll below then advances the UI. The webhook and
+        // poll remain as backstops, and the call is idempotent server-side.
+        try {
+          await apiClient.post('/payments/verify-order/', { reference: creds.reference });
+        } catch {
+          /* non-fatal — poll + webhook still cover confirmation */
+        }
       },
       onClose: () => {
         setPendingOrderId(null);

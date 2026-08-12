@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Trash2, Upload, X, ImageIcon, CheckCircle2, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCategories } from '@/services/marketplace/marketplace.hooks';
 import { useAdminCreateProduct } from '@/services/admin/admin-inventory.hooks';
+import { useAdminCreateCategory } from '@/services/admin/admin-categories.hooks';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -212,13 +214,19 @@ const emptyVariant = (): Variant => ({
 
 export default function AddNewProductPage() {
   const router = useRouter();
+  const qc = useQueryClient();
   const { data: categories = [] } = useCategories();
   const { mutate: createProduct, isPending } = useAdminCreateProduct();
+  const { mutateAsync: createCategory, isPending: creatingCategory } = useAdminCreateCategory();
 
   // Form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  // Inline category creation
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [categoryError, setCategoryError] = useState('');
   const [price, setPrice] = useState('');
   const [stockQty, setStockQty] = useState('');
   const [lowStockThreshold, setLowStockThreshold] = useState('5');
@@ -278,6 +286,25 @@ export default function AddNewProductPage() {
     setVariants((prev) => prev.map((v, i) => i === index ? { ...v, [field]: value } : v));
   }
 
+  async function handleCreateCategory() {
+    const nm = newCategoryName.trim();
+    if (!nm) { setCategoryError('Category name is required'); return; }
+    setCategoryError('');
+    try {
+      const res = await createCategory({ name: nm });
+      const newCat = res?.data?.data;
+      // useCategories reads the 'marketplace-categories' key, which the create
+      // hook does not invalidate — refresh it so the new option appears, then
+      // select it. Awaiting the refetch avoids selecting an id not yet in the list.
+      await qc.invalidateQueries({ queryKey: ['marketplace-categories'] });
+      if (newCat?.id) setCategoryId(String(newCat.id));
+      setNewCategoryName('');
+      setShowNewCategory(false);
+    } catch {
+      setCategoryError('Failed to create category. It may already exist.');
+    }
+  }
+
   return (
     <div className="p-6 max-w-3xl flex flex-col gap-6">
       {/* Toast */}
@@ -335,12 +362,62 @@ export default function AddNewProductPage() {
           </Field>
 
           <Field label="Category" required>
-            <Select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">Select a category</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </Select>
+            <div className="flex items-center gap-2">
+              <Select
+                className="flex-1"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+              >
+                <option value="">Select a category</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </Select>
+              {!showNewCategory && (
+                <button
+                  type="button"
+                  onClick={() => { setShowNewCategory(true); setCategoryError(''); }}
+                  className="flex items-center gap-1 text-sm text-[#E03E3E] font-semibold whitespace-nowrap hover:underline"
+                >
+                  <Plus className="w-4 h-4" /> New category
+                </button>
+              )}
+            </div>
+
+            {showNewCategory && (
+              <div className="mt-2 flex flex-col gap-2 rounded-md border border-gray-200 bg-gray-50 p-3">
+                <label className="text-xs font-semibold text-gray-700">New Category Name</label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    className="flex-1"
+                    placeholder="e.g. Contact Lenses"
+                    value={newCategoryName}
+                    autoFocus
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); handleCreateCategory(); }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateCategory}
+                    disabled={creatingCategory}
+                    className="flex items-center gap-1 rounded-md bg-[#E03E3E] px-3 py-2 text-sm font-semibold text-white hover:bg-[#c93636] disabled:opacity-60"
+                  >
+                    {creatingCategory ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowNewCategory(false); setNewCategoryName(''); setCategoryError(''); }}
+                    disabled={creatingCategory}
+                    className="rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {categoryError && <p className="text-xs text-[#E03E3E]">{categoryError}</p>}
+              </div>
+            )}
             {errors.categoryId && <p className="text-xs text-[#E03E3E] mt-0.5">{errors.categoryId}</p>}
           </Field>
         </Card>

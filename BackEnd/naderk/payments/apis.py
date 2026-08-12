@@ -285,6 +285,79 @@ class VerifyAppointmentPaymentApi(APIView):
         })
 
 
+class VerifyOrderPaymentApi(APIView):
+    """
+    POST /api/v1/payments/verify-order/  { "reference": "NDK-..." }
+
+    Marketplace counterpart of VerifyAppointmentPaymentApi. Confirms an order
+    payment straight from the browser after Paystack's popup reports success,
+    so stock is deducted and the order leaves PENDING without depending on the
+    single Paystack webhook URL reaching this environment. The webhook remains
+    the backstop; both paths are idempotent (order_process_payment early-returns
+    once the order is PAID).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        reference = (request.data.get('reference') or '').strip()
+        if not reference:
+            return build_error_response("validation-error", "reference is required", 400,
+                                        "Provide the Paystack transaction reference.")
+
+        from .models import PaymentTransaction
+        from naderk.ecommerce.models import Order
+        from naderk.ecommerce.services import order_process_payment
+
+        try:
+            txn = PaymentTransaction.objects.select_related('order').get(
+                reference=reference, user=request.user,
+            )
+        except PaymentTransaction.DoesNotExist:
+            return build_error_response("not-found", "Transaction not found", 404,
+                                        "No payment found for that reference.")
+
+        if not txn.order:
+            return build_error_response("bad-request", "Not an order payment", 400,
+                                        "That reference is not linked to an order.")
+
+        order = txn.order
+
+        # Already settled (webhook may have won the race) — report success.
+        if order.payment_status == Order.PaymentStatus.PAID:
+            return build_success_response("Payment already confirmed", {
+                'payment_status': order.payment_status,
+                'status': order.status,
+                'order_id': str(order.id),
+            })
+
+        try:
+            result = verify_and_confirm(reference=reference, provider_name='PAYSTACK')
+        except Exception as e:
+            logger.exception("Verify failed for order ref %s: %s", reference, e)
+            return build_error_response("provider-error", "Could not verify payment", 502,
+                                        "We could not reach the payment provider. "
+                                        "If you were charged, your order will be confirmed shortly.")
+
+        if result.status != 'success':
+            return build_success_response("Payment not successful", {
+                'payment_status': order.payment_status,
+                'provider_status': result.status,
+                'order_id': str(order.id),
+            })
+
+        order = order_process_payment(
+            order=order, actor=request.user,
+            payment_reference=reference, skip_verify=True,
+        )
+        logger.info("Verify: order %s marked PAID via client verification.", order.id)
+
+        return build_success_response("Payment confirmed", {
+            'payment_status': order.payment_status,
+            'status': order.status,
+            'order_id': str(order.id),
+        })
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class PaystackWebhookApi(APIView):
     """

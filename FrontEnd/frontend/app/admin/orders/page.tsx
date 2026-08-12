@@ -11,11 +11,27 @@ import {
   TableContainer, Table, TableHead, TableBody, TableRow, Th, Td,
 } from '@/components/ui/table';
 import { useAdminAllOrders, AdminOrder } from '@/services/admin/admin-inventory.hooks';
+import { useUpdateOrderStatus } from '@/services/marketplace/marketplace.hooks';
 import { Pagination } from '@/components/ui/pagination';
+import { toast } from 'sonner';
+
+// Forward-only fulfillment flow, mirrored from the backend state machine.
+const FULFILLMENT_FLOW = [
+  'PAID', 'PRESCRIPTION_REVIEW', 'FRAME_RESERVED', 'IN_PRODUCTION',
+  'LENS_CUTTING', 'FRAME_ASSEMBLY', 'QUALITY_CHECK', 'READY_FOR_PICKUP',
+  'SHIPPED', 'DELIVERED',
+];
+
+function nextStatusOptions(current: string): string[] {
+  const idx = FULFILLMENT_FLOW.indexOf(current);
+  const forward = idx >= 0 ? FULFILLMENT_FLOW.slice(idx + 1) : [];
+  const cancellable = current !== 'DELIVERED' && current !== 'CANCELLED';
+  return cancellable ? [...forward, 'CANCELLED'] : forward;
+}
 
 // ─── Status Config ─────────────────────────────────────────────────────────────
 
-const REVIEW_STATUSES = ['PAID', 'PRESCRIPTION_REVIEW', 'FRAME_RESERVED', 'IN_PRODUCTION', 'FRAME_ASSEMBLY'];
+const REVIEW_STATUSES = ['PAID', 'PRESCRIPTION_REVIEW', 'FRAME_RESERVED', 'IN_PRODUCTION', 'LENS_CUTTING', 'FRAME_ASSEMBLY', 'QUALITY_CHECK'];
 const SHIPPED_STATUSES = ['READY_FOR_PICKUP', 'SHIPPED'];
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
@@ -23,7 +39,9 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; do
   PRESCRIPTION_REVIEW: { label: 'Rx Review',           color: 'text-purple-700', bg: 'bg-purple-50', dot: 'bg-purple-500' },
   FRAME_RESERVED:      { label: 'Frame Reserved',      color: 'text-indigo-700', bg: 'bg-indigo-50', dot: 'bg-indigo-500' },
   IN_PRODUCTION:       { label: 'In Production',       color: 'text-orange-700', bg: 'bg-orange-50', dot: 'bg-orange-500' },
+  LENS_CUTTING:        { label: 'Lens Cutting',        color: 'text-amber-700',  bg: 'bg-amber-50',  dot: 'bg-amber-500' },
   FRAME_ASSEMBLY:      { label: 'Frame Assembly',      color: 'text-yellow-700', bg: 'bg-yellow-50', dot: 'bg-yellow-500' },
+  QUALITY_CHECK:       { label: 'Quality Check',       color: 'text-cyan-700',   bg: 'bg-cyan-50',   dot: 'bg-cyan-500' },
   READY_FOR_PICKUP:    { label: 'Ready for Pickup',    color: 'text-green-700',  bg: 'bg-green-50',  dot: 'bg-green-500' },
   SHIPPED:             { label: 'Shipped',             color: 'text-teal-700',   bg: 'bg-teal-50',   dot: 'bg-teal-500' },
   DELIVERED:           { label: 'Delivered',           color: 'text-gray-700',   bg: 'bg-gray-100',  dot: 'bg-gray-400' },
@@ -45,6 +63,21 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function OrderDetailModal({ order, onClose }: { order: AdminOrder; onClose: () => void }) {
+  const updateStatus = useUpdateOrderStatus(order.id);
+  const options = nextStatusOptions(order.status);
+  const [nextStatus, setNextStatus] = useState('');
+
+  const handleAdvance = async () => {
+    if (!nextStatus) return;
+    try {
+      await updateStatus.mutateAsync({ status: nextStatus });
+      toast.success(`Order moved to ${STATUS_META[nextStatus]?.label ?? nextStatus}.`);
+      onClose();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Could not update order status.');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <Card className="rounded-md border border-gray-100 shadow-xl p-6 w-96">
@@ -84,6 +117,34 @@ function OrderDetailModal({ order, onClose }: { order: AdminOrder; onClose: () =
                 {order.first_item_qty > 0 && <p className="text-xs text-gray-400 mt-0.5">Qty: {order.first_item_qty}</p>}
               </div>
             </div>
+          </div>
+
+          {/* Advance fulfillment status */}
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-xs text-gray-500 mb-2">Update Status</p>
+            {options.length === 0 ? (
+              <p className="text-xs text-gray-400">This order is {STATUS_META[order.status]?.label ?? order.status} — no further transitions.</p>
+            ) : (
+              <div className="flex items-center gap-2">
+                <select
+                  value={nextStatus}
+                  onChange={(e) => setNextStatus(e.target.value)}
+                  className="flex-1 border border-gray-200 rounded-md px-2 py-2 text-xs text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#E03E3E]/20"
+                >
+                  <option value="">Select next status…</option>
+                  {options.map((s) => (
+                    <option key={s} value={s}>{STATUS_META[s]?.label ?? s}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleAdvance}
+                  disabled={!nextStatus || updateStatus.isPending}
+                  className="rounded-md bg-[#E03E3E] px-3 py-2 text-xs font-semibold text-white hover:bg-[#c93636] disabled:opacity-60"
+                >
+                  {updateStatus.isPending ? 'Updating…' : 'Update'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </Card>
