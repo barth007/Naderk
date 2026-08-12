@@ -3,6 +3,7 @@ from django.contrib.auth.hashers import make_password, check_password
 from django.utils import timezone
 from django.db import transaction
 from rest_framework_simplejwt.tokens import RefreshToken
+import logging
 import random
 import datetime
 import secrets
@@ -13,6 +14,8 @@ from naderk.common.email.exceptions import EmailError
 from .models import OTPVerification, LoginAttempt, PasswordResetToken
 
 User = get_user_model()
+
+logger = logging.getLogger(__name__)
 
 def _generate_otp_code() -> str:
     return str(random.randint(100000, 999999))
@@ -186,10 +189,18 @@ def request_password_reset(*, email: str) -> None:
     frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')
     reset_url = f"{frontend_url}/reset-password?token={token}"
 
+    # Send synchronously (like the OTP email) rather than dispatching to Celery.
+    # A queued task silently never arrives if the worker/broker isn't delivering,
+    # while the user is shown a "check your inbox" screen. We still don't surface
+    # the error to the caller — the endpoint must return an identical response
+    # whether or not the address exists, to prevent account enumeration — but we
+    # log the failure so it's visible in delivery logs.
     try:
-        email_service.send_password_reset(user=user, reset_url=reset_url, expires_minutes=30)
+        email_service.send_password_reset(
+            user=user, reset_url=reset_url, expires_minutes=30, sync=True,
+        )
     except EmailError:
-        pass
+        logger.exception("Password reset email failed to send for user %s", user.id)
 
 
 def reset_password(*, token: str, new_password: str) -> None:
