@@ -53,6 +53,13 @@ class BlogPost(models.Model):
         if not self.slug:
             # Generate unique slug
             original_slug = slugify(self.title)
+            # Guard the patient-facing detail route: an empty slug (e.g. an
+            # all-non-ASCII title) can't be routed, and a purely-numeric slug is
+            # captured by `blogs/<int:pk>/` before the slug route — both 404.
+            if not original_slug:
+                original_slug = 'post'
+            elif original_slug.isdigit():
+                original_slug = f"post-{original_slug}"
             queryset = BlogPost.objects.all()
             if self.pk:
                 queryset = queryset.exclude(pk=self.pk)
