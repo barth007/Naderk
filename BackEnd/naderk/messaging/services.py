@@ -61,17 +61,26 @@ def assign_best_agent() -> User | None:
 
 @transaction.atomic
 def create_conversation(
-    *, 
-    patient: User, 
-    category: str, 
-    subject: str, 
-    initial_message: str, 
+    *,
+    patient: User,
+    category: str,
+    subject: str,
+    initial_message: str,
     attachment_url: str = None,
-    related_appointment_id: str = None
+    related_appointment_id: str = None,
+    doctor: User = None,
+    announce_as_system: bool = False,
 ) -> Conversation:
     """
     Creates a new conversation, applies automated triage, assigns the best agent,
     logs the activity, and sends the initial message.
+
+    When ``doctor`` is provided (e.g. a telehealth consultation thread) the
+    conversation is routed to that doctor instead of a support agent: they are
+    set as ``assigned_doctor``, added as a DOCTOR participant, and the status
+    starts at WAITING_FOR_DOCTOR so it surfaces in the doctor's queue and they
+    can reply. ``announce_as_system`` marks the opening message as a SYSTEM
+    notice rather than a patient-authored chat bubble.
     """
     # 1. Triage routing maps category -> (department, default_priority)
     triage_mapping = {
@@ -93,14 +102,20 @@ def create_conversation(
     if any(kw in content_to_check for kw in urgent_keywords):
         priority = ConversationPriority.URGENT
         
-    # 2. Workload-balanced agent assignment
-    agent = assign_best_agent()
-    status = ConversationStatus.WAITING_FOR_AGENT
-    
+    # 2. Assignment. A doctor-scoped thread (telehealth) goes straight to that
+    #    doctor; everything else is balanced across support agents.
+    agent = None
+    if doctor is not None:
+        status = ConversationStatus.WAITING_FOR_DOCTOR
+    else:
+        agent = assign_best_agent()
+        status = ConversationStatus.WAITING_FOR_AGENT
+
     # 3. Create Conversation
     conversation = Conversation.objects.create(
         patient=patient,
         assigned_agent=agent,
+        assigned_doctor=doctor,
         department=dept,
         category=category,
         priority=priority,
@@ -108,21 +123,28 @@ def create_conversation(
         status=status,
         related_appointment_id=related_appointment_id
     )
-    
+
     # 4. Register Participants
     ConversationParticipant.objects.create(
         conversation=conversation,
         user=patient,
         role=ParticipantRole.PATIENT
     )
-    
+
     if agent:
         ConversationParticipant.objects.create(
             conversation=conversation,
             user=agent,
             role=ParticipantRole.AGENT
         )
-        
+
+    if doctor:
+        ConversationParticipant.objects.create(
+            conversation=conversation,
+            user=doctor,
+            role=ParticipantRole.DOCTOR
+        )
+
     # 5. Log Activities
     create_conversation_activity(
         conversation=conversation,
@@ -130,7 +152,7 @@ def create_conversation(
         action="CREATED",
         metadata={"category": category, "department": dept, "priority": priority}
     )
-    
+
     if agent:
         create_conversation_activity(
             conversation=conversation,
@@ -145,15 +167,32 @@ def create_conversation(
             message=f"A new conversation ({category}) has been triaged and assigned to you.",
             conversation=conversation
         )
-        
+
+    if doctor:
+        create_conversation_activity(
+            conversation=conversation,
+            actor=None,  # System action
+            action="ASSIGNED_DOCTOR",
+            metadata={"doctor_id": str(doctor.id), "doctor_email": doctor.email}
+        )
+        # Notify the doctor
+        create_notification(
+            user=doctor,
+            title="New Telehealth Consultation",
+            message=f"A consultation thread with your patient {patient.first_name} {patient.last_name}".strip()
+                    + " is ready.",
+            conversation=conversation
+        )
+
     # 6. Send Initial Message
     send_message(
         conversation=conversation,
         sender=patient,
         content=initial_message,
-        attachment_url=attachment_url
+        attachment_url=attachment_url,
+        message_type=MessageType.SYSTEM if announce_as_system else None,
     )
-    
+
     return conversation
 
 @transaction.atomic
@@ -162,7 +201,8 @@ def send_message(
     conversation: Conversation,
     sender: User,
     content: str,
-    attachment_url: str = None
+    attachment_url: str = None,
+    message_type: str = None
 ) -> Message:
     """
     Saves a message in the conversation, updates activity time, handles read status,
@@ -206,12 +246,16 @@ def send_message(
         )
         
     # Create Message
+    resolved_type = message_type or (
+        MessageType.IMAGE if (attachment_url and attachment_url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')))
+        else (MessageType.FILE if attachment_url else MessageType.TEXT)
+    )
     message = Message.objects.create(
         conversation=conversation,
         sender=sender,
         content=content,
         attachment_url=attachment_url,
-        message_type=MessageType.IMAGE if (attachment_url and attachment_url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif'))) else (MessageType.FILE if attachment_url else MessageType.TEXT)
+        message_type=resolved_type
     )
     if attachment_url:
         file_ext = attachment_url.split('.')[-1].lower() if '.' in attachment_url else 'unknown'
@@ -460,6 +504,32 @@ def resolve_conversation(*, conversation: Conversation, actor: User) -> Conversa
     
     _broadcast_conversation_update_ws(conversation)
     return conversation
+
+def close_telehealth_conversation(*, conversation: Conversation, actor: User = None) -> Conversation:
+    """
+    Close a telehealth consultation thread once the session is over, stamping the
+    dedicated TELEHEALTH_COMPLETED reason so it leaves the active queues. Safe to
+    call more than once — already-closed threads are left untouched.
+    """
+    if conversation is None or conversation.status == ConversationStatus.CLOSED:
+        return conversation
+
+    old_status = conversation.status
+    conversation.status = ConversationStatus.CLOSED
+    conversation.closed_reason = ConversationClosedReason.TELEHEALTH_COMPLETED
+    conversation.resolved_at = timezone.now()
+    conversation.save()
+
+    create_conversation_activity(
+        conversation=conversation,
+        actor=actor,
+        action="STATUS_CHANGED",
+        metadata={"old_status": old_status, "new_status": ConversationStatus.CLOSED,
+                  "reason": ConversationClosedReason.TELEHEALTH_COMPLETED}
+    )
+    _broadcast_conversation_update_ws(conversation)
+    return conversation
+
 
 def create_conversation_activity(conversation, actor, action, metadata=None):
     return ConversationActivity.objects.create(
