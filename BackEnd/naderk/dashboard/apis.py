@@ -1999,23 +1999,8 @@ class SpecializationDetailAPI(APIView):
 
 
 # ── Role Permissions Management ───────────────────────────────────────────────
-
-SYSTEM_PERMISSIONS = [
-    {'id': 'view_patient_records',   'label': 'View Patient Records',       'category': 'Records'},
-    {'id': 'edit_patient_records',   'label': 'Edit Patient Records',       'category': 'Records'},
-    {'id': 'manage_appointments',    'label': 'Manage Appointments',        'category': 'Appointments'},
-    {'id': 'conduct_telehealth',     'label': 'Conduct Telehealth Sessions','category': 'Clinical'},
-    {'id': 'manage_prescriptions',   'label': 'Manage Prescriptions',       'category': 'Clinical'},
-    {'id': 'view_billing',           'label': 'View Billing',               'category': 'Finance'},
-    {'id': 'manage_billing',         'label': 'Manage Billing',             'category': 'Finance'},
-    {'id': 'manage_inventory',       'label': 'Manage Inventory',           'category': 'Inventory'},
-    {'id': 'view_reports',           'label': 'View Reports',               'category': 'Reporting'},
-    {'id': 'manage_staff',           'label': 'Manage Staff',               'category': 'Administration'},
-    {'id': 'manage_cms',             'label': 'Manage CMS Content',         'category': 'Administration'},
-    {'id': 'access_messaging',       'label': 'Access Messaging',           'category': 'Communication'},
-]
-
-MANAGEABLE_ROLES = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'OPERATIONS_MANAGER', 'AGENT', 'ADMIN']
+# The permission catalog and editable roles now live in naderk.common.permissions
+# (AREA_CATALOG / AREA_EDITABLE_ROLES) and drive real enforcement via user_areas().
 
 
 class AdminPermissionsAPI(APIView):
@@ -2027,14 +2012,22 @@ class AdminPermissionsAPI(APIView):
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
             )
-        from naderk.users.models import RolePermissionConfig
-        configs = {c.role: c.permissions for c in RolePermissionConfig.objects.filter(role__in=MANAGEABLE_ROLES)}
-        roles = []
-        for role in MANAGEABLE_ROLES:
-            roles.append({'role': role, 'permissions': configs.get(role, [])})
+        from naderk.common.permissions import (
+            AREA_CATALOG, AREA_EDITABLE_ROLES, resolved_areas_for_role,
+        )
+        # Show each editable role's *effective* areas (saved override or default),
+        # so the toggles reflect reality out of the box.
+        role_permissions = [
+            {'role': role, 'permissions': sorted(resolved_areas_for_role(role))}
+            for role in AREA_EDITABLE_ROLES
+        ]
         return build_success_response(
             message="Permissions retrieved.",
-            data={'roles': roles, 'available_permissions': SYSTEM_PERMISSIONS},
+            data={
+                'system_permissions': AREA_CATALOG,
+                'manageable_roles': AREA_EDITABLE_ROLES,
+                'role_permissions': role_permissions,
+            },
             status_code=200
         )
 
@@ -2045,19 +2038,25 @@ class AdminPermissionsAPI(APIView):
                 detail='Forbidden.',
             )
         from naderk.users.models import RolePermissionConfig
+        from naderk.common.permissions import AREA_EDITABLE_ROLES, ALL_AREAS
         role = (request.data.get('role') or '').strip()
         permissions = request.data.get('permissions', [])
-        if role not in MANAGEABLE_ROLES:
+        if role not in AREA_EDITABLE_ROLES:
             return build_error_response(
                 type_uri='validation-error', title='Validation Error', status_code=400,
-                detail='Invalid role.',
+                detail='This role\'s areas cannot be edited here.',
             )
-        valid_ids = {p['id'] for p in SYSTEM_PERMISSIONS}
-        clean_perms = [p for p in permissions if p in valid_ids]
+        # Persist only recognised areas; this immediately changes access because
+        # all gates resolve through naderk.common.permissions.user_areas().
+        clean_perms = sorted(a for a in permissions if a in ALL_AREAS)
         config, _ = RolePermissionConfig.objects.get_or_create(role=role, defaults={'permissions': []})
         config.permissions = clean_perms
         config.save()
-        return build_success_response(message="Permissions updated.", data={'role': role, 'permissions': clean_perms}, status_code=200)
+        return build_success_response(
+            message="Permissions updated.",
+            data={'role': role, 'permissions': clean_perms},
+            status_code=200,
+        )
 
 
 # ─── Admin Medical Services ───────────────────────────────────────────────────

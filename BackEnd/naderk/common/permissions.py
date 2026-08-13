@@ -53,11 +53,58 @@ ROLE_AREAS = {
 }
 
 
+# Roles whose areas can be edited in the admin "Manage Permissions" UI. ADMIN /
+# SUPER_ADMIN are intentionally excluded — they always hold every area and must
+# not be lockable. DOCTOR/OPTICIAN/PATIENT are governed by their own portals.
+AREA_EDITABLE_ROLES = ['MEDICAL_AGENT', 'OPERATIONS_MANAGER', 'AGENT']
+
+# Catalog for the Manage Permissions UI (each `key` must be a valid area).
+AREA_CATALOG = [
+    {'key': AREA_DASHBOARD,       'label': 'Dashboard',        'category': 'General'},
+    {'key': AREA_APPOINTMENTS,    'label': 'Appointments',     'category': 'Clinical Ops'},
+    {'key': AREA_PATIENT_RECORDS, 'label': 'Patient Records',  'category': 'Clinical Ops'},
+    {'key': AREA_MESSAGING,       'label': 'Messaging',        'category': 'Clinical Ops'},
+    {'key': AREA_INVENTORY,       'label': 'Inventory',        'category': 'Store'},
+    {'key': AREA_ORDERS,          'label': 'Order Book',       'category': 'Store'},
+    {'key': AREA_FRAMES,          'label': 'Frames',           'category': 'Store'},
+    {'key': AREA_SERVICES,        'label': 'Services',         'category': 'Store'},
+    {'key': AREA_GLASS_BUILDER,   'label': 'Glasses Builder',  'category': 'Store'},
+    {'key': AREA_CMS,             'label': 'CMS Content',      'category': 'Content'},
+    {'key': AREA_BILLING,         'label': 'Billing',          'category': 'Administration'},
+    {'key': AREA_STAFF,           'label': 'Staff Management', 'category': 'Administration'},
+    {'key': AREA_SETTINGS,        'label': 'System Settings',  'category': 'Administration'},
+]
+
+
+def default_areas_for(role) -> set:
+    """Built-in default areas for a role, before any admin override."""
+    return set(ROLE_AREAS.get(role, set()))
+
+
+def resolved_areas_for_role(role) -> set:
+    """
+    Effective areas for a role: ADMIN/SUPER_ADMIN always get everything; every
+    other role uses the admin-saved override (RolePermissionConfig) when one
+    exists, otherwise the built-in default. Never raises — falls back to the
+    defaults if the config table is unavailable (e.g. during migrations).
+    """
+    if role in ('ADMIN', 'SUPER_ADMIN'):
+        return set(ALL_AREAS)
+    try:
+        from naderk.users.models import RolePermissionConfig
+        cfg = RolePermissionConfig.objects.filter(role=role).first()
+    except Exception:
+        cfg = None
+    if cfg is not None and cfg.permissions is not None:
+        return {a for a in cfg.permissions if a in ALL_AREAS}
+    return default_areas_for(role)
+
+
 def user_areas(user) -> set:
     """Return the set of areas a user's role grants (empty for unknown/anon)."""
     if not user or not getattr(user, 'is_authenticated', False):
         return set()
-    return set(ROLE_AREAS.get(getattr(user, 'role', None), set()))
+    return resolved_areas_for_role(getattr(user, 'role', None))
 
 
 def user_has_area(user, area: str) -> bool:
