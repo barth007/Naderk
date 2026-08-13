@@ -608,14 +608,17 @@ class OrderPaymentApi(APIView):
             )
 
 
-STAFF_ROLES = {'ADMIN', 'SUPER_ADMIN', 'DOCTOR', 'AGENT'}
+# Clinical prescription review on orders (stays with clinicians + medical/admin).
+PRESCRIPTION_REVIEW_ROLES = {'ADMIN', 'SUPER_ADMIN', 'DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT'}
+# Order-book / fulfillment management (the "orders" area).
+ORDER_MANAGE_ROLES = {'ADMIN', 'SUPER_ADMIN', 'OPERATIONS_MANAGER', 'MEDICAL_AGENT'}
 
 
 class OrderReviewQueueApi(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if getattr(request.user, 'role', None) not in STAFF_ROLES:
+        if getattr(request.user, 'role', None) not in PRESCRIPTION_REVIEW_ROLES:
             return build_error_response("forbidden", "Access denied", 403, "Staff only.")
         orders = (
             Order.objects
@@ -631,7 +634,7 @@ class OrderPrescriptionReviewApi(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        if getattr(request.user, 'role', None) not in STAFF_ROLES:
+        if getattr(request.user, 'role', None) not in PRESCRIPTION_REVIEW_ROLES:
             return build_error_response("forbidden", "Access denied", 403, "Staff only.")
         try:
             order = Order.objects.get(id=pk)
@@ -673,7 +676,7 @@ class OrderStatusUpdateApi(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk):
-        if getattr(request.user, 'role', None) not in STAFF_ROLES:
+        if getattr(request.user, 'role', None) not in ORDER_MANAGE_ROLES:
             return build_error_response("forbidden", "Access denied", 403, "Staff only.")
 
         new_status = (request.data.get('status') or '').strip().upper()

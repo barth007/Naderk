@@ -15,8 +15,10 @@ from ..selectors import (
 )
 from ..services.blog import create_blog_post, publish_blog_post, archive_blog_post
 
-BLOG_AUTHOR_ROLES = {'DOCTOR', 'ADMIN', 'SUPER_ADMIN'}
-ADMIN_ROLES = {'ADMIN', 'SUPER_ADMIN'}
+# Doctors may author their own posts; CMS-area staff may author and manage any.
+BLOG_AUTHOR_ROLES = {'DOCTOR', 'ADMIN', 'SUPER_ADMIN', 'OPERATIONS_MANAGER', 'MEDICAL_AGENT'}
+# "Manage any post" (publish/feature/delete regardless of author) = CMS area.
+ADMIN_ROLES = {'ADMIN', 'SUPER_ADMIN', 'OPERATIONS_MANAGER', 'MEDICAL_AGENT'}
 
 
 def _serialize_blog_with_status(blog):

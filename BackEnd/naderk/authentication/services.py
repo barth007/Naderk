@@ -153,6 +153,7 @@ def authenticate_user(*, email: str, password: str, request=None) -> dict:
 
 
 def _get_tokens_for_user(user: User) -> dict:
+    from naderk.common.permissions import user_areas
     refresh = RefreshToken.for_user(user)
     return {
         'refresh': str(refresh),
@@ -164,6 +165,7 @@ def _get_tokens_for_user(user: User) -> dict:
             'first_name': user.first_name,
             'last_name': user.last_name,
             'profile_completion_status': user.profile_completion_status,
+            'areas': sorted(user_areas(user)),
         }
     }
 

@@ -425,15 +425,27 @@ class AdminDashboardSummaryAPI(APIView):
 
 # ─── Admin Appointment APIs ────────────────────────────────────────────────────
 
-def _admin_only(request):
-    return request.user.role not in ('ADMIN', 'SUPER_ADMIN')
+def _admin_only(request, area=None):
+    """
+    True when the request must be blocked. ADMIN/SUPER_ADMIN are always
+    allowed. When `area` is given, a non-admin holding that capability area
+    is also allowed (see naderk.common.permissions); otherwise the endpoint
+    stays admin-only.
+    """
+    if getattr(request.user, 'role', None) in ('ADMIN', 'SUPER_ADMIN'):
+        return False
+    if area is not None:
+        from naderk.common.permissions import user_has_area
+        if user_has_area(request.user, area):
+            return False
+    return True
 
 
 class AdminAppointmentRequestsAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'appointments'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -481,7 +493,7 @@ class AdminAppointmentCalendarAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'appointments'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -511,7 +523,7 @@ class AdminScheduleAppointmentAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'appointments'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -583,7 +595,7 @@ class AdminDoctorListAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'appointments'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -612,7 +624,7 @@ class AdminInventorySummaryAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -658,7 +670,7 @@ class AdminProductsAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -767,7 +779,7 @@ class AdminProductCreateAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -871,7 +883,7 @@ class AdminProductRestockAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -907,7 +919,7 @@ class AdminProductToggleStatusAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -936,7 +948,7 @@ class AdminProductDetailAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -976,7 +988,7 @@ class AdminProductDetailAPI(APIView):
         }, status_code=200)
 
     def patch(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1025,7 +1037,7 @@ class AdminProductDetailAPI(APIView):
         return build_success_response(message="Product updated.", data={'id': str(product.id)}, status_code=200)
 
     def delete(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1046,7 +1058,7 @@ class AdminProductHistoryAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1079,7 +1091,7 @@ class AdminAllOrdersAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'orders'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1129,7 +1141,7 @@ class AdminCategoryListAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1148,7 +1160,7 @@ class AdminCategoryListAPI(APIView):
         return build_success_response(message="Categories retrieved.", data=data, status_code=200)
 
     def post(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1180,7 +1192,7 @@ class AdminCategoryDetailAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1205,7 +1217,7 @@ class AdminCategoryDetailAPI(APIView):
         )
 
     def delete(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1233,7 +1245,7 @@ class AdminFlashSaleListAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1258,7 +1270,7 @@ class AdminFlashSaleListAPI(APIView):
         return build_success_response(message="Flash sales retrieved.", data=data, status_code=200)
 
     def post(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1316,7 +1328,7 @@ class AdminFlashSaleDetailAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1346,7 +1358,7 @@ class AdminFlashSaleDetailAPI(APIView):
         return build_success_response(message="Flash sale updated.", data={'id': str(sale.id)}, status_code=200)
 
     def delete(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1493,7 +1505,7 @@ class AdminStaffListAPI(APIView):
         department = (request.data.get('department')  or '').strip()
         specialization = (request.data.get('specialization') or '').strip()
 
-        ALLOWED_ROLES = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'ADMIN']
+        ALLOWED_ROLES = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'OPERATIONS_MANAGER', 'AGENT', 'ADMIN']
         if not all([first_name, email, role]):
             return build_error_response(
                 type_uri='validation-error', title='Validation Error', status_code=400,
@@ -1652,7 +1664,7 @@ class AdminWeekScheduleAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'appointments'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -2003,7 +2015,7 @@ SYSTEM_PERMISSIONS = [
     {'id': 'access_messaging',       'label': 'Access Messaging',           'category': 'Communication'},
 ]
 
-MANAGEABLE_ROLES = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'ADMIN']
+MANAGEABLE_ROLES = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'OPERATIONS_MANAGER', 'AGENT', 'ADMIN']
 
 
 class AdminPermissionsAPI(APIView):
@@ -2077,7 +2089,7 @@ class AdminServiceListAPI(APIView):
         }
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'services'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.appointments.models import MedicalService
         services = MedicalService.objects.all().order_by('name')
@@ -2088,7 +2100,7 @@ class AdminServiceListAPI(APIView):
         )
 
     def post(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'services'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.appointments.models import MedicalService
         from django.utils.text import slugify
@@ -2204,7 +2216,7 @@ class AdminServiceDetailAPI(APIView):
         }
 
     def get(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'services'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         service = self._get(pk)
         if not service:
@@ -2212,7 +2224,7 @@ class AdminServiceDetailAPI(APIView):
         return build_success_response(message="Service retrieved.", data=self._serialize(service), status_code=200)
 
     def patch(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'services'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         service = self._get(pk)
         if not service:
@@ -2274,7 +2286,7 @@ class AdminServiceDetailAPI(APIView):
         return build_success_response(message="Service updated.", data=self._serialize(service), status_code=200)
 
     def delete(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'services'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         service = self._get(pk)
         if not service:
@@ -2330,7 +2342,7 @@ class AdminFrameListAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'frames'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.ecommerce.models import Frame
         from naderk.ecommerce.serializers import FrameSerializer
@@ -2338,7 +2350,7 @@ class AdminFrameListAPI(APIView):
         return build_success_response("Frames retrieved.", FrameSerializer(frames, many=True).data)
 
     def post(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'frames'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.ecommerce.models import Frame
         from naderk.ecommerce.serializers import FrameSerializer
@@ -2382,7 +2394,7 @@ class AdminFrameDetailAPI(APIView):
             return None
 
     def get(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'frames'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.ecommerce.serializers import FrameSerializer
         frame = self._get(pk)
@@ -2391,7 +2403,7 @@ class AdminFrameDetailAPI(APIView):
         return build_success_response("Frame retrieved.", FrameSerializer(frame).data)
 
     def patch(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'frames'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.ecommerce.serializers import FrameSerializer
         frame = self._get(pk)
@@ -2413,7 +2425,7 @@ class AdminFrameDetailAPI(APIView):
         return build_success_response("Frame updated.", FrameSerializer(frame).data)
 
     def delete(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'frames'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         frame = self._get(pk)
         if not frame:
@@ -2433,7 +2445,7 @@ class AdminFrameToggleAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'frames'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.ecommerce.models import Frame
         from naderk.ecommerce.serializers import FrameSerializer

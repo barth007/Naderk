@@ -11,7 +11,9 @@ ADMIN_ROLES = {'ADMIN', 'SUPER_ADMIN'}
 
 
 def _is_admin(user):
-    return getattr(user, 'role', None) in ADMIN_ROLES
+    # Site content is part of the CMS area (admins + anyone granted `cms`).
+    from naderk.common.permissions import user_has_area
+    return user_has_area(user, 'cms')
 
 
 # ── Serializer helpers (inline, lightweight) ────────────────────────────────
