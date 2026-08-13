@@ -88,10 +88,24 @@ export default function DashboardPage() {
     ? format(parseISO(pastAppointments[0].appointment_date), 'MMM dd, yyyy')
     : 'None yet';
 
-  const activePrescriptions = prescriptions?.filter(p => p.status === 'APPROVED') || [];
-  const nextPrescriptionText = activePrescriptions.length > 0 && activePrescriptions[0].expires_at
-    ? `Expires ${format(parseISO(activePrescriptions[0].expires_at), 'MMM dd, yyyy')}`
-    : 'None';
+  // Show the patient's prescriptions (most recent first), excluding only rejected
+  // ones — a prescription that's still under review exists and must not read as
+  // "no prescription". Each card reflects its real status.
+  const activePrescriptions = (prescriptions || [])
+    .filter(p => p.status !== 'REJECTED')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const approvedPrescription = activePrescriptions.find(p => p.status === 'APPROVED');
+  const nextPrescriptionText = approvedPrescription?.expires_at
+    ? `Expires ${format(parseISO(approvedPrescription.expires_at), 'MMM dd, yyyy')}`
+    : activePrescriptions.length > 0
+      ? 'Under Review'
+      : 'None';
+
+  const rxBadgeClass = (status: string) =>
+    status === 'APPROVED' ? 'bg-green-50 text-green-650'
+    : status === 'REQUIRES_CORRECTION' ? 'bg-orange-50 text-orange-700'
+    : status === 'REJECTED' ? 'bg-red-50 text-red-600'
+    : 'bg-yellow-50 text-yellow-700';   // PENDING_REVIEW / UNDER_REVIEW
 
   const getWelcomeMessage = (appt: any) => {
     if (!appt) {
@@ -342,7 +356,7 @@ export default function DashboardPage() {
                         <div className="w-8 h-8 rounded-md bg-[#faeaea] text-[#E03E3E] flex items-center justify-center">
                           <Link2 className="w-4 h-4 rotate-45" />
                         </div>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-green-50 text-green-650">Active</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${rxBadgeClass(p.status)}`}>{p.status_display || p.status}</span>
                       </div>
                       <h4 className="font-extrabold text-gray-955 text-xs">Daily Distance Wear</h4>
                       <p className="text-[9px] text-gray-400 font-bold mt-0.5">Ref: #RX-{p.id.slice(0, 8).toUpperCase()}</p>
