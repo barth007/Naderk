@@ -63,3 +63,9 @@ class PaystackProvider(PaymentProvider):
     def verify_webhook(self, *, payload: bytes, signature: str) -> bool:
         expected = hmac.new(self.webhook_secret.encode(), payload, hashlib.sha512).hexdigest()
         return hmac.compare_digest(expected, signature)
+
+    def parse_webhook(self, payload: dict) -> dict:
+        return {
+            'event_type': payload.get('event', ''),
+            'reference': (payload.get('data') or {}).get('reference', ''),
+        }

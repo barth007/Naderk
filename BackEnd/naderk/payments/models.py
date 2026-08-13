@@ -93,3 +93,38 @@ class PaymentGateway(models.Model):
 
     def __str__(self):
         return f"{self.display_name} ({self.provider}/{self.mode})"
+
+
+class PaymentWebhookEvent(models.Model):
+    """
+    An inbound provider webhook, recorded before processing. The unique
+    (provider, event_hash) makes duplicate deliveries a DB-level no-op (the
+    second insert fails), giving idempotency + an audit/replay trail.
+    """
+    class ProcessingStatus(models.TextChoices):
+        RECEIVED  = 'RECEIVED',  'Received'
+        PROCESSED = 'PROCESSED', 'Processed'
+        FAILED    = 'FAILED',    'Failed'
+        IGNORED   = 'IGNORED',   'Ignored'
+
+    id                = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    provider          = models.CharField(max_length=20, choices=PaymentProviderChoices.choices)
+    event_type        = models.CharField(max_length=100, blank=True, default='')
+    event_hash        = models.CharField(max_length=128)  # sha256 of the raw body
+    payment_reference = models.CharField(max_length=255, blank=True, default='', db_index=True)
+    payload           = models.JSONField(default=dict)
+    signature_valid   = models.BooleanField(default=False)
+    processing_status = models.CharField(max_length=20, choices=ProcessingStatus.choices,
+                                         default=ProcessingStatus.RECEIVED)
+    error_message     = models.TextField(blank=True, default='')
+    received_at       = models.DateTimeField(auto_now_add=True)
+    processed_at      = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['provider', 'event_hash'], name='unique_webhook_provider_event'),
+        ]
+        ordering = ['-received_at']
+
+    def __str__(self):
+        return f"{self.provider} webhook {self.event_type} [{self.processing_status}]"

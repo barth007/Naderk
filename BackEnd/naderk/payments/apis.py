@@ -11,7 +11,10 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
 
 from naderk.common.responses.builders import build_success_response, build_error_response
-from .services import initialize_payment, verify_and_confirm, get_provider, provider_public_config
+from .services import (
+    initialize_payment, verify_and_confirm, get_provider, provider_public_config,
+    confirm_and_fulfill, record_webhook_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -267,24 +270,22 @@ class VerifyAppointmentPaymentApi(APIView):
             })
 
         try:
-            result = verify_and_confirm(reference=reference)
+            result = confirm_and_fulfill(reference=reference)
         except Exception as e:
             logger.exception("Verify failed for %s: %s", reference, e)
             return build_error_response("provider-error", "Could not verify payment", 502,
                                         "We could not reach the payment provider. "
                                         "If you were charged, your booking will be confirmed shortly.")
 
-        if result.status != 'success':
+        appointment.refresh_from_db()
+        if appointment.payment_status != Appointment.PaymentStatus.PAID:
             return build_success_response("Payment not successful", {
                 'payment_status': appointment.payment_status,
-                'provider_status': result.status,
+                'provider_status': getattr(result, 'status', None),
                 'appointment_id': str(appointment.id),
             })
 
-        confirm_appointment_payment(appointment=appointment, reference=reference)
-        appointment.refresh_from_db()
         logger.info("Verify: appointment %s marked PAID via client verification.", appointment.id)
-
         return build_success_response("Payment confirmed", {
             'payment_status': appointment.payment_status,
             'appointment_id': str(appointment.id),
@@ -337,26 +338,22 @@ class VerifyOrderPaymentApi(APIView):
             })
 
         try:
-            result = verify_and_confirm(reference=reference)
+            result = confirm_and_fulfill(reference=reference)
         except Exception as e:
             logger.exception("Verify failed for order ref %s: %s", reference, e)
             return build_error_response("provider-error", "Could not verify payment", 502,
                                         "We could not reach the payment provider. "
                                         "If you were charged, your order will be confirmed shortly.")
 
-        if result.status != 'success':
+        order.refresh_from_db()
+        if order.payment_status != Order.PaymentStatus.PAID:
             return build_success_response("Payment not successful", {
                 'payment_status': order.payment_status,
-                'provider_status': result.status,
+                'provider_status': getattr(result, 'status', None),
                 'order_id': str(order.id),
             })
 
-        order = order_process_payment(
-            order=order, actor=request.user,
-            payment_reference=reference, skip_verify=True,
-        )
         logger.info("Verify: order %s marked PAID via client verification.", order.id)
-
         return build_success_response("Payment confirmed", {
             'payment_status': order.payment_status,
             'status': order.status,
@@ -380,77 +377,17 @@ class PaystackWebhookApi(APIView):
         raw_body  = request.body
         signature = request.headers.get('x-paystack-signature', '')
 
-        # Verify webhook signature
+        # Verify webhook signature before recording anything.
         provider = get_provider('PAYSTACK')
         if not provider.verify_webhook(payload=raw_body, signature=signature):
             logger.warning("Paystack webhook: invalid signature")
             return build_error_response("forbidden", "Invalid signature", 400, "Webhook signature mismatch.")
 
-        try:
-            payload = json.loads(raw_body)
-        except json.JSONDecodeError:
-            return build_error_response("bad-request", "Invalid JSON", 400, "Could not parse webhook body.")
-
-        event = payload.get('event')
-        logger.info("Paystack webhook event received: %s", event)
-
-        if event != 'charge.success':
-            return build_success_response("Event acknowledged", {})
-
-        reference = payload.get('data', {}).get('reference')
-        if not reference:
-            return build_error_response("bad-request", "Missing reference", 400, "No reference in webhook payload.")
-
-        # Verify with Paystack API (double-check, don't trust payload alone)
-        try:
-            result = verify_and_confirm(reference=reference, provider_name='PAYSTACK')
-        except Exception as e:
-            logger.exception("Webhook verify failed for %s: %s", reference, e)
-            return build_success_response("Received (verification error — see logs)", {})
-
-        if result.status != 'success':
-            logger.warning("Webhook: payment %s status is %s, not processing order.", reference, result.status)
-            return build_success_response("Payment not successful", {})
-
-        # Process the linked order
-        from .models import PaymentTransaction
-        from naderk.ecommerce.services import order_process_payment
-        try:
-            txn = PaymentTransaction.objects.select_related('order', 'user').get(reference=reference)
-        except PaymentTransaction.DoesNotExist:
-            logger.warning("Webhook: no PaymentTransaction for reference %s", reference)
-            return build_success_response("Transaction not found", {})
-
-        if txn.appointment:
-            from django.db import transaction as db_transaction
-            from naderk.appointments.models import Appointment
-            from naderk.appointments.services import ConsultationService
-            appt = txn.appointment
-            if appt.payment_status == 'PAID':
-                logger.info("Webhook: appointment %s already paid, skipping.", appt.id)
-                return build_success_response("Already processed", {})
-            try:
-                from .services import confirm_appointment_payment
-                confirm_appointment_payment(appointment=appt, reference=reference)
-                logger.info("Webhook: appointment %s marked PAID, awaiting doctor acceptance.", appt.id)
-            except Exception as e:
-                logger.exception("Webhook: appointment processing failed for %s: %s", reference, e)
-        elif txn.order:
-            if txn.order.payment_status == 'PAID':
-                logger.info("Webhook: order %s already paid, skipping.", txn.order.id)
-                return build_success_response("Already processed", {})
-            try:
-                order_process_payment(
-                    order=txn.order,
-                    actor=txn.user,
-                    payment_reference=reference,
-                    skip_verify=True,
-                )
-                logger.info("Webhook: order %s successfully marked PAID.", txn.order.id)
-            except Exception as e:
-                logger.exception("Webhook: order processing failed for %s: %s", reference, e)
-        else:
-            logger.warning("Webhook: transaction %s has no linked order or appointment", reference)
+        # Record (dedup-enforced) and process asynchronously — acknowledge fast.
+        # The task re-verifies against the Paystack API before fulfilling; the
+        # payload is never trusted on its own.
+        record_webhook_event(provider_name='PAYSTACK', raw_body=raw_body, signature_valid=True)
+        return build_success_response("Webhook received", {})
 
         return build_success_response("Webhook processed", {})
 

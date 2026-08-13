@@ -44,3 +44,11 @@ class PaymentProvider(ABC):
     def public_config(self) -> dict:
         """Client-safe config handed to the frontend/SDK (never secrets)."""
         return {}
+
+    def parse_webhook(self, payload: dict) -> dict:
+        """
+        Extract provider-neutral fields from a webhook body:
+        {'event_type': str, 'reference': str}. `reference` is OUR payment
+        reference (the provider's paymentReference), used to locate the txn.
+        """
+        return {'event_type': '', 'reference': ''}
