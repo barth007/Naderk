@@ -104,7 +104,12 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+# Appointment dates/times are entered and displayed as local wall-clock time.
+# With USE_TZ=True, timezone.make_aware() interprets those naive values using
+# this zone, so it MUST be the platform's local zone (WAT/UTC+1) — not UTC —
+# or every naive→aware conversion (telehealth scheduled_start, the join window,
+# missed-appointment marking, availability slots) lands an hour off.
+TIME_ZONE = env('TIME_ZONE', default='Africa/Lagos')
 USE_I18N = True
 USE_TZ = True
 
