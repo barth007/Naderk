@@ -5,8 +5,10 @@ import {
   Plus, Pencil, Trash2, X,
   Image as ImageIcon, Loader2, Globe, Star, Users, MessageSquare,
   HelpCircle, BarChart2, Building, Settings, ChevronDown, ChevronUp,
-  Upload, PenLine, Eye, EyeOff,
+  Upload, PenLine, Eye, EyeOff, CreditCard,
 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import PaymentGatewaysTab from '@/components/admin/PaymentGatewaysTab';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import {
@@ -184,6 +186,7 @@ const TABS = [
   { id: 'settings', label: 'Site Settings', icon: Settings },
   { id: 'categories', label: 'Categories', icon: Star },
   { id: 'articles', label: 'Articles', icon: PenLine },
+  { id: 'gateways', label: 'Payment Gateways', icon: CreditCard, adminOnly: true },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -1234,6 +1237,8 @@ function ArticlesTab() {
 
 export default function AdminCMSPage() {
   const [activeTab, setActiveTab] = useState<TabId>('hero');
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
 
   return (
     <div className="space-y-6 pb-10">
@@ -1247,7 +1252,7 @@ export default function AdminCMSPage() {
 
       {/* Tab bar */}
       <div className="flex items-center gap-1 flex-wrap border-b border-gray-100 pb-0">
-        {TABS.map(tab => {
+        {TABS.filter(tab => !('adminOnly' in tab && tab.adminOnly) || isAdmin).map(tab => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
           return (
@@ -1278,6 +1283,7 @@ export default function AdminCMSPage() {
         {activeTab === 'settings' && <SiteSettingsTab />}
         {activeTab === 'categories' && <CategoriesTab />}
         {activeTab === 'articles' && <ArticlesTab />}
+        {activeTab === 'gateways' && isAdmin && <PaymentGatewaysTab />}
       </div>
     </div>
   );

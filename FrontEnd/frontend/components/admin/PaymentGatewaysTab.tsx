@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { CreditCard, Plus, X, Loader2, Trash2, Pencil, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -54,12 +54,10 @@ function GatewayModal({ gateway, onClose }: { gateway: PaymentGateway | null; on
     if (!isEdit && !form.secret_key?.trim()) { toast.error('Secret key is required.'); return; }
     if (isMonnify && !form.contract_code?.trim()) { toast.error('Contract code is required for Monnify.'); return; }
     try {
-      // Never send an empty secret on edit — that keeps the stored one.
       const payload: GatewayPayload = { ...form };
       if (isEdit && !payload.secret_key) delete payload.secret_key;
       if (isEdit) {
-        // provider + mode are immutable (unique together); don't resend them.
-        delete payload.provider;
+        delete payload.provider;   // provider + mode are immutable (unique together)
         delete payload.mode;
         await update.mutateAsync({ id: gateway!.id, ...payload });
       } else {
@@ -178,7 +176,7 @@ function GatewayModal({ gateway, onClose }: { gateway: PaymentGateway | null; on
   );
 }
 
-export default function AdminSettingsPage() {
+export default function PaymentGatewaysTab() {
   const { data: gateways = [], isLoading } = useAdminGateways();
   const del = useDeleteGateway();
   const [modalOpen, setModalOpen] = useState(false);
@@ -198,70 +196,63 @@ export default function AdminSettingsPage() {
   };
 
   return (
-    <div className="p-6 max-w-4xl flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">System Settings</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Configure platform integrations.</p>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-md bg-red-50 flex items-center justify-center">
+            <CreditCard className="w-4 h-4 text-[#E03E3E]" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-gray-900">Payment Gateways</h2>
+            <p className="text-xs text-gray-500">Customers can pay through any active gateway.</p>
+          </div>
+        </div>
+        <button
+          onClick={openAdd}
+          className="flex items-center gap-1.5 bg-[#E03E3E] text-white text-sm font-semibold px-4 py-2 rounded-md hover:bg-[#c93636]"
+        >
+          <Plus className="w-4 h-4" /> Add Gateway
+        </button>
       </div>
 
-      <section className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-md bg-red-50 flex items-center justify-center">
-              <CreditCard className="w-4 h-4 text-[#E03E3E]" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-gray-900">Payment Gateways</h2>
-              <p className="text-xs text-gray-500">Customers can pay through any active gateway.</p>
-            </div>
-          </div>
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-1.5 bg-[#E03E3E] text-white text-sm font-semibold px-4 py-2 rounded-md hover:bg-[#c93636]"
-          >
-            <Plus className="w-4 h-4" /> Add Gateway
-          </button>
+      {isLoading ? (
+        <div className="grid gap-3">
+          {[1, 2].map((i) => <div key={i} className="h-20 bg-gray-100 rounded-md animate-pulse" />)}
         </div>
-
-        {isLoading ? (
-          <div className="grid gap-3">
-            {[1, 2].map((i) => <div key={i} className="h-20 bg-gray-100 rounded-md animate-pulse" />)}
-          </div>
-        ) : gateways.length === 0 ? (
-          <div className="border border-dashed border-gray-200 rounded-md p-8 text-center text-sm text-gray-400">
-            No gateways configured yet. Add one to start accepting payments.
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            {gateways.map((gw) => (
-              <div key={gw.id} className="border border-gray-100 rounded-md shadow-sm p-4 flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-gray-900 text-sm">{gw.display_name}</span>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{gw.provider}</span>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{gw.mode}</span>
-                    {gw.is_active
-                      ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-green-50 text-green-700 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Active</span>
-                      : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">Inactive</span>}
-                    {gw.is_default && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#E03E3E]/10 text-[#E03E3E]">Default</span>}
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1 font-mono truncate">
-                    {clientKeyLabel(gw.provider)}: {gw.client_key || '—'} · Secret: {gw.has_secret_key ? gw.secret_key_hint : 'not set'}
-                  </p>
+      ) : gateways.length === 0 ? (
+        <div className="border border-dashed border-gray-200 rounded-md p-8 text-center text-sm text-gray-400">
+          No gateways configured yet. Add one to start accepting payments.
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {gateways.map((gw) => (
+            <div key={gw.id} className="border border-gray-100 rounded-md shadow-sm p-4 flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-gray-900 text-sm">{gw.display_name}</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{gw.provider}</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{gw.mode}</span>
+                  {gw.is_active
+                    ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-green-50 text-green-700 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Active</span>
+                    : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">Inactive</span>}
+                  {gw.is_default && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#E03E3E]/10 text-[#E03E3E]">Default</span>}
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button onClick={() => openEdit(gw)} title="Edit" className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:text-[#E03E3E] hover:border-[#E03E3E]">
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => remove(gw)} title="Delete" className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:text-red-600 hover:border-red-300">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                <p className="text-xs text-gray-400 mt-1 font-mono truncate">
+                  {clientKeyLabel(gw.provider)}: {gw.client_key || '—'} · Secret: {gw.has_secret_key ? gw.secret_key_hint : 'not set'}
+                </p>
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => openEdit(gw)} title="Edit" className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:text-[#E03E3E] hover:border-[#E03E3E]">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => remove(gw)} title="Delete" className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:text-red-600 hover:border-red-300">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {modalOpen && <GatewayModal gateway={editing} onClose={() => setModalOpen(false)} />}
     </div>
