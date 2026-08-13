@@ -14,7 +14,22 @@ def get_provider(name: str = 'PAYSTACK') -> PaymentProvider:
     cls = PROVIDERS.get(name.upper())
     if cls is None:
         raise ValueError(f"Unknown payment provider: {name!r}. Available: {list(PROVIDERS)}")
-    return cls()
+    from .config import gateway_config, ProviderNotConfigured
+    try:
+        config = gateway_config(name)
+    except ProviderNotConfigured:
+        # Construct anyway; the provider falls back to any env config and will
+        # surface a clear error at call time if truly unconfigured.
+        config = {}
+    return cls(config)
+
+
+def provider_public_config(provider_name: str) -> dict:
+    """Client-safe config (e.g. public key / contract code) for a provider."""
+    try:
+        return get_provider(provider_name).public_config()
+    except Exception:
+        return {}
 
 
 def initialize_payment(
@@ -56,12 +71,18 @@ def initialize_payment(
 def verify_and_confirm(
     *,
     reference: str,
-    provider_name: str = 'PAYSTACK',
+    provider_name: str | None = None,
 ) -> PaymentVerifyResult:
     """
-    Verify a payment reference with the provider and persist the result.
-    Raises ValueError if the transaction record doesn't exist or verification fails at the HTTP level.
+    Verify a payment reference with its provider and persist the result.
+
+    When provider_name is omitted, it is resolved from the stored transaction's
+    `provider` column, so a Monnify payment is never verified against Paystack.
     """
+    if provider_name is None:
+        txn = PaymentTransaction.objects.filter(reference=reference).only('provider').first()
+        provider_name = txn.provider if txn else 'PAYSTACK'
+
     provider = get_provider(provider_name)
     result = provider.verify(reference=reference)
 
@@ -73,10 +94,10 @@ def verify_and_confirm(
         else PaymentTransaction.Status.ABANDONED
     )
 
-    PaymentTransaction.objects.filter(reference=reference).update(
-        status=new_status,
-        raw_response=result.metadata,
-    )
+    fields = {'status': new_status, 'raw_response': result.metadata}
+    if result.provider_txn_ref:
+        fields['provider_txn_ref'] = result.provider_txn_ref
+    PaymentTransaction.objects.filter(reference=reference).update(**fields)
     return result
 
 

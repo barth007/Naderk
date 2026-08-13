@@ -139,7 +139,14 @@ LIVEKIT_URL = env('LIVEKIT_URL', default='http://localhost:7880')
 LIVEKIT_API_KEY = env('LIVEKIT_API_KEY', default='devkey')
 LIVEKIT_API_SECRET = env('LIVEKIT_API_SECRET', default='naderk-livekit-dev-secret-key-2024')
 
-# Paystack
+# Payments
+# Key used to encrypt gateway secret keys stored in the DB (PaymentGateway).
+# Generate one with: Fernet.generate_key().decode(). If unset, a key is derived
+# from SECRET_KEY (dev only) — set this explicitly in production.
+PAYMENT_ENCRYPTION_KEY = env('PAYMENT_ENCRYPTION_KEY', default='')
+
+# Paystack (legacy env config — still honored as a fallback when no active
+# PaymentGateway row exists for the provider).
 PAYSTACK_SECRET_KEY = env('PAYSTACK_SECRET_KEY', default='')
 PAYSTACK_PUBLIC_KEY = env('PAYSTACK_PUBLIC_KEY', default='')
 PAYSTACK_WEBHOOK_SECRET = env('PAYSTACK_WEBHOOK_SECRET', default='')

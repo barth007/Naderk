@@ -11,13 +11,22 @@ PAYSTACK_BASE = "https://api.paystack.co"
 
 
 class PaystackProvider(PaymentProvider):
-    def __init__(self):
-        self.secret_key = getattr(settings, "PAYSTACK_SECRET_KEY", "")
-        self.webhook_secret = getattr(settings, "PAYSTACK_WEBHOOK_SECRET", "") or self.secret_key
+    def __init__(self, config: dict | None = None):
+        config = config or {}
+        self.secret_key = config.get("secret_key") or getattr(settings, "PAYSTACK_SECRET_KEY", "")
+        self.client_key = config.get("client_key") or getattr(settings, "PAYSTACK_PUBLIC_KEY", "")
+        self.webhook_secret = (
+            config.get("webhook_secret")
+            or getattr(settings, "PAYSTACK_WEBHOOK_SECRET", "")
+            or self.secret_key
+        )
         self._headers = {
             "Authorization": f"Bearer {self.secret_key}",
             "Content-Type": "application/json",
         }
+
+    def public_config(self) -> dict:
+        return {"public_key": self.client_key}
 
     def initialize(self, *, amount_kobo: int, email: str, reference: str, metadata: dict) -> PaymentInitResult:
         payload = {
@@ -34,6 +43,9 @@ class PaystackProvider(PaymentProvider):
             reference=reference,
             authorization_url=data["authorization_url"],
             access_code=data["access_code"],
+            provider="PAYSTACK",
+            provider_reference=data.get("reference", reference),
+            public_config=self.public_config(),
         )
 
     def verify(self, *, reference: str) -> PaymentVerifyResult:

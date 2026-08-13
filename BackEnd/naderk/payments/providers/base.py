@@ -5,8 +5,13 @@ from dataclasses import dataclass, field
 @dataclass
 class PaymentInitResult:
     reference: str
-    authorization_url: str
-    access_code: str
+    # Redirect-based providers (Paystack) return an authorization_url/access_code;
+    # SDK-based providers (Monnify) return a public_config for the client SDK.
+    authorization_url: str = ''
+    access_code: str = ''
+    provider: str = ''
+    provider_reference: str | None = None
+    public_config: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -16,6 +21,7 @@ class PaymentVerifyResult:
     amount_kobo: int
     currency: str
     metadata: dict = field(default_factory=dict)
+    provider_txn_ref: str = ''
 
 
 class PaymentProvider(ABC):
@@ -34,3 +40,7 @@ class PaymentProvider(ABC):
 
     @abstractmethod
     def verify_webhook(self, *, payload: bytes, signature: str) -> bool: ...
+
+    def public_config(self) -> dict:
+        """Client-safe config handed to the frontend/SDK (never secrets)."""
+        return {}

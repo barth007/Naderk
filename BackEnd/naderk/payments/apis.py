@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
 
 from naderk.common.responses.builders import build_success_response, build_error_response
-from .services import initialize_payment, verify_and_confirm, get_provider
+from .services import initialize_payment, verify_and_confirm, get_provider, provider_public_config
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +53,13 @@ class InitializePaymentApi(APIView):
             )
             if existing_txn and existing_txn.order:
                 logger.info("Idempotency hit for key %s — returning cached response", idempotency_key)
+                pub = provider_public_config(existing_txn.provider)
                 data = {
                     'reference':         existing_txn.reference,
                     'authorization_url': '',   # popup can reuse access_code
                     'access_code':       existing_txn.raw_response.get('access_code', ''),
-                    'public_key':        getattr(settings, 'PAYSTACK_PUBLIC_KEY', ''),
+                    'public_key':        pub.get('public_key', ''),
+                    'public_config':     pub,
                     'provider':          existing_txn.provider,
                     'order_id':          str(existing_txn.order.id),
                 }
@@ -117,7 +119,8 @@ class InitializePaymentApi(APIView):
             'reference':        result.reference,
             'authorization_url': result.authorization_url,
             'access_code':      result.access_code,
-            'public_key':       getattr(settings, 'PAYSTACK_PUBLIC_KEY', ''),
+            'public_key':       result.public_config.get('public_key', ''),
+            'public_config':    result.public_config,
             'provider':         provider_name,
             'order_id':         str(order.id),   # frontend polls this
         }
@@ -174,11 +177,13 @@ class InitializeAppointmentPaymentApi(APIView):
             )
             if existing_txn:
                 logger.info("Idempotency hit for key %s — returning cached appointment payment response", idempotency_key)
+                pub = provider_public_config(existing_txn.provider)
                 return build_success_response("Payment already initialized", {
                     'reference':         existing_txn.reference,
                     'access_code':       existing_txn.raw_response.get('access_code', ''),
                     'authorization_url': '',
-                    'public_key':        getattr(settings, 'PAYSTACK_PUBLIC_KEY', ''),
+                    'public_key':        pub.get('public_key', ''),
+                    'public_config':     pub,
                     'provider':          existing_txn.provider,
                     'appointment_id':    str(appointment.id),
                 })
@@ -204,7 +209,8 @@ class InitializeAppointmentPaymentApi(APIView):
             'reference':         result.reference,
             'authorization_url': result.authorization_url,
             'access_code':       result.access_code,
-            'public_key':        getattr(settings, 'PAYSTACK_PUBLIC_KEY', ''),
+            'public_key':        result.public_config.get('public_key', ''),
+            'public_config':     result.public_config,
             'provider':          provider_name,
             'appointment_id':    str(appointment.id),
         })
@@ -261,7 +267,7 @@ class VerifyAppointmentPaymentApi(APIView):
             })
 
         try:
-            result = verify_and_confirm(reference=reference, provider_name='PAYSTACK')
+            result = verify_and_confirm(reference=reference)
         except Exception as e:
             logger.exception("Verify failed for %s: %s", reference, e)
             return build_error_response("provider-error", "Could not verify payment", 502,
@@ -331,7 +337,7 @@ class VerifyOrderPaymentApi(APIView):
             })
 
         try:
-            result = verify_and_confirm(reference=reference, provider_name='PAYSTACK')
+            result = verify_and_confirm(reference=reference)
         except Exception as e:
             logger.exception("Verify failed for order ref %s: %s", reference, e)
             return build_error_response("provider-error", "Could not verify payment", 502,
@@ -588,3 +594,125 @@ class AdminTransactionListApi(APIView):
             'total_pages': (total + page_size - 1) // page_size,
             'results':    results,
         })
+
+
+# ─── Payment Gateways (admin config + public list) ────────────────────────────
+
+from naderk.common.permissions import area_forbidden, AREA_SETTINGS
+from .models import PaymentGateway, PaymentProviderChoices
+
+
+def _serialize_gateway_admin(gw: PaymentGateway) -> dict:
+    secret = gw.get_secret_key() if gw.has_secret_key else ''
+    return {
+        'id':             str(gw.id),
+        'provider':       gw.provider,
+        'mode':           gw.mode,
+        'display_name':   gw.display_name,
+        'is_active':      gw.is_active,
+        'is_default':     gw.is_default,
+        'client_key':     gw.client_key,          # public-ish (Paystack public / Monnify API key)
+        'contract_code':  gw.contract_code,
+        'has_secret_key': gw.has_secret_key,
+        'secret_key_hint': ('••••' + secret[-4:]) if secret else '',
+        'config':         gw.config or {},
+        'updated_at':     gw.updated_at.isoformat(),
+    }
+
+
+def _gateway_public_config(gw: PaymentGateway) -> dict:
+    """Client-safe config for the checkout SDK — never the secret key."""
+    if gw.provider == PaymentProviderChoices.MONNIFY:
+        return {'apiKey': gw.client_key, 'contractCode': gw.contract_code, 'isTestMode': gw.mode == PaymentGateway.Mode.TEST}
+    return {'public_key': gw.client_key}
+
+
+class AdminGatewayListApi(APIView):
+    """GET list / POST create payment gateways. Admin-only (settings area)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if (resp := area_forbidden(request, AREA_SETTINGS)):
+            return resp
+        gateways = PaymentGateway.objects.all()
+        return build_success_response("Gateways retrieved", [_serialize_gateway_admin(g) for g in gateways])
+
+    def post(self, request):
+        if (resp := area_forbidden(request, AREA_SETTINGS)):
+            return resp
+        data = request.data
+        provider = (data.get('provider') or '').upper()
+        mode = (data.get('mode') or 'TEST').upper()
+        if provider not in PaymentProviderChoices.values:
+            return build_error_response("validation-error", "Invalid provider", 400, "Unknown payment provider.")
+        if mode not in PaymentGateway.Mode.values:
+            return build_error_response("validation-error", "Invalid mode", 400, "mode must be TEST or LIVE.")
+        if PaymentGateway.objects.filter(provider=provider, mode=mode).exists():
+            return build_error_response("conflict", "Gateway exists", 409,
+                                        f"A {provider} ({mode}) gateway already exists — edit it instead.")
+        gw = PaymentGateway(
+            provider=provider,
+            mode=mode,
+            display_name=(data.get('display_name') or provider.title()).strip(),
+            client_key=(data.get('client_key') or '').strip(),
+            contract_code=(data.get('contract_code') or '').strip(),
+            is_active=bool(data.get('is_active', False)),
+            is_default=bool(data.get('is_default', False)),
+            config=data.get('config') or {},
+        )
+        if data.get('secret_key'):
+            gw.set_secret_key(str(data['secret_key']).strip())
+        gw.save()
+        return build_success_response("Gateway created", _serialize_gateway_admin(gw), status_code=201)
+
+
+class AdminGatewayDetailApi(APIView):
+    """PATCH update / DELETE a payment gateway. Admin-only (settings area)."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        if (resp := area_forbidden(request, AREA_SETTINGS)):
+            return resp
+        try:
+            gw = PaymentGateway.objects.get(pk=pk)
+        except PaymentGateway.DoesNotExist:
+            return build_error_response("not-found", "Gateway not found", 404, "Invalid gateway id.")
+        data = request.data
+        for field in ('display_name', 'client_key', 'contract_code'):
+            if field in data:
+                setattr(gw, field, (data.get(field) or '').strip())
+        if 'is_active' in data:
+            gw.is_active = bool(data['is_active'])
+        if 'is_default' in data:
+            gw.is_default = bool(data['is_default'])
+        if 'config' in data and isinstance(data['config'], dict):
+            gw.config = data['config']
+        # Write-only secret: only replace when a non-empty value is supplied.
+        if data.get('secret_key'):
+            gw.set_secret_key(str(data['secret_key']).strip())
+        gw.save()
+        return build_success_response("Gateway updated", _serialize_gateway_admin(gw))
+
+    def delete(self, request, pk):
+        if (resp := area_forbidden(request, AREA_SETTINGS)):
+            return resp
+        deleted, _ = PaymentGateway.objects.filter(pk=pk).delete()
+        if not deleted:
+            return build_error_response("not-found", "Gateway not found", 404, "Invalid gateway id.")
+        return build_success_response("Gateway deleted", {})
+
+
+class GatewayListApi(APIView):
+    """GET active gateways with client-safe config only (for checkout)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        gateways = PaymentGateway.objects.filter(is_active=True)
+        data = [{
+            'provider':      g.provider,
+            'display_name':  g.display_name,
+            'mode':          g.mode,
+            'is_default':    g.is_default,
+            'public_config': _gateway_public_config(g),
+        } for g in gateways]
+        return build_success_response("Active gateways", data)
