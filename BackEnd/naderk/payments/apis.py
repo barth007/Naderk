@@ -389,6 +389,30 @@ class PaystackWebhookApi(APIView):
         record_webhook_event(provider_name='PAYSTACK', raw_body=raw_body, signature_valid=True)
         return build_success_response("Webhook received", {})
 
+
+@method_decorator(csrf_exempt, name='dispatch')
+class MonnifyWebhookApi(APIView):
+    """
+    POST /api/v1/payments/webhook/monnify/
+
+    Monnify calls this on transaction completion. Verify the `monnify-signature`
+    (absent in sandbox — tolerated in TEST mode), record the event, and process
+    asynchronously; the task re-verifies against the Monnify API before fulfilling.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        raw_body = request.body
+        signature = request.headers.get('monnify-signature', '')
+
+        provider = get_provider('MONNIFY')
+        if not provider.verify_webhook(payload=raw_body, signature=signature):
+            logger.warning("Monnify webhook: invalid signature")
+            return build_error_response("forbidden", "Invalid signature", 400, "Webhook signature mismatch.")
+
+        record_webhook_event(provider_name='MONNIFY', raw_body=raw_body, signature_valid=bool(signature))
+        return build_success_response("Webhook received", {})
+
         return build_success_response("Webhook processed", {})
 
 

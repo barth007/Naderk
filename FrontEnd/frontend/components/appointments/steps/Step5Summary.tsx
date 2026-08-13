@@ -9,8 +9,9 @@ import {
   useInitializeAppointmentPayment,
   usePollAppointmentPayment,
   useVerifyAppointmentPayment,
-  usePaystackPopup,
+  usePaymentCheckout,
 } from '@/services/payments/payments.hooks';
+import { usePaymentGateways } from '@/services/payments/admin-payments.hooks';
 import { useAuth } from '@/hooks/useAuth';
 import { format, parseISO } from 'date-fns';
 
@@ -33,7 +34,15 @@ export default function Step5Summary() {
   const [idempotencyKey, setIdempotencyKey] = React.useState(() => `appt-${crypto.randomUUID()}`);
   const initPaymentMutation = useInitializeAppointmentPayment(idempotencyKey);
   const verifyPayment = useVerifyAppointmentPayment();
-  const openPaystack = usePaystackPopup();
+  const payCheckout = usePaymentCheckout();
+  const { data: gateways = [] } = usePaymentGateways();
+  const [gateway, setGateway] = React.useState<string>('');
+
+  useEffect(() => {
+    if (!gateway && gateways.length) {
+      setGateway((gateways.find((g) => g.is_default) ?? gateways[0]).provider);
+    }
+  }, [gateways, gateway]);
 
   const [phase, setPhase] = React.useState<Phase>('idle');
   const [pendingAppointmentId, setPendingAppointmentId] = React.useState<string | null>(null);
@@ -120,17 +129,23 @@ export default function Step5Summary() {
       if (!appointmentId) throw new Error('No appointment ID returned.');
       setPendingAppointmentId(appointmentId);
 
-      // 2. Initialize Paystack
+      // 2. Initialize payment with the chosen gateway
       setPhase('initializing');
-      const payData = await initPaymentMutation.mutateAsync({ appointment_id: appointmentId });
+      const payData = await initPaymentMutation.mutateAsync({
+        appointment_id: appointmentId,
+        provider: gateway || undefined,
+      });
 
-      // 3. Open Paystack popup
+      // 3. Open the gateway's payment UI (Paystack popup / Monnify SDK)
       setPhase('popup_open');
-      openPaystack({
-        publicKey: payData.public_key,
+      payCheckout({
+        provider: payData.provider,
+        publicConfig: payData.public_config ?? { public_key: payData.public_key },
+        amountKobo: numericFee * 100,
         email: user?.email ?? '',
-        amount: numericFee * 100,
         reference: payData.reference,
+        customerName: [user?.first_name, user?.last_name].filter(Boolean).join(' '),
+        paymentDescription: `Consultation: ${service?.name ?? ''}`,
         accessCode: payData.access_code,
         onSuccess: () => {
           setPhase('confirming');

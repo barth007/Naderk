@@ -113,6 +113,7 @@ export default function RootLayout({
     <html lang="en" className={`${geistSans.variable} ${poppins.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <Script src="https://js.paystack.co/v1/inline.js" strategy="beforeInteractive" />
+        <Script src="https://sdk.monnify.com/plugin/monnify.js" strategy="beforeInteractive" />
         <QueryProvider>
           <DynamicFavicon />
           <ConditionalWrapper>

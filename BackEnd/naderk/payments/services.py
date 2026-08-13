@@ -9,12 +9,14 @@ from django.utils import timezone
 from .models import PaymentTransaction
 from .providers.base import PaymentProvider, PaymentInitResult, PaymentVerifyResult
 from .providers.paystack import PaystackProvider
+from .providers.monnify import MonnifyProvider
 
 logger = logging.getLogger(__name__)
 
 # Registry — add new providers here as they are implemented
 PROVIDERS: dict[str, type[PaymentProvider]] = {
     'PAYSTACK': PaystackProvider,
+    'MONNIFY': MonnifyProvider,
 }
 
 
