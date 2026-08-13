@@ -14,6 +14,7 @@ import { useSpecializations } from '@/services/admin/admin-specializations.hooks
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import PaymentGatewaysTab from '@/components/admin/PaymentGatewaysTab';
 
 const formatDOBAndAge = (dobString: string | null) => {
   if (!dobString) return "Not Provided";
@@ -510,8 +511,16 @@ export default function ProfileLayout() {
   }
 
   // ── Patient Profile ───────────────────────────────────────────────
+  const isAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
   return (
     <div className="w-full max-w-4xl mx-auto pt-6 pb-24 px-4 sm:px-6 lg:px-8 space-y-6 animate-in fade-in duration-500">
+      {/* Payment gateway configuration — admins only */}
+      {isAdmin && (
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
+          <PaymentGatewaysTab />
+        </div>
+      )}
+
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
         <div className="h-24 sm:h-32 w-full bg-gradient-to-r from-gray-800 via-gray-700 to-gray-900" />
 
