@@ -9,6 +9,7 @@ import { SidebarProvider } from '@/context/SidebarContext';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { apiClient } from '@/lib/api';
+import { landingRoute, areaForAdminPath } from '@/utils/role-config';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, accessToken, isAuthenticated, setUser } = useAuth();
@@ -48,18 +49,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           return;
         }
 
-        // Role-based path checks to avoid dashboard mismatches
+        // Role-based path checks to keep each role in its own portal.
         const currentPath = pathname || '';
-        if (user.role === 'DOCTOR' && currentPath.startsWith('/dashboard') && currentPath !== '/dashboard/profile') {
+        const ADMIN_PORTAL_ROLES = ['ADMIN', 'SUPER_ADMIN', 'MEDICAL_AGENT', 'OPERATIONS_MANAGER', 'AGENT'];
+        const onDashboard = currentPath.startsWith('/dashboard') && currentPath !== '/dashboard/profile';
+        const onAdmin = currentPath.startsWith('/admin');
+
+        if (user.role === 'DOCTOR' && (onDashboard || onAdmin)) {
           router.push('/doctor/dashboard');
-        } else if (user.role === 'PATIENT' && currentPath.startsWith('/doctor')) {
+        } else if (user.role === 'PATIENT' && (currentPath.startsWith('/doctor') || onAdmin)) {
           router.push('/dashboard');
-        } else if (user.role === 'OPTICIAN' && currentPath.startsWith('/dashboard') && currentPath !== '/dashboard/profile') {
+        } else if (user.role === 'OPTICIAN' && (onDashboard || onAdmin)) {
           router.push('/optician/dashboard');
-        } else if (user.role === 'MEDICAL_AGENT' && currentPath.startsWith('/dashboard') && currentPath !== '/dashboard/profile') {
-          router.push('/agent/dashboard');
-        } else if ((user.role === 'ADMIN' || user.role === 'SUPER_ADMIN') && currentPath.startsWith('/dashboard') && currentPath !== '/dashboard/profile') {
-          router.push('/admin/dashboard');
+        } else if (ADMIN_PORTAL_ROLES.includes(user.role)) {
+          // Staff portals live under /admin; send them there from /dashboard...
+          if (onDashboard) {
+            router.push(landingRoute(user.role, user.areas));
+          } else if (onAdmin) {
+            // ...and enforce per-area access inside it.
+            const area = areaForAdminPath(currentPath);
+            if (area && !(user.areas || []).includes(area)) {
+              router.push(landingRoute(user.role, user.areas));
+            }
+          }
         }
       }
     }

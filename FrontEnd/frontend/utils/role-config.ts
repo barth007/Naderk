@@ -5,7 +5,28 @@ export interface SidebarItem {
   name: string;
   href: string;
   iconName: string; // Used to dynamically map Lucide icons
+  area?: string;    // Capability area gating this item (see backend permissions)
 }
+
+// Single source of nav for the shared /admin staff portal. Each item is tagged
+// with its capability `area`; the sidebar filters this list by the current
+// user's `areas` (returned by the backend). Items without an `area` (e.g.
+// personal Settings) are always shown.
+export const ADMIN_NAV: SidebarItem[] = [
+  { name: 'Dashboard', href: '/admin/dashboard', iconName: 'LayoutGrid', area: 'dashboard' },
+  { name: 'Appointments', href: '/admin/appointments', iconName: 'Calendar', area: 'appointments' },
+  { name: 'Patient Records', href: '/admin/records', iconName: 'FileText', area: 'patient_records' },
+  { name: 'Inventory', href: '/admin/inventory', iconName: 'Layers', area: 'inventory' },
+  { name: 'Order Book', href: '/admin/orders', iconName: 'BookOpen', area: 'orders' },
+  { name: 'Billing', href: '/admin/billing', iconName: 'CreditCard', area: 'billing' },
+  { name: 'Staff Management', href: '/admin/staff', iconName: 'Users', area: 'staff' },
+  { name: 'Services', href: '/admin/services', iconName: 'Stethoscope', area: 'services' },
+  { name: 'Frames', href: '/admin/frames', iconName: 'Glasses', area: 'frames' },
+  { name: 'Glasses Builder', href: '/admin/glasses-builder', iconName: 'SlidersHorizontal', area: 'glass_builder' },
+  { name: 'Messages', href: '/admin/messages', iconName: 'MessageSquare', area: 'messaging' },
+  { name: 'CMS', href: '/admin/cms', iconName: 'Globe', area: 'cms' },
+  { name: 'Settings', href: '/profile', iconName: 'Settings' },
+];
 
 export interface RoleConfig {
   dashboardRoute: string;
@@ -75,43 +96,45 @@ export const ROLE_CONFIGS: Record<string, RoleConfig> = {
     ],
   },
   MEDICAL_AGENT: {
-    dashboardRoute: '/agent/dashboard',
+    // Medical agents work in the shared /admin portal; the sidebar is filtered
+    // to their areas (everything except billing, settings, staff management).
+    dashboardRoute: '/admin/dashboard',
     showHospitalId: false,
     avatarLabel: 'Medical Agent',
-    defaultTitle: 'Agent Portal',
-    sidebarItems: [
-      { name: 'Dashboard', href: '/agent/dashboard', iconName: 'LayoutGrid' },
-      { name: 'Patient Chats', href: '/agent/chats', iconName: 'MessageSquare' },
-      { name: 'Appointment Requests', href: '/agent/appointments', iconName: 'CalendarClock' },
-      { name: 'Telehealth Queue', href: '/agent/telehealth', iconName: 'MonitorPlay' },
-      { name: 'Settings', href: '/profile', iconName: 'Settings' },
-    ],
+    defaultTitle: 'Medical Agent Portal',
+    sidebarItems: ADMIN_NAV,
     profileSections: ['personal', 'security'],
     permissions: [
-      'appointments.view', 'messages.manage', 'access_patient_messaging_queue', 
+      'appointments.view', 'messages.manage', 'access_patient_messaging_queue',
       'access_appointment_coordination'
     ],
+  },
+  OPERATIONS_MANAGER: {
+    // Runs the store & content: inventory, orders, CMS, frames.
+    dashboardRoute: '/admin/inventory',
+    showHospitalId: false,
+    avatarLabel: 'Operations',
+    defaultTitle: 'Operations Portal',
+    sidebarItems: ADMIN_NAV,
+    profileSections: ['personal', 'security'],
+    permissions: [],
+  },
+  AGENT: {
+    // Support agents: messaging/tickets + booking appointments for patients.
+    dashboardRoute: '/admin/messages',
+    showHospitalId: false,
+    avatarLabel: 'Support',
+    defaultTitle: 'Support Portal',
+    sidebarItems: ADMIN_NAV,
+    profileSections: ['personal', 'security'],
+    permissions: [],
   },
   ADMIN: {
     dashboardRoute: '/admin/dashboard',
     showHospitalId: false,
     avatarLabel: 'Admin',
     defaultTitle: 'Admin Portal',
-    sidebarItems: [
-      { name: 'Dashboard', href: '/admin/dashboard', iconName: 'LayoutGrid' },
-      { name: 'Appointments', href: '/admin/appointments', iconName: 'Calendar' },
-      { name: 'Patient Records', href: '/admin/records', iconName: 'FileText' },
-      { name: 'Inventory', href: '/admin/inventory', iconName: 'Layers' },
-      { name: 'Order Book', href: '/admin/orders', iconName: 'BookOpen' },
-      { name: 'Billing', href: '/admin/billing', iconName: 'CreditCard' },
-      { name: 'Staff Management', href: '/admin/staff', iconName: 'Users' },
-      { name: 'Services', href: '/admin/services', iconName: 'Stethoscope' },
-      { name: 'Frames', href: '/admin/frames', iconName: 'Glasses' },
-      { name: 'Glasses Builder', href: '/admin/glasses-builder', iconName: 'SlidersHorizontal' },
-      { name: 'Messages', href: '/admin/messages', iconName: 'MessageSquare' },
-      { name: 'CMS', href: '/admin/cms', iconName: 'Globe' },
-      { name: 'Settings', href: '/profile', iconName: 'Settings' },
-    ],
+    sidebarItems: ADMIN_NAV,
     profileSections: ['personal', 'security'],
     permissions: [
       'users.manage', 'reports.view', 'access_global_reporting',
@@ -123,25 +146,54 @@ export const ROLE_CONFIGS: Record<string, RoleConfig> = {
     showHospitalId: false,
     avatarLabel: 'Super Admin',
     defaultTitle: 'Super Admin Portal',
-    sidebarItems: [
-      { name: 'Dashboard', href: '/admin/dashboard', iconName: 'LayoutGrid' },
-      { name: 'Appointments', href: '/admin/appointments', iconName: 'Calendar' },
-      { name: 'Patient Records', href: '/admin/records', iconName: 'FileText' },
-      { name: 'Inventory', href: '/admin/inventory', iconName: 'Layers' },
-      { name: 'Order Book', href: '/admin/orders', iconName: 'BookOpen' },
-      { name: 'Billing', href: '/admin/billing', iconName: 'CreditCard' },
-      { name: 'Staff Management', href: '/admin/staff', iconName: 'Users' },
-      { name: 'Services', href: '/admin/services', iconName: 'Stethoscope' },
-      { name: 'Frames', href: '/admin/frames', iconName: 'Glasses' },
-      { name: 'Glasses Builder', href: '/admin/glasses-builder', iconName: 'SlidersHorizontal' },
-      { name: 'Messages', href: '/admin/messages', iconName: 'MessageSquare' },
-      { name: 'CMS', href: '/admin/cms', iconName: 'Globe' },
-      { name: 'Settings', href: '/profile', iconName: 'Settings' },
-    ],
+    sidebarItems: ADMIN_NAV,
     profileSections: ['personal', 'security'],
     permissions: [
-      'users.manage', 'reports.view', 'system.manage', 'access_global_reporting', 
+      'users.manage', 'reports.view', 'system.manage', 'access_global_reporting',
       'access_user_management', 'access_system_configuration', 'all_permissions'
     ],
   },
 };
+
+// Map an /admin/* pathname to the capability area that guards it.
+const ADMIN_PATH_AREAS: Record<string, string> = {
+  dashboard: 'dashboard',
+  appointments: 'appointments',
+  records: 'patient_records',
+  inventory: 'inventory',
+  orders: 'orders',
+  billing: 'billing',
+  staff: 'staff',
+  services: 'services',
+  frames: 'frames',
+  'glasses-builder': 'glass_builder',
+  messages: 'messaging',
+  cms: 'cms',
+};
+
+export function areaForAdminPath(pathname: string): string | null {
+  const seg = pathname.replace(/^\/admin\/?/, '').split('/')[0];
+  return ADMIN_PATH_AREAS[seg] ?? null;
+}
+
+// Filter admin nav items by the areas a user holds. Items without an `area`
+// (e.g. personal Settings) always show. If `areas` is undefined the list is
+// returned unfiltered (nav renders normally until the backend value loads).
+export function filterNavByAreas(items: SidebarItem[], areas?: string[]): SidebarItem[] {
+  if (!areas) return items;
+  const set = new Set(areas);
+  return items.filter((i) => !i.area || set.has(i.area));
+}
+
+// The best landing route for a user given their granted areas: the role's
+// configured landing when permitted, else the first admin item they can see.
+export function landingRoute(role: string, areas?: string[]): string {
+  const cfg = ROLE_CONFIGS[role];
+  const set = new Set(areas ?? []);
+  if (cfg?.dashboardRoute) {
+    const area = areaForAdminPath(cfg.dashboardRoute);
+    if (!area || set.has(area)) return cfg.dashboardRoute;
+  }
+  const first = ADMIN_NAV.find((i) => i.area && set.has(i.area));
+  return first?.href ?? cfg?.dashboardRoute ?? '/dashboard';
+}

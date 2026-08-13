@@ -50,6 +50,8 @@ const ROLE_OPTIONS = [
   { value: 'DOCTOR', label: 'Doctor' },
   { value: 'OPTICIAN', label: 'Optician' },
   { value: 'MEDICAL_AGENT', label: 'Medical Agent' },
+  { value: 'OPERATIONS_MANAGER', label: 'Operations Manager' },
+  { value: 'AGENT', label: 'Support Agent' },
   { value: 'ADMIN', label: 'Admin' },
 ];
 
@@ -57,6 +59,8 @@ const ROLE_LABELS: Record<string, string> = {
   DOCTOR: 'Doctor',
   OPTICIAN: 'Optician',
   MEDICAL_AGENT: 'Medical Agent',
+  OPERATIONS_MANAGER: 'Operations Manager',
+  AGENT: 'Support Agent',
   ADMIN: 'Admin',
 };
 

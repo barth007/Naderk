@@ -9,7 +9,7 @@ import { apiClient } from '@/lib/api';
 import { useBrand } from '@/services/cms/admin-cms.hooks';
 import BrandLogo from '@/components/layout/BrandLogo';
 import { Sidebar, SidebarContent, SidebarItem, SidebarFooter, SidebarSection } from '@/components/ui/sidebar';
-import { ROLE_CONFIGS } from '@/utils/role-config';
+import { ROLE_CONFIGS, filterNavByAreas } from '@/utils/role-config';
 import { useSidebar } from '@/context/SidebarContext';
 
 export default function DashboardSidebar() {
@@ -21,7 +21,9 @@ export default function DashboardSidebar() {
   const activeRole = user?.role || 'PATIENT';
   const roleConfig = ROLE_CONFIGS[activeRole] || ROLE_CONFIGS.PATIENT;
   const brand = useBrand();
-  const navItems = roleConfig.sidebarItems;
+  // Filter the (admin) nav by the user's capability areas. Non-admin portals
+  // have untagged items, so their nav is returned unchanged.
+  const navItems = filterNavByAreas(roleConfig.sidebarItems, user?.areas);
 
   useEffect(() => {
     const fetchPatientId = async () => {
