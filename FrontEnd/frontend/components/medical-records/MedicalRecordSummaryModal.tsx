@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar } from '@/components/ui/avatar';
 import { useMedicalEncounterDetail } from '@/services/medical-records/records.hooks';
 import { medicalRecordsApi } from '@/services/medical-records/records.api';
+import { toast } from 'sonner';
 import { cn } from '@/lib/cn';
 import Link from 'next/link';
 
@@ -179,14 +180,19 @@ export function MedicalRecordSummaryModal({
 
                       <div className="flex items-center justify-between text-xs font-semibold text-gray-600 bg-slate-50 p-2.5 rounded-xl border border-gray-100">
                         <span>Pupillary Distance: <span className="text-gray-900 font-bold">{rx.pupillary_distance} mm</span></span>
-                        <a 
-                          href={medicalRecordsApi.getPrescriptionPdfUrl(rx.id)}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await medicalRecordsApi.downloadPrescriptionPdf(rx.id);
+                            } catch {
+                              toast.error('Could not download the prescription PDF.');
+                            }
+                          }}
                           className="flex items-center gap-1 text-[#E03E3E] hover:text-red-700 transition-colors"
                         >
                           <FileDown className="w-4 h-4" /> Download PDF
-                        </a>
+                        </button>
                       </div>
                     </div>
                   ))}

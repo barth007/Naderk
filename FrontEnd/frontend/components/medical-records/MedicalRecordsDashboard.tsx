@@ -25,6 +25,7 @@ import {
   useMedicalScans
 } from '@/services/medical-records/records.hooks';
 import { medicalRecordsApi } from '@/services/medical-records/records.api';
+import { toast } from 'sonner';
 import { MedicalRecordSummaryModal } from './MedicalRecordSummaryModal';
 import { ScanPreviewModal } from './ScanPreviewModal';
 import { MedicalScan } from '@/services/medical-records/records.types';
@@ -183,17 +184,22 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
                           </p>
                         </div>
 
-                        {/* Download */}
-                        <a
-                          href={medicalRecordsApi.getPrescriptionPdfUrl(enc.id)}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={e => e.stopPropagation()}
+                        {/* Download (authenticated — the PDF endpoint needs the JWT) */}
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              await medicalRecordsApi.downloadPrescriptionPdf(enc.id);
+                            } catch {
+                              toast.error('Could not download the prescription PDF.');
+                            }
+                          }}
                           className="flex items-center gap-1.5 text-[#E03E3E] text-xs font-bold hover:underline shrink-0"
                         >
                           <Download className="w-3.5 h-3.5" />
                           Download PDF
-                        </a>
+                        </button>
                       </div>
                     ))}
 
