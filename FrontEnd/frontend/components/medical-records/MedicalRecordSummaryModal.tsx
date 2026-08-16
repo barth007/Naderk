@@ -17,8 +17,6 @@ import { useMedicalEncounterDetail } from '@/services/medical-records/records.ho
 import { medicalRecordsApi } from '@/services/medical-records/records.api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/cn';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 
 interface MedicalRecordSummaryModalProps {
   isOpen: boolean;
@@ -36,15 +34,6 @@ export function MedicalRecordSummaryModal({
   patientId
 }: MedicalRecordSummaryModalProps) {
   const { data: encounter, isLoading, error } = useMedicalEncounterDetail(encounterId);
-  const pathname = usePathname();
-
-  // "View Full Record" must stay within the current portal. Staff view the same
-  // records under /admin or /doctor (an admin can't open /doctor/*), so pick the
-  // base from the current path rather than assuming /doctor for DOCTOR mode.
-  const staffBase = pathname?.startsWith('/admin') ? '/admin/records' : '/doctor/records';
-  const fullRecordHref = mode === 'PATIENT'
-    ? `/dashboard/records?selected_encounter=${encounterId}`
-    : `${staffBase}/${patientId}?selected_encounter=${encounterId}`;
 
   if (!isOpen) return null;
 
@@ -326,8 +315,9 @@ export function MedicalRecordSummaryModal({
           )}
         </div>
 
-        {/* Footer Actions */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between shrink-0">
+        {/* Footer Actions — this modal already shows the full consultation
+            record, so "Close" is the only action needed. */}
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-end shrink-0">
           <Button
             type="button"
             variant="outline"
@@ -336,16 +326,6 @@ export function MedicalRecordSummaryModal({
           >
             Close
           </Button>
-
-          {encounter && (
-            <Link
-              href={fullRecordHref}
-              onClick={onClose}
-              className="font-bold text-xs uppercase tracking-wider bg-[#E03E3E] hover:bg-red-700 h-10 px-6 rounded-xl flex items-center justify-center text-white transition-all shadow-sm"
-            >
-              View Full Record
-            </Link>
-          )}
         </div>
 
       </div>
