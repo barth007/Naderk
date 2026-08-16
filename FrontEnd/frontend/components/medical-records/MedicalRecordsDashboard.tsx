@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
   Search,
   ArrowLeft,
@@ -37,6 +37,10 @@ interface MedicalRecordsDashboardProps {
 export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashboardProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  // Staff reach this profile from their portal's patient list — go back there,
+  // not a hardcoded /doctor route an admin can't access.
+  const recordsListHref = pathname?.startsWith('/admin') ? '/admin/records' : '/doctor/records';
   const preSelectedEncounter = searchParams.get('selected_encounter');
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,8 +88,8 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
           You may not have authorization to view this patient's history, or they have no records assigned.
         </p>
         {mode === 'DOCTOR' && (
-          <Button onClick={() => router.push('/doctor/dashboard')} variant="outline" className="mt-4 rounded-md">
-            Back to Dashboard
+          <Button onClick={() => router.push(recordsListHref)} variant="outline" className="mt-4 rounded-md">
+            Back to Records
           </Button>
         )}
       </div>
@@ -110,7 +114,7 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
           <Button
             variant="outline"
             size="icon"
-            onClick={() => router.push('/doctor/dashboard')}
+            onClick={() => router.push(recordsListHref)}
             className="rounded-full w-9 h-9 border-gray-200 shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
