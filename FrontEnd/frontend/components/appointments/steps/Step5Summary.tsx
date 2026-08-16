@@ -46,27 +46,47 @@ export default function Step5Summary() {
 
   const [phase, setPhase] = React.useState<Phase>('idle');
   const [pendingAppointmentId, setPendingAppointmentId] = React.useState<string | null>(null);
+  const [pendingReference, setPendingReference] = React.useState<string | null>(null);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
   // True when we genuinely could not confirm a payment that may have gone
   // through. Never tell someone nothing was charged unless we know it.
   const [unconfirmed, setUnconfirmed] = React.useState(false);
 
-  const pollQuery = usePollAppointmentPayment(
-    phase === 'confirming' ? pendingAppointmentId : null
-  );
+  const paying = phase === 'confirming' || phase === 'popup_open';
+  const pollQuery = usePollAppointmentPayment(paying ? pendingAppointmentId : null);
 
-  // When payment is confirmed (by our verify call or the webhook), advance.
+  // When payment is confirmed (by our verify poll or the webhook), advance.
   useEffect(() => {
-    if (phase === 'confirming' && pollQuery.data?.payment_status === 'PAID') {
+    if (!paying) return;
+    if (pollQuery.data?.payment_status === 'PAID') {
       setPhase('idle');
+      setPendingReference(null);
       nextStep();
     }
-    if (phase === 'confirming' && pollQuery.data?.payment_status === 'FAILED') {
+    if (pollQuery.data?.payment_status === 'FAILED') {
       setPhase('idle');
       setErrorMsg('Payment failed. Please try again.');
       setPendingAppointmentId(null);
+      setPendingReference(null);
     }
-  }, [pollQuery.data?.payment_status, phase]);
+  }, [pollQuery.data?.payment_status, paying]);
+
+  // Actively verify against the provider — Monnify's SDK onComplete is
+  // unreliable (especially bank transfer), so we poll the verify endpoint, which
+  // confirms the appointment the moment the provider reports PAID. Idempotent,
+  // and a harmless backstop for Paystack.
+  useEffect(() => {
+    if (!pendingReference || !pendingAppointmentId || !paying) return;
+    let attempts = 0;
+    const id = setInterval(async () => {
+      attempts += 1;
+      if (attempts > 45) { clearInterval(id); return; }   // ~3 min at 4s
+      try {
+        await apiClient.post('/payments/verify-appointment/', { reference: pendingReference });
+      } catch { /* keep trying; the poll picks up PAID */ }
+    }, 4000);
+    return () => clearInterval(id);
+  }, [pendingReference, pendingAppointmentId, paying]);
 
   // Polling had no time limit, so if confirmation never arrived the patient sat
   // on "Confirming payment…" indefinitely with no idea whether they had been
@@ -138,6 +158,7 @@ export default function Step5Summary() {
 
       // 3. Open the gateway's payment UI (Paystack popup / Monnify SDK)
       setPhase('popup_open');
+      setPendingReference(payData.reference);   // drives the verify-poll above
       payCheckout({
         provider: payData.provider,
         publicConfig: payData.public_config ?? { public_key: payData.public_key },
@@ -158,13 +179,19 @@ export default function Step5Summary() {
           );
         },
         onClose: () => {
-          // User closed popup without paying — delete the pending appointment
-          setPhase('cancelling');
-          apiClient.delete(`/appointments/${appointmentId}/`).finally(() => {
-            setPendingAppointmentId(null);
-            setPhase('idle');
-            setErrorMsg('Payment cancelled. Your slot reservation may have expired.');
-          });
+          // The popup can close right after a successful transfer (Monnify), so
+          // do NOT delete immediately — that would discard a just-paid booking.
+          // Keep verifying briefly; only clean up if it never confirms.
+          setTimeout(() => {
+            setPhase((cur) => {
+              if (cur !== 'popup_open' && cur !== 'confirming') return cur; // already paid/advanced
+              apiClient.delete(`/appointments/${appointmentId}/`).catch(() => {});
+              setPendingAppointmentId(null);
+              setPendingReference(null);
+              setErrorMsg('Payment was not completed. Your slot reservation may have expired.');
+              return 'idle';
+            });
+          }, 15000);
         },
       });
     } catch (err: any) {

@@ -156,6 +156,7 @@ export default function CheckoutPage() {
   const [showAddressModal, setShowAddressModal]  = useState(false);
   const [paymentPhase, setPaymentPhase]          = useState<PaymentPhase>('idle');
   const [pendingOrderId, setPendingOrderId]      = useState<string | null>(null);
+  const [pendingReference, setPendingReference]  = useState<string | null>(null);
   const [gateway, setGateway]                    = useState<string>('');
 
   // Default the gateway to the marked default (or the first active one).
@@ -211,9 +212,28 @@ export default function CheckoutPage() {
     } else if (polledOrder.payment_status === 'FAILED') {
       toast.error('Payment failed. Please try again.');
       setPendingOrderId(null);
+      setPendingReference(null);
       setPaymentPhase('idle');
     }
   }, [polledOrder, router]);
+
+  // Actively verify against the provider instead of waiting for a gateway
+  // callback. Monnify's SDK onComplete is unreliable (especially for bank
+  // transfer), so we poll the verify endpoint — it confirms the order the moment
+  // the provider reports it PAID. Idempotent, and a harmless backstop for
+  // Paystack. The order poll above then redirects on PAID.
+  useEffect(() => {
+    if (!pendingReference || !pendingOrderId) return;
+    let attempts = 0;
+    const id = setInterval(async () => {
+      attempts += 1;
+      if (attempts > 45) { clearInterval(id); return; }   // ~3 min at 4s
+      try {
+        await apiClient.post('/payments/verify-order/', { reference: pendingReference });
+      } catch { /* keep trying; the order poll picks up PAID */ }
+    }, 4000);
+    return () => clearInterval(id);
+  }, [pendingReference, pendingOrderId]);
 
   const countryName = country ? Country.getCountryByCode(country)?.name ?? country : '';
   const stateName   = (state && country)
@@ -245,6 +265,7 @@ export default function CheckoutPage() {
     }
 
     setPendingOrderId(creds.order_id);
+    setPendingReference(creds.reference);   // drives the verify-poll below
     setPaymentPhase('popup_open');
 
     payCheckout({
@@ -270,9 +291,15 @@ export default function CheckoutPage() {
         }
       },
       onClose: () => {
-        setPendingOrderId(null);
+        // The popup may close right after a successful transfer. Keep verifying
+        // for a short grace period (the verify-poll redirects on PAID); if
+        // nothing confirms, stop and let the cart stand.
         setPaymentPhase('idle');
-        toast.info('Payment cancelled. Your cart is still intact.');
+        toast.info('If you completed your payment, we are confirming it…');
+        setTimeout(() => {
+          setPendingReference(null);
+          setPendingOrderId(null);
+        }, 15000);
       },
     });
   };
