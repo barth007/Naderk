@@ -18,6 +18,7 @@ import { medicalRecordsApi } from '@/services/medical-records/records.api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/cn';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 interface MedicalRecordSummaryModalProps {
   isOpen: boolean;
@@ -35,6 +36,15 @@ export function MedicalRecordSummaryModal({
   patientId
 }: MedicalRecordSummaryModalProps) {
   const { data: encounter, isLoading, error } = useMedicalEncounterDetail(encounterId);
+  const pathname = usePathname();
+
+  // "View Full Record" must stay within the current portal. Staff view the same
+  // records under /admin or /doctor (an admin can't open /doctor/*), so pick the
+  // base from the current path rather than assuming /doctor for DOCTOR mode.
+  const staffBase = pathname?.startsWith('/admin') ? '/admin/records' : '/doctor/records';
+  const fullRecordHref = mode === 'PATIENT'
+    ? `/dashboard/records?selected_encounter=${encounterId}`
+    : `${staffBase}/${patientId}?selected_encounter=${encounterId}`;
 
   if (!isOpen) return null;
 
@@ -329,11 +339,7 @@ export function MedicalRecordSummaryModal({
 
           {encounter && (
             <Link
-              href={
-                mode === 'PATIENT' 
-                  ? `/dashboard/records?selected_encounter=${encounter.id}` 
-                  : `/doctor/records/${patientId}?selected_encounter=${encounter.id}`
-              }
+              href={fullRecordHref}
               onClick={onClose}
               className="font-bold text-xs uppercase tracking-wider bg-[#E03E3E] hover:bg-red-700 h-10 px-6 rounded-xl flex items-center justify-center text-white transition-all shadow-sm"
             >
