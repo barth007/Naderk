@@ -112,8 +112,8 @@ export default function DashboardNavbar() {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <Link href="/" className="flex items-center">
-            <BrandLogo size="lg" />
+          <Link href="/" className="flex items-center min-w-0">
+            <BrandLogo size="lg" showName nameClassName="hidden sm:inline" />
           </Link>
         </div>
 

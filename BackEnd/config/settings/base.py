@@ -191,7 +191,7 @@ EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='notification@totalesg360.com')
 
-# Email provider: postmark | smtp | resend | ses
+# Email provider: postmark | smtp | resend | ses | mailtrap
 EMAIL_PROVIDER = env('EMAIL_PROVIDER', default='smtp')
 
 # Postmark
@@ -202,6 +202,11 @@ DEFAULT_REPLY_TO_EMAIL   = env('DEFAULT_REPLY_TO_EMAIL', default='')
 
 # Resend
 EMAIL_RESEND_API_KEY = env('EMAIL_RESEND_API_KEY', default='')
+
+# Mailtrap (Email Sending API)
+EMAIL_MAILTRAP_API_TOKEN = env('EMAIL_MAILTRAP_API_TOKEN', default='')
+EMAIL_MAILTRAP_SANDBOX   = env.bool('EMAIL_MAILTRAP_SANDBOX', default=False)
+EMAIL_MAILTRAP_INBOX_ID  = env('EMAIL_MAILTRAP_INBOX_ID', default='')
 
 # AWS SES
 AWS_SES_ACCESS_KEY_ID     = env('AWS_SES_ACCESS_KEY_ID', default='')

@@ -91,8 +91,8 @@ export default function DashboardSidebar() {
         <Sidebar className="h-full rounded-none bg-white border-r border-gray-100 w-full" width="100%">
 
           {/* Mobile close button */}
-          <div className="md:hidden flex items-center justify-between px-4 pt-4 pb-2">
-            <BrandLogo size="md" />
+          <div className="md:hidden flex items-center justify-between gap-2 px-4 pt-4 pb-2">
+            <BrandLogo size="md" showName />
             <button
               onClick={close}
               className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"

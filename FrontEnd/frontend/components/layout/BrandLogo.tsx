@@ -18,9 +18,16 @@ const FALLBACK_LOGO = '/naderk_logo.png';
  * ratio fill the space it's given.
  */
 const SIZES = {
-  sm: 'h-8 max-w-[130px]',
-  md: 'h-9 sm:h-10 max-w-[150px] sm:max-w-[180px]',
-  lg: 'h-10 sm:h-12 md:h-14 max-w-[170px] sm:max-w-[210px] md:max-w-[240px]',
+  sm: 'h-9 max-w-[140px]',
+  md: 'h-10 sm:h-11 max-w-[160px] sm:max-w-[190px]',
+  lg: 'h-11 sm:h-12 md:h-14 max-w-[180px] sm:max-w-[220px] md:max-w-[260px]',
+} as const;
+
+/** Wordmark text sizes, paired to each logo box so the lockup stays balanced. */
+const NAME_SIZES = {
+  sm: 'text-base',
+  md: 'text-lg',
+  lg: 'text-lg sm:text-xl',
 } as const;
 
 export type BrandLogoSize = keyof typeof SIZES;
@@ -28,33 +35,57 @@ export type BrandLogoSize = keyof typeof SIZES;
 export interface BrandLogoProps {
   size?: BrandLogoSize;
   className?: string;
-  /** Renders the brand name beside the mark when no logo image is configured. */
-  showNameFallback?: boolean;
+  /**
+   * Render the brand name as a wordmark beside the mark. Use in chrome that
+   * would otherwise show no readable brand name (dashboard sidebar/navbar),
+   * so a CMS rename is actually visible there — the mark alone can't convey it.
+   */
+  showName?: boolean;
+  /** Extra classes for the wordmark text (only when showName). */
+  nameClassName?: string;
 }
 
 export default function BrandLogo({
   size = 'md',
   className,
-  showNameFallback = false,
+  showName = false,
+  nameClassName,
 }: BrandLogoProps) {
   const brand = useBrand();
   const [failed, setFailed] = useState(false);
 
+  // A newly uploaded logo that 404s (bad URL, wrong MinIO public endpoint)
+  // falls back to the bundled mark rather than leaving a broken image.
   const src = !failed && brand.logoUrl ? brand.logoUrl : FALLBACK_LOGO;
 
-  // A newly uploaded logo that 404s (bad URL, wrong MinIO public endpoint)
-  // should fall back to the bundled mark rather than leave a broken image.
-  if (failed && !brand.logoUrl && showNameFallback) {
-    return <span className={cn('font-bold text-lg truncate', className)}>{brand.name}</span>;
-  }
-
-  return (
+  const img = (
     /* eslint-disable-next-line @next/next/no-img-element */
     <img
       src={src}
       alt={brand.name}
       onError={() => setFailed(true)}
-      className={cn('w-auto object-contain object-left shrink-0', SIZES[size], className)}
+      className={cn(
+        'w-auto object-contain object-left shrink-0',
+        SIZES[size],
+        !showName && className,
+      )}
     />
+  );
+
+  if (!showName) return img;
+
+  return (
+    <span className={cn('inline-flex items-center gap-2.5 min-w-0', className)}>
+      {img}
+      <span
+        className={cn(
+          'font-bold tracking-tight text-gray-900 truncate',
+          NAME_SIZES[size],
+          nameClassName,
+        )}
+      >
+        {brand.name}
+      </span>
+    </span>
   );
 }
