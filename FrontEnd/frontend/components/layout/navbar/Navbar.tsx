@@ -255,8 +255,8 @@ function MobileNav({ id, items, ctas, activePath, isOpen, onClose, logoSrc = '/n
       >
         {/* Drawer header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
-          <Link href="/" onClick={onClose} className="flex items-center gap-2">
-            <BrandLogo size="md" />
+          <Link href="/" onClick={onClose} className="flex items-center gap-2 min-w-0">
+            <BrandLogo size="md" showName />
           </Link>
           <button
             type="button"
@@ -468,7 +468,7 @@ export function Navbar({
                 "transition-opacity duration-150 hover:opacity-80"
               )}
             >
-              <BrandLogo size="lg" />
+              <BrandLogo size="lg" showName nameClassName="hidden sm:inline" />
             </Link>
           </div>
 

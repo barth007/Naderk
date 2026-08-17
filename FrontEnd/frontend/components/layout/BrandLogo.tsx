@@ -18,9 +18,9 @@ const FALLBACK_LOGO = '/naderk_logo.png';
  * ratio fill the space it's given.
  */
 const SIZES = {
-  sm: 'h-9 max-w-[140px]',
-  md: 'h-10 sm:h-11 max-w-[160px] sm:max-w-[190px]',
-  lg: 'h-11 sm:h-12 md:h-14 max-w-[180px] sm:max-w-[220px] md:max-w-[260px]',
+  sm: 'h-10 max-w-[150px]',
+  md: 'h-11 sm:h-12 max-w-[170px] sm:max-w-[200px]',
+  lg: 'h-12 sm:h-14 md:h-16 max-w-[190px] sm:max-w-[230px] md:max-w-[280px]',
 } as const;
 
 /** Wordmark text sizes, paired to each logo box so the lockup stays balanced. */
@@ -75,7 +75,7 @@ export default function BrandLogo({
   if (!showName) return img;
 
   return (
-    <span className={cn('inline-flex items-center gap-2.5 min-w-0', className)}>
+    <span className={cn('inline-flex items-center gap-1.5 min-w-0', className)}>
       {img}
       <span
         className={cn(

@@ -9,7 +9,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     <div className="min-h-screen bg-[#F8F9FA] flex flex-col items-center justify-center p-4">
       <div className="absolute top-6 left-6 flex items-center gap-2">
         <Link href="/" aria-label="Go to homepage">
-          <BrandLogo size="lg" />
+          <BrandLogo size="lg" showName />
         </Link>
       </div>
 
