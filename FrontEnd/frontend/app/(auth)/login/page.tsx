@@ -102,7 +102,11 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold text-gray-900 mb-1.5">Welcome Back!</h1>
         <p className="text-gray-500 mb-6 text-sm">Log in to access your medical records and appointments.</p>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 flex-grow">
+        {/* method="post" is a safety net: react-hook-form preventDefaults once
+            hydrated, but a native submit before hydration would otherwise GET
+            the current URL with email+password in the query string. POST keeps
+            credentials out of the URL (and browser history / server logs). */}
+        <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-5 flex-grow">
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-gray-700">Email address</label>
             <Input 

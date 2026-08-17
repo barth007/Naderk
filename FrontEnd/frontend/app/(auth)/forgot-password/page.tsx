@@ -168,7 +168,8 @@ function ForgotPasswordForm() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      {/* POST so a pre-hydration native submit can't leak the email into the URL. */}
+      <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         {!token ? (
           <div className="space-y-1.5">
             <label htmlFor="email" className="text-sm font-semibold text-gray-700">
