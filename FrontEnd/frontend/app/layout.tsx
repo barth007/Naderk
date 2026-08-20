@@ -4,7 +4,7 @@ import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { ConditionalWrapper } from "@/components/layout/ConditionalWrapper";
 import { Toaster } from "sonner";
-import { getSiteBrand } from "@/lib/site-brand";
+import { getSiteSettings, brandFromSettings } from "@/lib/site-brand";
 import "./globals.css";
 
 
@@ -29,11 +29,12 @@ const poppins = Poppins({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const brand = await getSiteBrand();
+  const brand = brandFromSettings(await getSiteSettings());
   const siteName = brand.name;
   const defaultTitle = `${brand.name} | Advanced Vision Care`;
   const siteDescription = `${brand.name} provides ${brand.description}`;
   const ogImage = brand.logoUrl ?? "/naderk_logo.png";
+  const iconUrl = brand.faviconUrl ?? brand.logoUrl ?? "/icon.png";
 
   return {
   metadataBase: new URL(siteUrl),
@@ -91,28 +92,36 @@ export async function generateMetadata(): Promise<Metadata> {
     description: siteDescription,
     images: [ogImage],
   },
+  // Resolved server-side so React owns these <link> tags for the whole request.
+  // They used to be hardcoded to /icon.png and then torn out of <head> by a
+  // client effect, which left React's hoistable bookkeeping pointing at
+  // detached nodes — the "parentNode.removeChild of null" crash on navigation.
   icons: {
-    icon: "/icon.png",
-    shortcut: "/icon.png",
-    apple: "/icon.png",
+    icon: iconUrl,
+    shortcut: iconUrl,
+    apple: iconUrl,
   },
     category: "healthcare",
   };
 }
 
 import QueryProvider from "@/components/providers/QueryProvider";
-import { DynamicFavicon } from "@/components/layout/DynamicFavicon";
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Same fetch generateMetadata used; Next dedupes it within the render pass.
+  // Seeding the client cache with it keeps the server render and the client's
+  // first render identical, so BrandLogo no longer triggers a hydration
+  // mismatch that discards the whole tree.
+  const siteSettings = await getSiteSettings();
+
   return (
     <html lang="en" className={`${geistSans.variable} ${poppins.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
-        <QueryProvider>
-          <DynamicFavicon />
+        <QueryProvider initialSiteSettings={siteSettings}>
           <ConditionalWrapper>
             <Navbar />
           </ConditionalWrapper>
