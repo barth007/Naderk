@@ -23,6 +23,7 @@ import { cn } from '@/lib/cn';
 import { apiClient } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useBrand } from '@/services/cms/admin-cms.hooks';
+import PaymentScripts from '@/components/providers/PaymentScripts';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -352,6 +353,8 @@ export default function CheckoutPage() {
 
   return (
     <>
+      <PaymentScripts />
+
       {showAddressModal && (
         <DeliveryAddressModal
           onSaved={({ street: s, city: c, state: st, country: co }) => {

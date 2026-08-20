@@ -8,6 +8,7 @@ import Step2Specialist from '@/components/appointments/steps/Step2Specialist';
 import Step3TimeSlot from '@/components/appointments/steps/Step3TimeSlot';
 import Step4PatientInfo from '@/components/appointments/steps/Step4PatientInfo';
 import Step5Summary from '@/components/appointments/steps/Step5Summary';
+import PaymentScripts from '@/components/providers/PaymentScripts';
 import Step6Confirmation from '@/components/appointments/steps/Step6Confirmation';
 import { Calendar } from 'lucide-react';
 import { Breadcrumbs } from '@/components/ui/breadcrumb';
@@ -45,6 +46,7 @@ export default function BookAppointmentPage() {
               Cancel Booking
             </button>
           </div>
+          <PaymentScripts />
           <Step5Summary />
         </div>
       </div>

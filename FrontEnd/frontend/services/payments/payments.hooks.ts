@@ -4,6 +4,7 @@ import { useCallback, useRef } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import { Order } from '@/services/marketplace/marketplace.types';
+import { toast } from 'sonner';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -151,13 +152,14 @@ export function usePollAppointmentPayment(appointmentId: string | null) {
 
 /**
  * Returns a stable function that opens the Paystack inline popup.
- * Requires the Paystack inline script loaded in layout.tsx.
+ * Requires <PaymentScripts /> mounted on the route.
  */
 export function usePaystackPopup() {
   return useCallback((opts: PaystackPopupOptions) => {
     const PaystackPop = (window as any).PaystackPop;
     if (!PaystackPop) {
       console.error('Paystack inline script not loaded.');
+      toast.error('Payment is still loading', { description: 'Give it a moment and try again.' });
       opts.onClose();
       return;
     }
@@ -194,7 +196,7 @@ export interface PaymentCheckoutOptions {
 /**
  * Opens the correct payment UI for the chosen provider: Paystack's inline popup
  * or Monnify's inline SDK. Both call onSuccess with our reference (the backend
- * then verifies it authoritatively). Requires the relevant script in layout.tsx.
+ * then verifies it authoritatively). Requires <PaymentScripts /> on the route.
  */
 export function usePaymentCheckout() {
   return useCallback((opts: PaymentCheckoutOptions) => {
@@ -205,6 +207,7 @@ export function usePaymentCheckout() {
       const MonnifySDK = (window as any).MonnifySDK;
       if (!MonnifySDK) {
         console.error('Monnify SDK not loaded.');
+        toast.error('Payment is still loading', { description: 'Give it a moment and try again.' });
         opts.onClose();
         return;
       }
@@ -228,6 +231,7 @@ export function usePaymentCheckout() {
     const PaystackPop = (window as any).PaystackPop;
     if (!PaystackPop) {
       console.error('Paystack inline script not loaded.');
+      toast.error('Payment is still loading', { description: 'Give it a moment and try again.' });
       opts.onClose();
       return;
     }

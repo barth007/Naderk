@@ -102,7 +102,6 @@ export async function generateMetadata(): Promise<Metadata> {
 
 import QueryProvider from "@/components/providers/QueryProvider";
 import { DynamicFavicon } from "@/components/layout/DynamicFavicon";
-import Script from "next/script";
 
 export default function RootLayout({
   children,
@@ -112,8 +111,6 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} ${poppins.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
-        <Script src="https://js.paystack.co/v1/inline.js" strategy="beforeInteractive" />
-        <Script src="https://sdk.monnify.com/plugin/monnify.js" strategy="beforeInteractive" />
         <QueryProvider>
           <DynamicFavicon />
           <ConditionalWrapper>
