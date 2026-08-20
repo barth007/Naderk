@@ -9,6 +9,7 @@ import { apiClient } from '@/lib/api';
 import { useBrand } from '@/services/cms/admin-cms.hooks';
 import BrandLogo from '@/components/layout/BrandLogo';
 import { Sidebar, SidebarContent, SidebarItem, SidebarFooter, SidebarSection } from '@/components/ui/sidebar';
+import { LinkPendingDot } from '@/components/ui/link-pending';
 import { ROLE_CONFIGS, filterNavByAreas } from '@/utils/role-config';
 import { useSidebar } from '@/context/SidebarContext';
 
@@ -114,6 +115,7 @@ export default function DashboardSidebar() {
                     active={pathname === item.href}
                     onClick={close}
                     as={Link}
+                    badge={<LinkPendingDot />}
                     className={pathname === item.href ? "bg-[#E03E3E] text-white hover:bg-[#E03E3E] hover:text-white" : "text-gray-600 hover:bg-gray-50"}
                   >
                     {item.name}

@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
+import { LinkPendingDot } from "@/components/ui/link-pending"
 import { cn } from "@/lib/cn"
 import {
   DEFAULT_NAV_ITEMS,
@@ -56,6 +57,7 @@ function NavCTAButton({
     >
       <Link href={href} onClick={onNavigate}>
         {label}
+        <LinkPendingDot />
       </Link>
     </Button>
   )
@@ -199,6 +201,7 @@ function DesktopNavLink({ item, isActive }: NavLinkProps) {
       )}
     >
       {item.label}
+      <LinkPendingDot />
       {/* Animated active underline */}
       <span
         aria-hidden
