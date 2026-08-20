@@ -18,6 +18,20 @@ import { medicalRecordsApi } from '@/services/medical-records/records.api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/cn';
 
+/**
+ * Shown inside a section that has no entries.
+ *
+ * Every section used to be wrapped in `array.length > 0 &&`, so an encounter
+ * with no diagnostics simply had no Diagnostic Results card at all. A patient
+ * could not tell whether no tests were ordered, or the panel had failed to
+ * load — it looked identical to a bug.
+ */
+function NoEntries({ label }: { label: string }) {
+  return (
+    <p className="text-xs text-gray-400 font-medium italic">{label}</p>
+  );
+}
+
 interface MedicalRecordSummaryModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -135,16 +149,19 @@ export function MedicalRecordSummaryModal({
               </div>
 
               {/* Eyewear Prescriptions */}
-              {encounter.eyewear_prescriptions && encounter.eyewear_prescriptions.length > 0 && (
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)] space-y-4">
-                  <div className="flex items-center justify-between border-b border-gray-50 pb-2">
-                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Eyewear Prescription</h3>
+              <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)] space-y-4">
+                <div className="flex items-center justify-between border-b border-gray-50 pb-2">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Eyewear Prescription</h3>
+                  {encounter.eyewear_prescriptions && encounter.eyewear_prescriptions.length > 0 && (
                     <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full font-bold">
                       Active
                     </span>
-                  </div>
+                  )}
+                </div>
 
-                  {encounter.eyewear_prescriptions.map((rx) => (
+                {!encounter.eyewear_prescriptions || encounter.eyewear_prescriptions.length === 0 ? (
+                  <NoEntries label="No eyewear prescription was issued at this consultation." />
+                ) : encounter.eyewear_prescriptions.map((rx) => (
                     <div key={rx.id} className="space-y-3">
                       {/* Grid RX parameters */}
                       <div className="overflow-x-auto border border-gray-100 rounded-xl">
@@ -195,15 +212,16 @@ export function MedicalRecordSummaryModal({
                       </div>
                     </div>
                   ))}
-                </div>
-              )}
+              </div>
 
               {/* Medications List */}
-              {encounter.medications && encounter.medications.length > 0 && (
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1">
-                    <Pill className="w-4 h-4 text-emerald-500" /> Prescribed Medications
-                  </h3>
+              <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1">
+                  <Pill className="w-4 h-4 text-emerald-500" /> Prescribed Medications
+                </h3>
+                {!encounter.medications || encounter.medications.length === 0 ? (
+                  <NoEntries label="No medications were prescribed at this consultation." />
+                ) : (
                   <div className="divide-y divide-gray-50 space-y-2.5">
                     {encounter.medications.map((med) => (
                       <div key={med.id} className="pt-2.5 first:pt-0 flex items-start justify-between">
@@ -222,13 +240,15 @@ export function MedicalRecordSummaryModal({
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Diagnostic Results */}
-              {encounter.diagnostics && encounter.diagnostics.length > 0 && (
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Diagnostic Results</h3>
+              <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Diagnostic Results</h3>
+                {!encounter.diagnostics || encounter.diagnostics.length === 0 ? (
+                  <NoEntries label="No diagnostic results have been recorded for this consultation." />
+                ) : (
                   <div className="space-y-4 divide-y divide-gray-50">
                     {encounter.diagnostics.map((diag) => (
                       <div key={diag.id} className="pt-3 first:pt-0 space-y-2">
@@ -266,15 +286,17 @@ export function MedicalRecordSummaryModal({
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Medical Scans */}
-              {encounter.scans && encounter.scans.length > 0 && (
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1">
-                    <ImageIcon className="w-4 h-4 text-purple-500" /> Uploaded Clinical Scans
-                  </h3>
+              <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1">
+                  <ImageIcon className="w-4 h-4 text-purple-500" /> Uploaded Clinical Scans
+                </h3>
+                {!encounter.scans || encounter.scans.length === 0 ? (
+                  <NoEntries label="No clinical scans were uploaded for this consultation." />
+                ) : (
                   <div className="grid grid-cols-2 gap-3">
                     {encounter.scans.map((scan) => (
                       <div key={scan.id} className="border border-gray-100 rounded-xl overflow-hidden bg-slate-50">
@@ -294,8 +316,8 @@ export function MedicalRecordSummaryModal({
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Follow up Recommendations */}
               {(encounter.recommendations || encounter.follow_up_date) && (
