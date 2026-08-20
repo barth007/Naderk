@@ -1,5 +1,6 @@
 'use client';
 
+import Link from "next/link"
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -320,9 +321,9 @@ export default function CheckoutPage() {
       <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4 text-center p-8">
         <Package className="w-12 h-12 text-gray-200" />
         <p className="font-bold text-gray-700">Your cart is empty.</p>
-        <Button onClick={() => router.push('/dashboard/marketplace')}
+        <Button asChild
           className="rounded-md bg-[#ff052f] hover:bg-[#d90022] text-white">
-          Browse Marketplace
+          <Link href="/dashboard/marketplace">Browse Marketplace</Link>
         </Button>
       </div>
     );
@@ -366,9 +367,11 @@ export default function CheckoutPage() {
         <div className="bg-white px-6 rounded-xl border border-gray-100 mb-6"><Breadcrumbs /></div>
 
         <div className="flex items-center gap-3 mb-8">
-          <Button variant="outline" size="icon" onClick={() => router.push('/dashboard/cart')}
+          <Button asChild variant="outline" size="icon"
             className="rounded-full w-9 h-9 border-gray-200 shrink-0">
-            <ArrowLeft className="w-4 h-4" />
+            <Link href="/dashboard/cart" aria-label="Back to cart">
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
           </Button>
           <div>
             <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Checkout</h1>

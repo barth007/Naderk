@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { useTelehealthSessionDetail } from '@/services/telehealth/telehealth.hooks';
 import TelehealthStatusBadge from '@/components/telehealth/TelehealthStatusBadge';
 import { Loader2, Video, Camera, Mic, AlertCircle, CheckCircle2, ArrowLeft } from 'lucide-react';
@@ -13,7 +12,6 @@ interface SharedTelehealthDetailContainerProps {
 }
 
 export function SharedTelehealthDetailContainer({ sessionId }: SharedTelehealthDetailContainerProps) {
-  const router = useRouter();
   const { user } = useAuth();
   const { data: session, isLoading, error } = useTelehealthSessionDetail(sessionId);
   
@@ -259,13 +257,24 @@ export function SharedTelehealthDetailContainer({ sessionId }: SharedTelehealthD
               </div>
 
               <div className="pt-6">
-                <button
-                  disabled={!devicesReady}
-                  onClick={() => router.push(`${basePath}/${session.id}/waiting-room`)}
-                  className="w-full py-3 bg-[#E03E3E] hover:bg-red-750 disabled:bg-gray-100 text-white disabled:text-gray-400 text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  Enter Waiting Room
-                </button>
+                {/* A real <a> once the device check passes, so Next can prefetch
+                    the waiting room; a disabled button until then, since a link
+                    has no disabled state. */}
+                {devicesReady ? (
+                  <Link
+                    href={`${basePath}/${session.id}/waiting-room`}
+                    className="w-full py-3 bg-[#E03E3E] hover:bg-red-750 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    Enter Waiting Room
+                  </Link>
+                ) : (
+                  <button
+                    disabled
+                    className="w-full py-3 bg-gray-100 text-gray-400 text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    Enter Waiting Room
+                  </button>
+                )}
               </div>
             </div>
           </div>

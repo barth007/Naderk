@@ -1,13 +1,12 @@
 "use client"
 
+import Link from "next/link"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { Badge, Button } from "@/components/ui"
 import { TELEHEALTH_CONTENT } from "./telehealth.constants"
 
 export function TelehealthHeroSection() {
-  const router = useRouter()
   const { hero } = TELEHEALTH_CONTENT
 
   return (
@@ -37,19 +36,15 @@ export function TelehealthHeroSection() {
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
-              <Button
-                variant="destructive"
-                className="rounded-md px-8 font-semibold h-11"
-                onClick={() => router.push(hero.primaryCTA.href)}
-              >
-                {hero.primaryCTA.label}
+              <Button asChild variant="destructive" className="rounded-md px-8 font-semibold h-11">
+                <Link href={hero.primaryCTA.href}>{hero.primaryCTA.label}</Link>
               </Button>
               <Button
+                asChild
                 variant="ghost"
                 className="rounded-md bg-[var(--destructive)]/5 px-8 font-semibold text-[var(--destructive)] hover:bg-[var(--destructive)]/10 hover:opacity-100 h-11 transition-all"
-                onClick={() => router.push(hero.secondaryCTA.href)}
               >
-                {hero.secondaryCTA.label}
+                <Link href={hero.secondaryCTA.href}>{hero.secondaryCTA.label}</Link>
               </Button>
             </div>
 

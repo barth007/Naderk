@@ -1,11 +1,10 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui"
 import { PROMISE_MANDATE_CONTENT } from "./about.constants"
 
 export function PromiseMandateSection() {
-  const router = useRouter()
 
   return (
     <section className="bg-background py-12 sm:py-14 lg:py-16" aria-labelledby="promise-mandate-title">
@@ -19,19 +18,19 @@ export function PromiseMandateSection() {
           </p>
 
           <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
-            <Button
-              variant="destructive"
-              className="rounded-md px-8 font-semibold"
-              onClick={() => router.push(PROMISE_MANDATE_CONTENT.primaryCTA.href)}
-            >
-              {PROMISE_MANDATE_CONTENT.primaryCTA.label}
+            <Button asChild variant="destructive" className="rounded-md px-8 font-semibold">
+              <Link href={PROMISE_MANDATE_CONTENT.primaryCTA.href}>
+                {PROMISE_MANDATE_CONTENT.primaryCTA.label}
+              </Link>
             </Button>
             <Button
+              asChild
               variant="ghost"
               className="rounded-md bg-[var(--destructive)]/10 px-8 font-semibold text-[var(--destructive)] hover:bg-[var(--destructive)]/20 hover:text-[var(--destructive)] hover:opacity-100"
-              onClick={() => router.push(PROMISE_MANDATE_CONTENT.secondaryCTA.href)}
             >
-              {PROMISE_MANDATE_CONTENT.secondaryCTA.label}
+              <Link href={PROMISE_MANDATE_CONTENT.secondaryCTA.href}>
+                {PROMISE_MANDATE_CONTENT.secondaryCTA.label}
+              </Link>
             </Button>
           </div>
         </div>

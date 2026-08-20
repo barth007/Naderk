@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/cn"
@@ -30,7 +30,11 @@ function isActivePath(href: string, pathname: string): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────
-// CTA Button — uses the shared Button component, no Link
+// CTA Button — a real <a> via Button's asChild slot.
+//
+// This was a <button> calling router.push(). Next cannot prefetch a button
+// (there is no href to see), and a button is inert until hydration finishes,
+// so the first click on a cold page did nothing at all.
 // ─────────────────────────────────────────────────────────────
 
 function NavCTAButton({
@@ -39,22 +43,20 @@ function NavCTAButton({
   variant,
   onNavigate,
 }: CTAButton & { onNavigate?: () => void }) {
-  const router = useRouter()
   return (
     <Button
+      asChild
       variant={variant === "solid" ? "destructive" : "ghost"}
       size="md"
-      onClick={() => {
-        onNavigate?.()
-        router.push(href)
-      }}
       className={cn(
         "rounded-md px-5 font-semibold",
         variant === "soft" &&
           "bg-[#fde8ec] text-[var(--destructive)] hover:bg-[#fbd1d9] border-0 hover:opacity-100"
       )}
     >
-      {label}
+      <Link href={href} onClick={onNavigate}>
+        {label}
+      </Link>
     </Button>
   )
 }

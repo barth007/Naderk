@@ -1,8 +1,8 @@
 "use client"
 
+import Link from "next/link"
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Badge, Button } from "@/components/ui"
 import { CAROUSEL_SLIDES } from "./carousel.constants"
@@ -34,7 +34,6 @@ const slideVariants = {
 }
 
 export function HeroSection() {
-  const router = useRouter()
   const [currentIndex, setCurrentIndex] = useState(0)
   const [direction, setDirection] = useState(1) // 1 = forward, -1 = backward
   const [isHovered, setIsHovered] = useState(false)
@@ -207,6 +206,7 @@ export function HeroSection() {
                 {currentSlide.ctaText && currentSlide.ctaLink && (
                   <div className="pt-2 w-full sm:w-auto">
                     <Button
+                      asChild
                       variant={isDark ? "outline" : "default"}
                       size="lg"
                       className={cn(
@@ -215,9 +215,12 @@ export function HeroSection() {
                           ? "bg-white text-slate-900 border-white hover:bg-slate-100 shadow-lg"
                           : "bg-[#E53E3E] text-white hover:bg-[#c93636]"
                       )}
-                      onClick={() => router.push(currentSlide.ctaLink!)}
                     >
-                      {currentSlide.ctaText}
+                      {/* draggable={false} so the native link drag does not fight
+                          the carousel's framer-motion drag gesture. */}
+                      <Link href={currentSlide.ctaLink} draggable={false}>
+                        {currentSlide.ctaText}
+                      </Link>
                     </Button>
                   </div>
                 )}

@@ -2,7 +2,7 @@
 
 import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from "next/navigation";
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -37,7 +37,6 @@ type FormValues = {
 };
 
 function ForgotPasswordForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token') ?? '';
 
@@ -106,10 +105,10 @@ function ForgotPasswordForm() {
           Your password has been updated. You can now log in with your new password.
         </p>
         <Button
-          onClick={() => router.push('/login')}
+          asChild
           className="w-full h-12 text-base rounded-xl bg-[#E03E3E] hover:bg-[#c73333] text-white"
         >
-          Go to login
+          <Link href="/login">Go to login</Link>
         </Button>
       </div>
     );

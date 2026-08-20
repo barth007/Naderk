@@ -1,11 +1,10 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui"
 import { LABORATORY_CONTENT } from "./laboratory.constants"
 
 export function ResultsPortalCTASection() {
-  const router = useRouter()
   const { portal } = LABORATORY_CONTENT
 
   return (
@@ -19,11 +18,11 @@ export function ResultsPortalCTASection() {
         </p>
         <div className="mt-10">
           <Button
+            asChild
             variant="ghost"
             className="h-12 rounded-lg bg-white px-8 font-semibold text-[var(--destructive)] hover:bg-gray-50 hover:text-[var(--destructive)] hover:opacity-100 transition-colors"
-            onClick={() => router.push(portal.href)}
           >
-            {portal.buttonLabel}
+            <Link href={portal.href}>{portal.buttonLabel}</Link>
           </Button>
         </div>
       </div>

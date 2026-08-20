@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link"
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -335,12 +336,12 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
           </span>
           <h1 className="text-2xl font-extrabold text-[#111827]">Optical Configuration Studio</h1>
         </div>
-        <button 
-          onClick={() => router.push('/dashboard/marketplace')}
+        <Link
+          href="/dashboard/marketplace"
           className="text-xs font-bold text-gray-500 hover:text-[#ff052f] transition bg-gray-50 hover:bg-gray-100 px-4 py-2 rounded-xl"
         >
           Exit Builder
-        </button>
+        </Link>
       </div>
 
       {step <= 6 && (

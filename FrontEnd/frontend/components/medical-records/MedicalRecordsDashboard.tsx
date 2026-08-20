@@ -1,5 +1,6 @@
 'use client';
 
+import Link from "next/link"
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
@@ -88,8 +89,8 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
           You may not have authorization to view this patient's history, or they have no records assigned.
         </p>
         {mode === 'DOCTOR' && (
-          <Button onClick={() => router.push(recordsListHref)} variant="outline" className="mt-4 rounded-md">
-            Back to Records
+          <Button asChild variant="outline" className="mt-4 rounded-md">
+            <Link href={recordsListHref}>Back to Records</Link>
           </Button>
         )}
       </div>
@@ -112,12 +113,14 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
       <div className="flex items-center gap-3">
         {mode === 'DOCTOR' && (
           <Button
+            asChild
             variant="outline"
             size="icon"
-            onClick={() => router.push(recordsListHref)}
             className="rounded-full w-9 h-9 border-gray-200 shrink-0"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <Link href={recordsListHref} aria-label="Back to records">
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
           </Button>
         )}
         <div>

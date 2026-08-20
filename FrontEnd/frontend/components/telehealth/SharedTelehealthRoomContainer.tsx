@@ -99,12 +99,12 @@ export function SharedTelehealthRoomContainer({ sessionId }: SharedTelehealthRoo
         <p className="text-gray-500 text-sm mb-6 leading-relaxed">
           The telehealth session is invalid or you do not have permission to access this consultation.
         </p>
-        <button
-          onClick={() => router.push(isDoctor ? '/doctor/telehealth' : '/dashboard/telehealth')}
+        <Link
+          href={isDoctor ? '/doctor/telehealth' : '/dashboard/telehealth'}
           className="px-4 py-2.5 bg-[#E03E3E] text-white text-xs font-bold rounded-xl transition-all inline-flex items-center gap-1.5 mx-auto"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Consultations
-        </button>
+        </Link>
       </div>
     );
   }
@@ -504,13 +504,14 @@ function PostConsultationWorkflow({
               </p>
             </div>
           </div>
-          <Button 
-            id="btn_back_consultations"
-            variant="outline" 
-            onClick={() => router.push('/doctor/telehealth')}
+          <Button
+            asChild
+            variant="outline"
             className="text-xs h-10 px-5 rounded-xl font-bold border-gray-200 hover:bg-gray-50 cursor-pointer shadow-none shrink-0"
           >
-            <ArrowLeft className="w-4 h-4 mr-1.5" /> Back to Workspace
+            <Link id="btn_back_consultations" href="/doctor/telehealth">
+              <ArrowLeft className="w-4 h-4 mr-1.5" /> Back to Workspace
+            </Link>
           </Button>
         </Card>
 
@@ -591,13 +592,12 @@ function PostConsultationWorkflow({
                 <h2 className="font-bold text-gray-900 text-sm">Issue Medication Prescription</h2>
               </div>
               {issuedMeds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => router.push(`/doctor/prescriptions?patient=${session.patient.id}`)}
+                <Link
+                  href={`/doctor/prescriptions?patient=${session.patient.id}`}
                   className="text-[10px] font-bold text-[#E03E3E] hover:underline"
                 >
                   View Full Rx →
-                </button>
+                </Link>
               )}
             </div>
 
