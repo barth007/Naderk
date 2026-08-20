@@ -54,6 +54,8 @@ export interface TelehealthSession {
   session_notes: string;
   participants: TelehealthParticipant[];
   events: TelehealthEvent[];
+  /** The ConsultationEncounter this session produced; null until it has ended. */
+  encounter_id: string | null;
   created_at: string;
   updated_at: string;
 }

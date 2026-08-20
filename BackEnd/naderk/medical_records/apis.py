@@ -25,6 +25,8 @@ from .serializers import (
     MedicationSerializer,
     MedicationCreateSerializer,
     DiagnosticResultSerializer,
+    DiagnosticResultCreateSerializer,
+    DiagnosticResultUpdateSerializer,
     MedicalScanSerializer
 )
 from .permissions import IsRecordOwnerOrDoctorWithActiveAppointment
@@ -196,10 +198,97 @@ class DiagnosticResultListApi(APIView):
                 return build_error_response("bad_request", "Patient ID is required.", 400)
 
         queryset = DiagnosticResult.objects.filter(patient_id=patient_id)
+
+        # Scope to one consultation, so the doctor's consultation panel can
+        # show just the results recorded against the encounter in progress.
+        encounter_id = request.query_params.get('encounter_id')
+        if encounter_id:
+            queryset = queryset.filter(encounter_id=encounter_id)
+
         paginator = MedicalRecordsPagination()
         paginated_queryset = paginator.paginate_queryset(queryset, request)
         serializer = DiagnosticResultSerializer(paginated_queryset, many=True)
         return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request):
+        """
+        Record a diagnostic result against a consultation.
+
+        Diagnostics previously had no write path anywhere in the system — no
+        endpoint, no admin, no service — so the patient-facing Diagnostic
+        Results panel could never show anything.
+        """
+        if request.user.role not in ('DOCTOR', 'ADMIN', 'SUPER_ADMIN'):
+            return build_error_response(
+                "forbidden", "Permission denied", 403,
+                "Only clinicians can record diagnostic results."
+            )
+
+        serializer = DiagnosticResultCreateSerializer(
+            data=request.data, context={'request': request}
+        )
+        if not serializer.is_valid():
+            return build_error_response(
+                "validation-error", "Invalid data", 400,
+                "Validation failed.", errors=serializer.errors
+            )
+
+        result = serializer.save()
+        from rest_framework import status as drf_status
+        from rest_framework.response import Response
+        return Response(
+            {
+                "status": "success",
+                "message": "Diagnostic result recorded.",
+                "data": DiagnosticResultSerializer(result).data,
+            },
+            status=drf_status.HTTP_201_CREATED,
+        )
+
+
+class DiagnosticResultDetailApi(APIView):
+    permission_classes = [IsAuthenticated, IsRecordOwnerOrDoctorWithActiveAppointment]
+
+    def get(self, request, pk):
+        result = get_object_or_404(DiagnosticResult, id=pk)
+        self.check_object_permissions(request, result)
+        return build_success_response(
+            "Diagnostic result retrieved.", DiagnosticResultSerializer(result).data
+        )
+
+    def patch(self, request, pk):
+        result = get_object_or_404(DiagnosticResult, id=pk)
+        self.check_object_permissions(request, result)
+
+        if request.user.role not in ('DOCTOR', 'ADMIN', 'SUPER_ADMIN'):
+            return build_error_response(
+                "forbidden", "Permission denied", 403,
+                "Only clinicians can amend diagnostic results."
+            )
+
+        serializer = DiagnosticResultUpdateSerializer(result, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return build_error_response(
+                "validation-error", "Invalid data", 400,
+                "Validation failed.", errors=serializer.errors
+            )
+        serializer.save()
+        return build_success_response(
+            "Diagnostic result updated.", DiagnosticResultSerializer(result).data
+        )
+
+    def delete(self, request, pk):
+        result = get_object_or_404(DiagnosticResult, id=pk)
+        self.check_object_permissions(request, result)
+
+        if request.user.role not in ('DOCTOR', 'ADMIN', 'SUPER_ADMIN'):
+            return build_error_response(
+                "forbidden", "Permission denied", 403,
+                "Only clinicians can remove diagnostic results."
+            )
+
+        result.delete()
+        return build_success_response("Diagnostic result removed.", None)
 
 
 class MedicalScanListApi(APIView):

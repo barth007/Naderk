@@ -8,7 +8,8 @@ import {
   useEndTelehealthSession 
 } from '@/services/telehealth/telehealth.hooks';
 import { useSubmitPrescription } from '@/services/marketplace/marketplace.hooks';
-import { useCreateMedication } from '@/services/medical-records/records.hooks';
+import { useCreateMedication, useCreateDiagnostic } from '@/services/medical-records/records.hooks';
+import { useQueryClient } from '@tanstack/react-query';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { useAuth } from '@/hooks/useAuth';
 import TelehealthChat from './TelehealthChat';
@@ -25,7 +26,7 @@ import { ConnectionState, Track } from 'livekit-client';
 import { 
   Loader2, AlertCircle, PhoneOff, Mic, MicOff, Camera, CameraOff, 
   Monitor, MessageSquare, ArrowLeft, Video, LayoutGrid, CheckCircle2,
-  FileText, Clipboard, HeartPulse, Pill, CalendarPlus, FileCheck, Plus
+  FileText, Clipboard, HeartPulse, Pill, CalendarPlus, FileCheck, Plus, Activity
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -376,6 +377,17 @@ function PostConsultationWorkflow({
   const endSessionCall = useEndTelehealthSession();
   const submitPrescription = useSubmitPrescription();
 
+  // The encounter is created when the session ends, so the session object we
+  // were handed (fetched while the call was live) still has encounter_id null.
+  // Refetch once on entry so diagnostics can be attached to the consultation.
+  const queryClient = useQueryClient();
+  const { data: freshSession } = useTelehealthSessionDetail(sessionId);
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ['telehealth-session', sessionId] });
+  }, [queryClient, sessionId]);
+
+  const encounterId: string | null = freshSession?.encounter_id ?? session?.encounter_id ?? null;
+
   // Consultation Encounter states
   const [notes, setNotes] = useState('');
   const [diagnosis, setDiagnosis] = useState('');
@@ -412,6 +424,42 @@ function PostConsultationWorkflow({
       toast.success(`${medName} added to prescription.`);
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to add medication.");
+    }
+  };
+
+  // Diagnostic result states
+  //
+  // Diagnostics had no write path anywhere in the system before this, so the
+  // patient's Diagnostic Results panel could never show anything.
+  const createDiagnostic = useCreateDiagnostic();
+  const [diagTestName, setDiagTestName] = useState('');
+  const [diagCategory, setDiagCategory] = useState('Ophthalmic');
+  const [diagStatus, setDiagStatus] = useState<'READY' | 'PENDING' | 'REVIEW_REQUIRED'>('READY');
+  const [diagSummary, setDiagSummary] = useState('');
+  const [recordedDiagnostics, setRecordedDiagnostics] = useState<string[]>([]);
+
+  const handleAddDiagnostic = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!diagTestName.trim() || !diagCategory.trim()) {
+      toast.error('Test name and category are required.');
+      return;
+    }
+    try {
+      await createDiagnostic.mutateAsync({
+        patient_id: session.patient.id,
+        encounter_id: encounterId,
+        test_name: diagTestName.trim(),
+        category: diagCategory.trim(),
+        status: diagStatus,
+        result_summary: diagSummary.trim() || null,
+      });
+      setRecordedDiagnostics(prev => [...prev, diagTestName.trim()]);
+      setDiagTestName(''); setDiagSummary(''); setDiagStatus('READY');
+      toast.success('Diagnostic result recorded.');
+    } catch (err) {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(message || 'Failed to record diagnostic result.');
     }
   };
 
@@ -641,6 +689,73 @@ function PostConsultationWorkflow({
               <Button id="btn_add_medication" type="submit" isLoading={createMedication.isPending}
                 className="w-full h-9 text-xs font-bold rounded-lg bg-[#E03E3E] text-white border-none shadow-none">
                 <Plus className="w-4 h-4 mr-1.5" /> Add Medication
+              </Button>
+            </form>
+          </Card>
+
+          {/* Diagnostic Results */}
+          <Card className="p-6 bg-white border border-gray-100 space-y-4 shadow-sm">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-50">
+              <div className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-[#E03E3E]" />
+                <h2 className="font-bold text-gray-900 text-sm">Record Diagnostic Result</h2>
+              </div>
+              {!encounterId && (
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                  Not linked to consultation
+                </span>
+              )}
+            </div>
+
+            {recordedDiagnostics.length > 0 && (
+              <div className="space-y-1 pb-3 border-b border-gray-50">
+                <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Recorded this session</p>
+                {recordedDiagnostics.map((d, i) => (
+                  <div key={i} className="flex items-center gap-1.5 text-xs font-semibold text-green-700">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {d}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <form onSubmit={handleAddDiagnostic} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Test Name</label>
+                <input value={diagTestName} onChange={e => setDiagTestName(e.target.value)} placeholder="e.g. Intraocular Pressure (Tonometry)"
+                  className="w-full bg-gray-50/50 border border-gray-200 focus:border-[#E03E3E] rounded-lg p-2.5 text-xs font-semibold text-gray-700 outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Category</label>
+                  <select value={diagCategory} onChange={e => setDiagCategory(e.target.value)}
+                    className="w-full bg-gray-50/50 border border-gray-200 focus:border-[#E03E3E] rounded-lg p-2.5 text-xs font-semibold text-gray-700 outline-none">
+                    <option value="Ophthalmic">Ophthalmic</option>
+                    <option value="Imaging">Imaging</option>
+                    <option value="Laboratory">Laboratory</option>
+                    <option value="Visual Field">Visual Field</option>
+                    <option value="Refraction">Refraction</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Status</label>
+                  <select value={diagStatus} onChange={e => setDiagStatus(e.target.value as typeof diagStatus)}
+                    className="w-full bg-gray-50/50 border border-gray-200 focus:border-[#E03E3E] rounded-lg p-2.5 text-xs font-semibold text-gray-700 outline-none">
+                    <option value="READY">Ready</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="REVIEW_REQUIRED">Review Required</option>
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Result Summary</label>
+                <textarea value={diagSummary} onChange={e => setDiagSummary(e.target.value)} rows={3}
+                  placeholder="e.g. OD 15 mmHg, OS 16 mmHg. Within normal limits."
+                  className="w-full bg-gray-50/50 border border-gray-200 focus:border-[#E03E3E] rounded-lg p-2.5 text-xs font-semibold text-gray-700 outline-none resize-none" />
+              </div>
+              <Button id="btn_add_diagnostic" type="submit" isLoading={createDiagnostic.isPending}
+                className="w-full h-9 text-xs font-bold rounded-lg bg-[#E03E3E] text-white border-none shadow-none">
+                <Plus className="w-4 h-4 mr-1.5" /> Record Result
               </Button>
             </form>
           </Card>

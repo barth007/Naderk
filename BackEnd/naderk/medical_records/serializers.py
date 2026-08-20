@@ -67,6 +67,80 @@ class MedicationCreateSerializer(serializers.ModelSerializer):
             **validated_data
         )
 
+class DiagnosticResultCreateSerializer(serializers.ModelSerializer):
+    """
+    Doctor-authored diagnostic result, recorded against a consultation.
+
+    Mirrors MedicationCreateSerializer, but additionally verifies the doctor
+    actually has access to the patient. Writing a result for an arbitrary
+    patient id would otherwise be possible for any authenticated doctor.
+    """
+    patient_id = serializers.UUIDField(write_only=True)
+    encounter_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+
+    class Meta:
+        model = DiagnosticResult
+        fields = [
+            'patient_id', 'encounter_id', 'test_name', 'category',
+            'status', 'result_summary',
+        ]
+
+    def validate(self, attrs):
+        from naderk.core.models import User
+        from .permissions import IsRecordOwnerOrDoctorWithActiveAppointment
+
+        doctor = self.context['request'].user
+
+        try:
+            patient = User.objects.get(id=attrs['patient_id'])
+        except User.DoesNotExist:
+            raise serializers.ValidationError({'patient_id': 'No such patient.'})
+
+        if patient.role != 'PATIENT':
+            raise serializers.ValidationError({'patient_id': 'User is not a patient.'})
+
+        if doctor.role not in ('ADMIN', 'SUPER_ADMIN'):
+            checker = IsRecordOwnerOrDoctorWithActiveAppointment()
+            if not checker.has_patient_access(doctor, patient):
+                raise serializers.ValidationError(
+                    'You do not have access to this patient\'s records.'
+                )
+
+        encounter_id = attrs.get('encounter_id')
+        if encounter_id:
+            encounter = ConsultationEncounter.objects.filter(id=encounter_id).first()
+            if not encounter:
+                raise serializers.ValidationError({'encounter_id': 'No such consultation.'})
+            if encounter.patient_id != patient.id:
+                raise serializers.ValidationError(
+                    {'encounter_id': 'Consultation does not belong to this patient.'}
+                )
+            attrs['_encounter'] = encounter
+
+        attrs['_patient'] = patient
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop('patient_id')
+        validated_data.pop('encounter_id', None)
+        patient = validated_data.pop('_patient')
+        encounter = validated_data.pop('_encounter', None)
+        return DiagnosticResult.objects.create(
+            patient=patient,
+            encounter=encounter,
+            **validated_data
+        )
+
+
+class DiagnosticResultUpdateSerializer(serializers.ModelSerializer):
+    """Lets the recording doctor correct a result or move PENDING -> READY."""
+
+    class Meta:
+        model = DiagnosticResult
+        fields = ['test_name', 'category', 'status', 'result_summary']
+        extra_kwargs = {f: {'required': False} for f in fields}
+
+
 class DiagnosticAttachmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = DiagnosticAttachment
