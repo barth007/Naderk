@@ -3,6 +3,7 @@ import logging
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import Sum, Count, Q, F
 from django.db.models.functions import TruncMonth, TruncDate
 from naderk.common.responses.builders import build_success_response, build_error_response
@@ -952,12 +953,50 @@ class AdminProductRestockAPI(APIView):
                 detail='Quantity must be positive.',
             )
 
-        product.quantity_available += quantity
-        product.save(update_fields=['quantity_available'])
+        # Stock for a product with variants lives on the variant — that is what
+        # a sale deducts. Restocking only bumped the product-level total, so
+        # added units never reached the counter the storefront sells from, and
+        # the two figures silently drifted apart.
+        from naderk.ecommerce.models import ProductVariant
+
+        variants = list(product.variants.all())
+        variant_id = request.data.get('variant_id')
+        target_variant = None
+
+        if variants:
+            if variant_id:
+                target_variant = next((v for v in variants if str(v.id) == str(variant_id)), None)
+                if target_variant is None:
+                    return build_error_response(
+                        type_uri='validation-error', title='Validation Error', status_code=400,
+                        detail='That variant does not belong to this product.',
+                    )
+            elif len(variants) == 1:
+                # The common case: one auto-created "Standard" variant.
+                target_variant = variants[0]
+            else:
+                return build_error_response(
+                    type_uri='validation-error', title='Validation Error', status_code=400,
+                    detail='This product has multiple variants — specify variant_id to restock.',
+                )
+
+        with transaction.atomic():
+            if target_variant is not None:
+                ProductVariant.objects.filter(pk=target_variant.pk).update(
+                    quantity_available=F('quantity_available') + quantity
+                )
+            Product.objects.filter(pk=product.pk).update(
+                quantity_available=F('quantity_available') + quantity
+            )
+            product.refresh_from_db(fields=['quantity_available'])
 
         return build_success_response(
             message="Stock updated.",
-            data={'id': str(product.id), 'quantity_available': product.quantity_available},
+            data={
+                'id': str(product.id),
+                'quantity_available': product.quantity_available,
+                'variant_id': str(target_variant.id) if target_variant else None,
+            },
             status_code=200
         )
 

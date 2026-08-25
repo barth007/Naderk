@@ -1,5 +1,6 @@
 import logging
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
@@ -326,6 +327,16 @@ def order_process_payment(*, order: Order, actor: User, payment_reference: str, 
                 raise ValidationError(f"Insufficient stock for {pv.product.name} ({pv.variant_name}). Available: {pv.quantity_available}")
             pv.quantity_available -= item.quantity
             pv.save()
+
+            # Product.quantity_available is the total across a product's
+            # variants. Only the variant used to be decremented here, so the
+            # product-level figure never moved — and that is the number the
+            # admin inventory page, its summary totals and the product
+            # serializers all read. Selling six units left stock showing
+            # unchanged. F() so concurrent sales can't lose an update.
+            Product.objects.filter(pk=pv.product_id).update(
+                quantity_available=F('quantity_available') - item.quantity
+            )
             
             if pv.quantity_available <= pv.low_stock_threshold:
                 low_stock_warnings.append({
