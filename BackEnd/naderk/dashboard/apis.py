@@ -618,6 +618,53 @@ class AdminDoctorListAPI(APIView):
         return build_success_response(message="Doctors retrieved.", data=results, status_code=200)
 
 
+class AdminPatientLookupAPI(APIView):
+    """
+    Patient search for staff booking on a patient's behalf.
+
+    The existing /medical-records/patients/ list derives its patients from
+    Appointment rows, so someone who has never booked before does not appear —
+    exactly the person an agent needs when taking a first booking over chat.
+    This queries the user table directly.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if _admin_only(request, 'appointments'):
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
+
+        from naderk.core.models import User
+
+        query = (request.query_params.get('q') or '').strip()
+        patients = User.objects.filter(role='PATIENT', is_active=True)
+        if query:
+            patients = patients.filter(
+                Q(first_name__icontains=query)
+                | Q(last_name__icontains=query)
+                | Q(email__icontains=query)
+                | Q(phone_number__icontains=query)
+                | Q(patient_profile__patient_id__icontains=query)
+            )
+
+        patients = patients.select_related('patient_profile').order_by('first_name', 'last_name')[:25]
+
+        results = [
+            {
+                "id": str(u.id),
+                "name": f"{u.first_name} {u.last_name}".strip() or u.email,
+                "email": u.email,
+                "phone_number": u.phone_number or "",
+                "patient_id": getattr(getattr(u, 'patient_profile', None), 'patient_id', None)
+                or f"NDK-{str(u.id)[:6].upper()}",
+            }
+            for u in patients
+        ]
+        return build_success_response(message="Patients retrieved.", data=results, status_code=200)
+
+
 # ─── Admin Inventory APIs ──────────────────────────────────────────────────────
 
 class AdminInventorySummaryAPI(APIView):

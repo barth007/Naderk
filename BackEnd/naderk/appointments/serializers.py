@@ -114,6 +114,9 @@ class ReserveSlotRequestSerializer(serializers.Serializer):
     time = serializers.TimeField()
 
 class CreateAppointmentRequestSerializer(serializers.Serializer):
+    # Staff booking on a patient's behalf name them here. Ignored (and rejected)
+    # for anyone without the appointments capability area.
+    patient_id = serializers.UUIDField(required=False, allow_null=True)
     service_id = serializers.UUIDField()
     doctor_id = serializers.UUIDField(required=False, allow_null=True)
     date = serializers.DateField()

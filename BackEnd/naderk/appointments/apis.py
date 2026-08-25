@@ -164,6 +164,24 @@ class ReserveSlotApi(APIView):
             "expires_at": reservation.expires_at
         })
 
+def can_manage_any_appointment(user) -> bool:
+    """
+    True when the user may act on appointments that are not their own.
+
+    This was previously spelled inline as
+    `user.role in ('ADMIN', 'SUPER_ADMIN', 'DOCTOR')`, which left AGENT and
+    MEDICAL_AGENT out — so a support agent cancelling or rescheduling for a
+    patient fell through to the `patient=request.user` lookup and got a 404.
+    Defer to the capability area instead, so an admin editing role permissions
+    in Manage Permissions actually changes who can do this.
+    """
+    role = getattr(user, 'role', None)
+    if role in ('ADMIN', 'SUPER_ADMIN', 'DOCTOR'):
+        return True
+    from naderk.common.permissions import user_has_area
+    return user_has_area(user, 'appointments')
+
+
 class CreateAppointmentApi(APIView):
     permission_classes = [IsAuthenticated]
     
@@ -177,6 +195,27 @@ class CreateAppointmentApi(APIView):
         date = serializer.validated_data['date']
         time = serializer.validated_data['time']
         appointment_type = serializer.validated_data['appointment_type']
+
+        # Staff (support agents, medical agents, admins) can book on a
+        # patient's behalf by naming them. Everyone else books for themselves,
+        # and a patient_id they send is refused rather than quietly ignored.
+        patient = request.user
+        requested_patient_id = serializer.validated_data.get('patient_id')
+        if requested_patient_id and str(requested_patient_id) != str(request.user.id):
+            if not can_manage_any_appointment(request.user):
+                return build_error_response(
+                    "forbidden", "Permission denied", 403,
+                    "You cannot book an appointment on behalf of another patient.",
+                )
+            try:
+                patient = User.objects.get(id=requested_patient_id)
+            except User.DoesNotExist:
+                return build_error_response("not-found", "Resource not found", 404, "Invalid patient ID")
+            if patient.role != 'PATIENT':
+                return build_error_response(
+                    "validation-error", "Invalid patient", 400,
+                    "Appointments can only be booked for patients.",
+                )
 
         try:
             service = MedicalService.objects.get(id=service_id)
@@ -208,7 +247,7 @@ class CreateAppointmentApi(APIView):
         # Idempotency: if the patient already has a PENDING (unpaid) appointment
         # for exactly this service+doctor+date+time, return it so they can retry payment.
         existing_pending = Appointment.objects.filter(
-            patient=request.user,
+            patient=patient,
             doctor=doctor,
             service=service,
             appointment_date=date,
@@ -224,7 +263,7 @@ class CreateAppointmentApi(APIView):
 
         try:
             PatientAppointmentValidationService.validate_booking_request(
-                patient=request.user,
+                patient=patient,
                 doctor=doctor,
                 service=service,
                 date=date,
@@ -255,7 +294,7 @@ class CreateAppointmentApi(APIView):
             if not is_facility:
                 # Verify reservation (optional but good for strict locking)
                 reservation = AppointmentSlotReservation.objects.select_for_update().filter(
-                    patient=request.user,
+                    patient=patient,
                     doctor=doctor,
                     slot_datetime=slot_datetime,
                     status=AppointmentSlotReservation.Status.RESERVED,
@@ -276,7 +315,7 @@ class CreateAppointmentApi(APIView):
                     if active_res.exists():
                         return build_error_response("conflict", "Slot reserved", 409, "This slot is currently reserved by another user")
 
-            fee = ConsultationService.calculate_fee(request.user, service)
+            fee = ConsultationService.calculate_fee(patient, service)
             
             # Mock telehealth link
             appointment_type = serializer.validated_data['appointment_type']
@@ -287,7 +326,7 @@ class CreateAppointmentApi(APIView):
 
                 
             appointment = Appointment.objects.create(
-                patient=request.user,
+                patient=patient,
                 doctor=doctor,
                 service=service,
                 appointment_date=date,
@@ -327,7 +366,7 @@ class AppointmentHistoryApi(APIView):
         
         patient = request.user
         patient_id = request.query_params.get('patient_id')
-        if patient_id and request.user.role in ['AGENT', 'DOCTOR', 'ADMIN']:
+        if patient_id and can_manage_any_appointment(request.user):
             from naderk.core.models import User
             try:
                 patient = User.objects.get(id=patient_id, role=User.Role.PATIENT)
@@ -356,7 +395,7 @@ class CancelAppointmentApi(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        is_admin = request.user.role in ('ADMIN', 'SUPER_ADMIN', 'DOCTOR')
+        is_admin = can_manage_any_appointment(request.user)
         try:
             if is_admin:
                 appointment = Appointment.objects.get(id=pk)
@@ -384,7 +423,7 @@ class RescheduleAppointmentApi(APIView):
         if not serializer.is_valid():
             return build_error_response("validation-error", "Invalid Data", 400, "Validation failed", errors=serializer.errors)
 
-        is_admin = request.user.role in ('ADMIN', 'SUPER_ADMIN', 'DOCTOR')
+        is_admin = can_manage_any_appointment(request.user)
         try:
             if is_admin:
                 appointment = Appointment.objects.get(id=pk)

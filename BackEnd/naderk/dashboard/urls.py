@@ -17,6 +17,7 @@ urlpatterns = [
     path('admin/appointments/calendar/', apis.AdminAppointmentCalendarAPI.as_view(), name='admin-appt-calendar'),
     path('admin/appointments/<uuid:pk>/schedule/', apis.AdminScheduleAppointmentAPI.as_view(), name='admin-appt-schedule'),
     path('admin/doctors/', apis.AdminDoctorListAPI.as_view(), name='admin-doctors'),
+    path('admin/patients/', apis.AdminPatientLookupAPI.as_view(), name='admin-patients'),
     path('admin/inventory/summary/', apis.AdminInventorySummaryAPI.as_view(), name='admin-inventory-summary'),
     path('admin/products/create/', apis.AdminProductCreateAPI.as_view(), name='admin-product-create'),
     path('admin/products/', apis.AdminProductsAPI.as_view(), name='admin-products'),

@@ -8,11 +8,12 @@ import {
 } from 'date-fns';
 import { toast } from 'sonner';
 import {
-  ChevronLeft, ChevronRight, Lock, Clock, X, AlertTriangle, Calendar,
+  ChevronLeft, ChevronRight, Lock, Clock, X, AlertTriangle, Calendar, CalendarPlus,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
+import BookAppointmentModal from '@/components/admin/BookAppointmentModal';
 import {
   useAdminAppointmentRequests,
   useAdminAppointmentCalendar,
@@ -507,6 +508,7 @@ export default function AdminAppointmentsPage() {
   const [cancelTarget, setCancelTarget] = useState<AdminAppointmentRequest | null>(null);
   const [rescheduleId, setRescheduleId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [bookOpen, setBookOpen] = useState(false);
 
   async function handleCancelConfirm() {
     if (!cancelTarget) return;
@@ -523,7 +525,8 @@ export default function AdminAppointmentsPage() {
   return (
     <div className="p-6 h-[calc(100vh-64px)] flex flex-col">
       {/* Page title */}
-      <div className="mb-4">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
         <h1 className="text-xl font-bold text-gray-900">Appointments</h1>
         <p className="text-sm text-gray-500 mt-0.5">Manage clinic scheduling and appointment requests</p>
         {query && (
@@ -531,6 +534,15 @@ export default function AdminAppointmentsPage() {
             Showing {matchCount} result{matchCount === 1 ? '' : 's'} for &ldquo;{query}&rdquo; — clear the search box to see everything.
           </p>
         )}
+        </div>
+        {/* Staff booking on a patient's behalf. Previously the desk could only
+            schedule requests patients had already submitted themselves. */}
+        <Button
+          onClick={() => setBookOpen(true)}
+          className="bg-[#E03E3E] text-white h-10 text-xs font-bold rounded-lg shrink-0"
+        >
+          <CalendarPlus className="w-4 h-4 mr-1.5" /> Book Appointment
+        </Button>
       </div>
 
       {/* Two-column layout */}
@@ -634,6 +646,9 @@ export default function AdminAppointmentsPage() {
         appointmentId={rescheduleId}
         onClose={() => setRescheduleId(null)}
       />
+
+      {/* Book on a patient's behalf */}
+      <BookAppointmentModal isOpen={bookOpen} onClose={() => setBookOpen(false)} />
     </div>
   );
 }

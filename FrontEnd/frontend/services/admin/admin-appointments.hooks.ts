@@ -76,6 +76,31 @@ export const useAdminScheduleAppointment = () => {
   });
 };
 
+export interface AdminPatientOption {
+  id: string;
+  name: string;
+  email: string;
+  phone_number: string;
+  patient_id: string;
+}
+
+/**
+ * Patient search for staff booking on someone's behalf.
+ *
+ * Deliberately not the /medical-records/patients/ list — that one derives its
+ * patients from Appointment rows, so a first-time caller would not be findable.
+ */
+export const useAdminPatientLookup = (query: string) => {
+  return useQuery({
+    queryKey: ['admin-patient-lookup', query],
+    queryFn: async () => {
+      const qs = query ? `?q=${encodeURIComponent(query)}` : '';
+      const res = await apiClient.get(`/dashboard/admin/patients/${qs}`);
+      return res.data.data as AdminPatientOption[];
+    },
+  });
+};
+
 export const useAdminDoctors = () => {
   return useQuery({
     queryKey: ['admin-doctors'],
