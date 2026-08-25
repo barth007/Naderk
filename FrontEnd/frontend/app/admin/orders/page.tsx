@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { format } from 'date-fns';
 import {
   Package, CheckCircle2, Truck, Clock,
-  Search, Filter, X, Eye, RotateCcw,
+  Search, Filter, X, Eye, RotateCcw, Archive,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import {
@@ -33,6 +33,20 @@ function nextStatusOptions(current: string): string[] {
 
 const REVIEW_STATUSES = ['PAID', 'PRESCRIPTION_REVIEW', 'FRAME_RESERVED', 'IN_PRODUCTION', 'LENS_CUTTING', 'FRAME_ASSEMBLY', 'QUALITY_CHECK'];
 const SHIPPED_STATUSES = ['READY_FOR_PICKUP', 'SHIPPED'];
+
+/**
+ * Anything that is neither in review nor in transit — delivered, cancelled, and
+ * any status not named above.
+ *
+ * The page previously had only the first two tabs, so marking an order
+ * DELIVERED or CANCELLED matched no tab and the order vanished from the Order
+ * Book with no way to find it again. Defining this as "everything else" rather
+ * than a third fixed list means a status added later cannot disappear the same
+ * way.
+ */
+function isCompleted(status: string): boolean {
+  return !REVIEW_STATUSES.includes(status) && !SHIPPED_STATUSES.includes(status);
+}
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
   PAID:                { label: 'Paid',                color: 'text-blue-700',   bg: 'bg-blue-50',   dot: 'bg-blue-500' },
@@ -207,7 +221,7 @@ function OrderRow({ order, onView }: { order: AdminOrder; onView: (o: AdminOrder
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
-type Tab = 'review' | 'shipped';
+type Tab = 'review' | 'shipped' | 'completed';
 
 export default function AdminOrderBookPage() {
   const { data: allOrders = [], isLoading, refetch, isFetching } = useAdminAllOrders();
@@ -219,8 +233,10 @@ export default function AdminOrderBookPage() {
 
   const reviewOrders = allOrders.filter((o) => REVIEW_STATUSES.includes(o.status));
   const shippedOrders = allOrders.filter((o) => SHIPPED_STATUSES.includes(o.status));
+  const completedOrders = allOrders.filter((o) => isCompleted(o.status));
 
-  const activeOrders = tab === 'review' ? reviewOrders : shippedOrders;
+  const activeOrders =
+    tab === 'review' ? reviewOrders : tab === 'shipped' ? shippedOrders : completedOrders;
 
   const filtered = search.trim()
     ? activeOrders.filter((o) =>
@@ -291,6 +307,16 @@ export default function AdminOrderBookPage() {
               {shippedOrders.length}
             </span>
           </button>
+          <button
+            onClick={() => handleTabChange('completed')}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${tab === 'completed' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            <Archive className="w-3.5 h-3.5" />
+            Completed
+            <span className={`text-xs px-1.5 py-0.5 rounded-md ${tab === 'completed' ? 'bg-[#E03E3E] text-white' : 'bg-gray-200 text-gray-600'}`}>
+              {completedOrders.length}
+            </span>
+          </button>
         </div>
 
         <div className="relative">
@@ -338,9 +364,14 @@ export default function AdminOrderBookPage() {
               <TableRow>
                 <Td colSpan={7} className="px-4 py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
-                    {tab === 'review' ? <Clock className="w-8 h-8 text-gray-200" /> : <Truck className="w-8 h-8 text-gray-200" />}
+                    {tab === 'review' ? <Clock className="w-8 h-8 text-gray-200" />
+                      : tab === 'shipped' ? <Truck className="w-8 h-8 text-gray-200" />
+                      : <Archive className="w-8 h-8 text-gray-200" />}
                     <p className="text-sm text-gray-400">
-                      {search ? 'No orders match your search.' : tab === 'review' ? 'No orders awaiting review.' : 'No orders shipped yet.'}
+                      {search ? 'No orders match your search.'
+                        : tab === 'review' ? 'No orders awaiting review.'
+                        : tab === 'shipped' ? 'No orders shipped yet.'
+                        : 'No delivered or cancelled orders yet.'}
                     </p>
                   </div>
                 </Td>

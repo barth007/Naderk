@@ -1173,6 +1173,12 @@ class AdminProductHistoryAPI(APIView):
         return build_success_response(message="History retrieved.", data=history, status_code=200)
 
 
+#: How many orders the Order Book fetches by default, and the ceiling a caller
+#: may request. The page filters and paginates these client-side.
+ORDER_BOOK_DEFAULT_LIMIT = 200
+ORDER_BOOK_MAX_LIMIT = 500
+
+
 class AdminAllOrdersAPI(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1192,8 +1198,21 @@ class AdminAllOrdersAPI(APIView):
         if status_filter:
             qs = qs.filter(status=status_filter)
 
+        # The Order Book filters and paginates client-side over whatever this
+        # returns, so a hard slice here is the real page size. It was 20 — the
+        # same as the client's own page size — so page 2 was always empty and
+        # everything older than the 20 most recent orders was unreachable.
+        # Delivered and cancelled orders now show too, so they share this window.
+        try:
+            limit = int(request.query_params.get('limit', ORDER_BOOK_DEFAULT_LIMIT))
+        except (TypeError, ValueError):
+            limit = ORDER_BOOK_DEFAULT_LIMIT
+        limit = max(1, min(limit, ORDER_BOOK_MAX_LIMIT))
+
+        total = qs.count()
+
         data = []
-        for o in qs[:20]:
+        for o in qs[:limit]:
             first_item = o.items.first()
             item_name = '—'
             item_image = None
@@ -1217,6 +1236,14 @@ class AdminAllOrdersAPI(APIView):
                 'first_item_image': item_image,
                 'first_item_qty': item_qty,
             })
+
+        # Say so when the window truncates, rather than looking like the tail
+        # of the order history simply does not exist.
+        if total > limit:
+            logger.info(
+                "Order Book truncated: returned %s of %s orders (limit=%s)",
+                len(data), total, limit,
+            )
 
         return build_success_response(message="Orders retrieved.", data=data, status_code=200)
 
