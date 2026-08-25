@@ -182,8 +182,6 @@ export function portalHomeFor(role?: string | null, areas?: string[]): string {
       return '/dashboard';
     case 'DOCTOR':
       return '/doctor/dashboard';
-    case 'OPTICIAN':
-      return '/optician/dashboard';
     default:
       // Staff portals live under /admin and are scoped by capability area.
       return landingRoute(role ?? '', areas);
