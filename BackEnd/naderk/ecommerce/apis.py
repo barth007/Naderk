@@ -527,6 +527,14 @@ class OrderListApi(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
+        # Sync fail-safe for local development, where celery beat may not be
+        # running. Mirrors AppointmentHistoryApi; the task is idempotent.
+        try:
+            from .tasks import cancel_abandoned_unpaid_orders
+            cancel_abandoned_unpaid_orders()
+        except Exception:
+            pass
+
         orders = get_user_orders(request.user)
         serializer = OrderSerializer(orders, many=True)
         return build_success_response("Orders retrieved successfully", serializer.data)

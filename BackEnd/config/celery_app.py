@@ -30,6 +30,10 @@ app.conf.beat_schedule = {
         'task': 'naderk.appointments.tasks.cancel_abandoned_unpaid_appointments',
         'schedule': crontab(minute='*/10'),
     },
+    'cancel-abandoned-unpaid-orders-every-10-minutes': {
+        'task': 'naderk.ecommerce.tasks.cancel_abandoned_unpaid_orders',
+        'schedule': crontab(minute='*/10'),
+    },
     'reconcile-pending-transactions-every-10-minutes': {
         'task': 'naderk.payments.tasks.reconcile_pending_transactions',
         'schedule': crontab(minute='*/10'),
