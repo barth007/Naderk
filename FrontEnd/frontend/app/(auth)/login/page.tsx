@@ -13,6 +13,7 @@ import { LogIn, UserPlus, ShieldCheck, CalendarClock, EyeOff, Eye } from 'lucide
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/Checkbox';
+import { requiresOnboarding, portalHomeFor } from '@/utils/role-config';
 import { apiClient } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { ProblemDetailsResponse, AuthTokens } from '@/types';
@@ -52,24 +53,16 @@ export default function LoginPage() {
       setAuth(tokens.user, tokens.access, tokens.refresh);
       toast.success(response.data.message);
 
-      const { role, profile_completion_status } = tokens.user;
+      const { role, profile_completion_status, areas } = tokens.user;
 
-      if (profile_completion_status !== 'COMPLETED') {
+      // Only patients and doctors are held at onboarding; staff go straight to
+      // work and can complete their profile from Settings later.
+      if (requiresOnboarding(role) && profile_completion_status !== 'COMPLETED') {
         router.push('/onboarding');
         return;
       }
 
-      if (role === 'DOCTOR') {
-        router.push('/doctor/dashboard');
-      } else if (role === 'OPTICIAN') {
-        router.push('/optician/dashboard');
-      } else if (role === 'MEDICAL_AGENT') {
-        router.push('/agent/dashboard');
-      } else if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
-        router.push('/admin/dashboard');
-      } else {
-        router.push('/dashboard');
-      }
+      router.push(portalHomeFor(role, areas));
     } catch (error) {
       const err = error as AxiosError<ProblemDetailsResponse>;
       if (err.response?.data) {

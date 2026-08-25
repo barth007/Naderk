@@ -9,7 +9,7 @@ import { SidebarProvider } from '@/context/SidebarContext';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { apiClient } from '@/lib/api';
-import { landingRoute, areaForAdminPath } from '@/utils/role-config';
+import { landingRoute, areaForAdminPath, requiresOnboarding } from '@/utils/role-config';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, accessToken, isAuthenticated, setUser } = useAuth();
@@ -43,8 +43,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (!isAuthenticated) {
         router.push('/login');
       } else if (user) {
-        // Redirection for all roles with incomplete profiles
-        if (user.profile_completion_status !== 'COMPLETED') {
+        // Only patients and doctors are held at onboarding. Staff were bounced
+        // here too, which trapped a newly created agent on a patient/doctor
+        // form with nowhere sensible to go afterwards.
+        if (requiresOnboarding(user.role) && user.profile_completion_status !== 'COMPLETED') {
           router.push('/onboarding');
           return;
         }
@@ -85,8 +87,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // If user hasn't completed profile, return null while useEffect redirects
-  if (user && user.profile_completion_status !== 'COMPLETED') {
+  // Blank while the effect above redirects — but only for the roles that are
+  // actually held at onboarding, or staff would render nothing at all.
+  if (user && requiresOnboarding(user.role) && user.profile_completion_status !== 'COMPLETED') {
     return null;
   }
 

@@ -155,6 +155,46 @@ export const ROLE_CONFIGS: Record<string, RoleConfig> = {
   },
 };
 
+// ── Onboarding ───────────────────────────────────────────────────────────────
+// Roles that must complete the onboarding form before they can reach their
+// dashboard. Only clinical-facing roles need it: a patient's record and a
+// doctor's professional details are required before either can be used.
+//
+// Staff were previously gated too, which bounced a newly created support agent
+// or medical agent to /onboarding on first login — a form built around patient
+// and doctor fields, with no sensible destination afterwards. They now land on
+// their dashboard and can fill in their profile from Settings whenever.
+const ONBOARDING_REQUIRED_ROLES = new Set(['PATIENT', 'DOCTOR']);
+
+/**
+ * Where a role belongs after login or after finishing a profile form.
+ *
+ * The same role->route mapping was spelled out by hand in the login page, the
+ * onboarding page and complete-profile, and the three had drifted: MEDICAL_AGENT
+ * was sent to /agent/dashboard (its portal is /admin), AGENT fell through to
+ * /dashboard (the patient portal), and complete-profile sent everyone to
+ * /dashboard. Each wrong landing was then bounced again by the dashboard
+ * layout's role checks, which is what made post-login navigation feel lost.
+ */
+export function portalHomeFor(role?: string | null, areas?: string[]): string {
+  switch (role) {
+    case 'PATIENT':
+      return '/dashboard';
+    case 'DOCTOR':
+      return '/doctor/dashboard';
+    case 'OPTICIAN':
+      return '/optician/dashboard';
+    default:
+      // Staff portals live under /admin and are scoped by capability area.
+      return landingRoute(role ?? '', areas);
+  }
+}
+
+export function requiresOnboarding(role?: string | null): boolean {
+  if (!role) return false;
+  return ONBOARDING_REQUIRED_ROLES.has(role);
+}
+
 // Map an /admin/* pathname to the capability area that guards it.
 const ADMIN_PATH_AREAS: Record<string, string> = {
   dashboard: 'dashboard',
