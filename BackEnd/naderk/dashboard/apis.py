@@ -1529,6 +1529,19 @@ class AdminActiveFlashSaleAPI(APIView):
 
 # ── Staff Management ──────────────────────────────────────────────────────────
 
+#: Roles the Staff Management page can create. SUPER_ADMIN is deliberately not
+#: creatable from the UI.
+CREATABLE_STAFF_ROLES = [
+    'DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'OPERATIONS_MANAGER', 'AGENT', 'ADMIN',
+]
+
+#: Roles the page lists. Everything creatable must appear here, or a staff
+#: member could be created and then be invisible — which is what happened to
+#: AGENT and OPERATIONS_MANAGER: the create form offered them and the API
+#: accepted them, but the list filtered to a separate, shorter hardcoded set.
+STAFF_ROLES = CREATABLE_STAFF_ROLES + ['SUPER_ADMIN']
+
+
 class AdminStaffListAPI(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1540,9 +1553,8 @@ class AdminStaffListAPI(APIView):
             )
 
         from naderk.core.models import User
-        staff_roles = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'ADMIN', 'SUPER_ADMIN']
         users = (
-            User.objects.filter(role__in=staff_roles)
+            User.objects.filter(role__in=STAFF_ROLES)
             .select_related('staff_profile', 'doctor_profile')
             .order_by('first_name', 'last_name')
         )
@@ -1618,7 +1630,7 @@ class AdminStaffListAPI(APIView):
         department = (request.data.get('department')  or '').strip()
         specialization = (request.data.get('specialization') or '').strip()
 
-        ALLOWED_ROLES = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'OPERATIONS_MANAGER', 'AGENT', 'ADMIN']
+        ALLOWED_ROLES = CREATABLE_STAFF_ROLES
         if not all([first_name, email, role]):
             return build_error_response(
                 type_uri='validation-error', title='Validation Error', status_code=400,
