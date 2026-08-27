@@ -155,3 +155,96 @@ class StaffListRoleCoverageTests(TestCase):
         res = self.client.get('/api/v1/dashboard/admin/staff/')
         emails = {row['email'] for row in res.json()['data']}
         self.assertNotIn('patient@x.com', emails)
+
+
+class LensCatalogueAdminTests(TestCase):
+    """
+    Lens types and options had no write path anywhere — GET-only endpoints, no
+    Django admin registration for ecommerce, no seeder — so the catalogue could
+    only be changed by inserting rows into the database.
+    """
+
+    def setUp(self):
+        from naderk.ecommerce.models import LensType, LensOption
+        self.client = APIClient()
+        self.admin = User.objects.create_user(
+            email='lensadmin@x.com', password='pw12345!', role=User.Role.ADMIN
+        )
+        self.client.force_authenticate(user=self.admin)
+        self.lens_type = LensType.objects.create(
+            name='Single Vision', description='Standard.', price_modifier='0.00'
+        )
+        self.lens_option = LensOption.objects.create(
+            name='UV Protection', price_modifier='800.00'
+        )
+
+    def test_create_and_edit_lens_type(self):
+        res = self.client.post('/api/v1/dashboard/admin/lens-types/', {
+            'name': 'Progressive', 'description': 'Varifocal.', 'price_modifier': '40000.00',
+        }, format='json')
+        self.assertEqual(res.status_code, 201)
+        new_id = res.json()['data']['id']
+
+        res = self.client.patch(f'/api/v1/dashboard/admin/lens-types/{new_id}/', {
+            'price_modifier': '45000.00', 'is_active': False,
+        }, format='json')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()['data']['price_modifier'], '45000.00')
+        self.assertFalse(res.json()['data']['is_active'])
+
+    def test_admin_list_includes_inactive(self):
+        from naderk.ecommerce.models import LensType
+        LensType.objects.create(name='Retired', description='', price_modifier='0', is_active=False)
+
+        res = self.client.get('/api/v1/dashboard/admin/lens-types/')
+        names = {r['name'] for r in res.json()['data']}
+        self.assertIn('Retired', names)
+
+    def test_duplicate_name_rejected(self):
+        res = self.client.post('/api/v1/dashboard/admin/lens-types/',
+                               {'name': 'single vision'}, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_negative_price_rejected(self):
+        res = self.client.post('/api/v1/dashboard/admin/lens-options/',
+                               {'name': 'Bad', 'price_modifier': '-1'}, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_cannot_delete_lens_type_used_by_an_order(self):
+        from decimal import Decimal
+        from naderk.ecommerce.models import Order, OrderItem
+        order = Order.objects.create(
+            user=self.admin, status=Order.Status.PENDING,
+            payment_status=Order.PaymentStatus.PAID,
+            total_price=Decimal('1000.00'), shipping_address='x',
+        )
+        OrderItem.objects.create(order=order, lens_type=self.lens_type,
+                                 quantity=1, price=Decimal('1000.00'))
+
+        res = self.client.delete(f'/api/v1/dashboard/admin/lens-types/{self.lens_type.id}/')
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('Deactivate', res.json()['detail'])
+
+    def test_cannot_delete_lens_option_used_by_an_order(self):
+        from decimal import Decimal
+        from naderk.ecommerce.models import Order, OrderItem
+        order = Order.objects.create(
+            user=self.admin, status=Order.Status.PENDING,
+            payment_status=Order.PaymentStatus.PAID,
+            total_price=Decimal('1000.00'), shipping_address='x',
+        )
+        item = OrderItem.objects.create(order=order, quantity=1, price=Decimal('1000.00'))
+        item.lens_options.add(self.lens_option)
+
+        res = self.client.delete(f'/api/v1/dashboard/admin/lens-options/{self.lens_option.id}/')
+        self.assertEqual(res.status_code, 400)
+
+    def test_unused_lens_option_can_be_deleted(self):
+        res = self.client.delete(f'/api/v1/dashboard/admin/lens-options/{self.lens_option.id}/')
+        self.assertEqual(res.status_code, 200)
+
+    def test_requires_the_glass_builder_area(self):
+        patient = User.objects.create_user(email='p@x.com', password='pw12345!', role=User.Role.PATIENT)
+        self.client.force_authenticate(user=patient)
+        res = self.client.get('/api/v1/dashboard/admin/lens-types/')
+        self.assertEqual(res.status_code, 403)

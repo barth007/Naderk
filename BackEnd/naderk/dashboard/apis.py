@@ -1250,6 +1250,238 @@ class AdminAllOrdersAPI(APIView):
 
 # ── Category Management ──────────────────────────────────────────────────────
 
+# ── Lens Catalogue ───────────────────────────────────────────────────────────
+# Lens types and options had no write path anywhere: the list endpoints are
+# GET-only, ecommerce registers no Django admin, and there is no seeder — so
+# the only way to add one was inserting rows directly into the database.
+# The glasses-builder page reads them to target its recommendation rules but
+# could never create them.
+
+
+def _lens_price(raw, field='price_modifier'):
+    """Parse a price modifier, returning (value, error_response_or_None)."""
+    from decimal import Decimal, InvalidOperation
+    if raw is None or raw == '':
+        return Decimal('0.00'), None
+    try:
+        value = Decimal(str(raw))
+    except (InvalidOperation, TypeError, ValueError):
+        return None, f'{field} must be a number.'
+    if value < 0:
+        return None, f'{field} cannot be negative.'
+    return value, None
+
+
+def _lens_type_row(lt):
+    return {
+        'id': str(lt.id),
+        'name': lt.name,
+        'description': lt.description or '',
+        'price_modifier': str(lt.price_modifier),
+        'is_active': lt.is_active,
+    }
+
+
+def _lens_option_row(lo):
+    return {
+        'id': str(lo.id),
+        'name': lo.name,
+        'price_modifier': str(lo.price_modifier),
+        'is_active': lo.is_active,
+    }
+
+
+class AdminLensTypeListAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensType
+        # Unlike the storefront endpoint, inactive rows are included — the
+        # admin needs to see and reactivate what they have retired.
+        rows = LensType.objects.all().order_by('name')
+        return build_success_response(
+            message="Lens types retrieved.",
+            data=[_lens_type_row(x) for x in rows], status_code=200,
+        )
+
+    def post(self, request):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensType
+
+        name = (request.data.get('name') or '').strip()
+        if not name:
+            return build_error_response('validation-error', 'Validation Error', 400, 'Name is required.')
+        if LensType.objects.filter(name__iexact=name).exists():
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                f'A lens type named "{name}" already exists.',
+            )
+
+        price, err = _lens_price(request.data.get('price_modifier'))
+        if err:
+            return build_error_response('validation-error', 'Validation Error', 400, err)
+
+        lt = LensType.objects.create(
+            name=name,
+            # description is NOT NULL on the model, so never pass None.
+            description=(request.data.get('description') or '').strip(),
+            price_modifier=price,
+            is_active=bool(request.data.get('is_active', True)),
+        )
+        return build_success_response("Lens type created.", _lens_type_row(lt), status_code=201)
+
+
+class AdminLensTypeDetailAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensType
+        try:
+            lt = LensType.objects.get(id=pk)
+        except LensType.DoesNotExist:
+            return build_error_response('not-found', 'Not Found', 404, 'Lens type not found.')
+
+        if 'name' in request.data:
+            name = (request.data.get('name') or '').strip()
+            if not name:
+                return build_error_response('validation-error', 'Validation Error', 400, 'Name cannot be empty.')
+            if LensType.objects.filter(name__iexact=name).exclude(pk=lt.pk).exists():
+                return build_error_response(
+                    'validation-error', 'Validation Error', 400,
+                    f'A lens type named "{name}" already exists.',
+                )
+            lt.name = name
+        if 'description' in request.data:
+            lt.description = (request.data.get('description') or '').strip()
+        if 'price_modifier' in request.data:
+            price, err = _lens_price(request.data.get('price_modifier'))
+            if err:
+                return build_error_response('validation-error', 'Validation Error', 400, err)
+            lt.price_modifier = price
+        if 'is_active' in request.data:
+            lt.is_active = bool(request.data.get('is_active'))
+        lt.save()
+        return build_success_response("Lens type updated.", _lens_type_row(lt), status_code=200)
+
+    def delete(self, request, pk):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from django.db.models import ProtectedError
+        from naderk.ecommerce.models import LensType
+        try:
+            lt = LensType.objects.get(id=pk)
+        except LensType.DoesNotExist:
+            return build_error_response('not-found', 'Not Found', 404, 'Lens type not found.')
+
+        # OrderItem.lens_type is PROTECT, so a sold lens cannot be removed
+        # without rewriting order history. Deactivating hides it from the
+        # storefront while leaving past orders intact.
+        try:
+            lt.delete()
+        except ProtectedError:
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                'This lens type is used by existing orders. Deactivate it instead of deleting.',
+            )
+        return build_success_response("Lens type deleted.", None, status_code=200)
+
+
+class AdminLensOptionListAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensOption
+        rows = LensOption.objects.all().order_by('name')
+        return build_success_response(
+            message="Lens options retrieved.",
+            data=[_lens_option_row(x) for x in rows], status_code=200,
+        )
+
+    def post(self, request):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensOption
+
+        name = (request.data.get('name') or '').strip()
+        if not name:
+            return build_error_response('validation-error', 'Validation Error', 400, 'Name is required.')
+        if LensOption.objects.filter(name__iexact=name).exists():
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                f'A lens option named "{name}" already exists.',
+            )
+
+        price, err = _lens_price(request.data.get('price_modifier'))
+        if err:
+            return build_error_response('validation-error', 'Validation Error', 400, err)
+
+        lo = LensOption.objects.create(
+            name=name,
+            price_modifier=price,
+            is_active=bool(request.data.get('is_active', True)),
+        )
+        return build_success_response("Lens option created.", _lens_option_row(lo), status_code=201)
+
+
+class AdminLensOptionDetailAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensOption
+        try:
+            lo = LensOption.objects.get(id=pk)
+        except LensOption.DoesNotExist:
+            return build_error_response('not-found', 'Not Found', 404, 'Lens option not found.')
+
+        if 'name' in request.data:
+            name = (request.data.get('name') or '').strip()
+            if not name:
+                return build_error_response('validation-error', 'Validation Error', 400, 'Name cannot be empty.')
+            if LensOption.objects.filter(name__iexact=name).exclude(pk=lo.pk).exists():
+                return build_error_response(
+                    'validation-error', 'Validation Error', 400,
+                    f'A lens option named "{name}" already exists.',
+                )
+            lo.name = name
+        if 'price_modifier' in request.data:
+            price, err = _lens_price(request.data.get('price_modifier'))
+            if err:
+                return build_error_response('validation-error', 'Validation Error', 400, err)
+            lo.price_modifier = price
+        if 'is_active' in request.data:
+            lo.is_active = bool(request.data.get('is_active'))
+        lo.save()
+        return build_success_response("Lens option updated.", _lens_option_row(lo), status_code=200)
+
+    def delete(self, request, pk):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensOption, OrderItem
+        try:
+            lo = LensOption.objects.get(id=pk)
+        except LensOption.DoesNotExist:
+            return build_error_response('not-found', 'Not Found', 404, 'Lens option not found.')
+
+        # lens_options is M2M, so a delete would silently unlink it from past
+        # orders rather than raising. Check explicitly instead.
+        if OrderItem.objects.filter(lens_options=lo).exists():
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                'This lens option is used by existing orders. Deactivate it instead of deleting.',
+            )
+        lo.delete()
+        return build_success_response("Lens option deleted.", None, status_code=200)
+
+
 class AdminCategoryListAPI(APIView):
     permission_classes = [IsAuthenticated]
 

@@ -1,5 +1,6 @@
 'use client';
 
+import LensCatalogueSection from '@/components/admin/LensCatalogueSection';
 import React, { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2, Loader2, X, Glasses, SlidersHorizontal, Save } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -346,6 +347,9 @@ export default function GlassesBuilderAdminPage() {
           <p className="text-sm text-gray-500">Control the prescription fields patients fill in and the rules that recommend lenses.</p>
         </div>
       </div>
+
+      {/* ── Lens Catalogue ── */}
+      <LensCatalogueSection />
 
       {/* ── Prescription Fields ── */}
       <section className="space-y-4">

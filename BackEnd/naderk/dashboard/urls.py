@@ -27,6 +27,10 @@ urlpatterns = [
     path('admin/products/<uuid:pk>/history/', apis.AdminProductHistoryAPI.as_view(), name='admin-product-history'),
     path('admin/orders/', apis.AdminAllOrdersAPI.as_view(), name='admin-orders'),
     # Categories
+    path('admin/lens-types/', apis.AdminLensTypeListAPI.as_view(), name='admin-lens-types'),
+    path('admin/lens-types/<uuid:pk>/', apis.AdminLensTypeDetailAPI.as_view(), name='admin-lens-type-detail'),
+    path('admin/lens-options/', apis.AdminLensOptionListAPI.as_view(), name='admin-lens-options'),
+    path('admin/lens-options/<uuid:pk>/', apis.AdminLensOptionDetailAPI.as_view(), name='admin-lens-option-detail'),
     path('admin/categories/', apis.AdminCategoryListAPI.as_view(), name='admin-categories'),
     path('admin/categories/<uuid:pk>/', apis.AdminCategoryDetailAPI.as_view(), name='admin-category-detail'),
     # Flash Sales
