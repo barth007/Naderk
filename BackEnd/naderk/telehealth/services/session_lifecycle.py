@@ -248,6 +248,12 @@ def end_session(*, session: TelehealthSession, user) -> TelehealthSession:
         appointment.completed_at = session.ended_at
         appointment.save(update_fields=['status', 'completed_at'])
 
+        # Inside the transition guard so a repeated end-session call cannot
+        # draw the pack down twice. See AppointmentCompleteApi for why this
+        # was missing everywhere.
+        from naderk.appointments.services import ConsultationService
+        ConsultationService.consume_session(appointment.patient, appointment.service)
+
     # Create ConsultationEncounter (guard against duplicate rows from prior calls)
     from naderk.medical_records.models import ConsultationEncounter
     existing = ConsultationEncounter.objects.filter(telehealth_session=session).first()

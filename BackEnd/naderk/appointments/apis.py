@@ -556,5 +556,11 @@ class CompleteAppointmentApi(APIView):
         appointment.status = Appointment.Status.COMPLETED
         appointment.completed_at = timezone.now()
         appointment.save()
-        
+
+        # Draw down the patient's session pack. consume_session existed but was
+        # never called from anywhere, so a SESSION_PACK plan sat at
+        # sessions_used=0 forever — has_active_plan stayed true and every later
+        # booking of that service was priced at zero.
+        ConsultationService.consume_session(appointment.patient, appointment.service)
+
         return build_success_response("Appointment completed", AppointmentSerializer(appointment).data)
