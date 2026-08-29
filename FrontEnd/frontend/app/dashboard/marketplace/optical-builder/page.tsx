@@ -80,6 +80,16 @@ export default function OpticalBuilderPage() {
     ? frames.filter(f => f.brand === selectedBrand)
     : frames;
   const { data: lensTypes = [], isLoading: loadingLensTypes } = useLensTypes();
+
+  // Only lenses the chosen frame is actually compatible with. The builder used
+  // to list every active lens type, so a patient could pick one the frame does
+  // not support and only find out when add-to-cart returned
+  // "The selected frame X is incompatible with the lens type Y".
+  const compatibleLensTypes = useMemo(() => {
+    const allowed = selectedFrame?.compatible_lens_type_ids;
+    if (!allowed) return lensTypes;
+    return lensTypes.filter((l) => allowed.includes(l.id));
+  }, [lensTypes, selectedFrame]);
   const { data: lensOptions = [], isLoading: loadingLensOptions } = useLensOptions();
   const { data: reusablePrescriptions = [], refetch: refetchReusable } = useReusablePrescriptions();
   
@@ -539,9 +549,22 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
 
                 {loadingLensTypes ? (
                   <div className="py-20 flex justify-center"><RefreshCw className="animate-spin text-[#ff052f]" /></div>
+                ) : compatibleLensTypes.length === 0 ? (
+                  // add-to-cart rejects any frame/lens pair the admin has not
+                  // linked, so say so here rather than letting the patient
+                  // configure a pair that cannot be bought.
+                  <div className="py-16 text-center space-y-2">
+                    <p className="text-sm font-bold text-gray-700">
+                      No lenses available for this frame yet.
+                    </p>
+                    <p className="text-xs text-gray-500 max-w-sm mx-auto leading-relaxed">
+                      {selectedFrame?.name ?? 'This frame'} has not been matched to any lens type.
+                      Please choose another frame, or contact support.
+                    </p>
+                  </div>
                 ) : (
                   <div className="space-y-3">
-                    {lensTypes.map((lens) => {
+                    {compatibleLensTypes.map((lens) => {
                       // Apply admin recommendation rules
                       const hidden = recommendation?.hidden_lens_type_ids.includes(lens.id) ?? false;
                       const allowed = recommendation?.allowed_lens_type_ids;

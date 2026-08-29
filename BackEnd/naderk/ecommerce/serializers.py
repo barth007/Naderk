@@ -75,6 +75,7 @@ class FrameSerializer(serializers.ModelSerializer):
     gender_display = serializers.CharField(source='get_gender_display', read_only=True)
     rim_type_display = serializers.CharField(source='get_rim_type_display', read_only=True)
     size_category_display = serializers.CharField(source='get_size_category_display', read_only=True)
+    compatible_lens_type_ids = serializers.SerializerMethodField()
 
     class Meta:
         model = Frame
@@ -84,8 +85,19 @@ class FrameSerializer(serializers.ModelSerializer):
             'size_category', 'size_category_display', 'description', 'features',
             'lens_width', 'bridge_width', 'temple_length', 'lens_height', 'total_width', 'weight_grams',
             'front_image', 'images', 'transparent_overlay_png', 'is_active', 'variants',
-            'created_at', 'updated_at'
+            'compatible_lens_type_ids', 'created_at', 'updated_at'
         ]
+
+    def get_compatible_lens_type_ids(self, obj):
+        """
+        Lens types this frame may be built with.
+
+        add-to-cart rejects a frame/lens pair with no FrameLensCompatibility
+        row, but the builder listed every active lens type regardless — so a
+        patient could configure a full pair and only discover the mismatch at
+        checkout, with no way forward. The builder now filters on this.
+        """
+        return [str(c.lens_type_id) for c in obj.compatibilities.all()]
 
 
 class LensTypeSerializer(serializers.ModelSerializer):

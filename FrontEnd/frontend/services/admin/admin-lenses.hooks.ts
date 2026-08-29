@@ -116,3 +116,32 @@ export const useDeleteLensOption = () => {
     onSuccess: () => invalidateLenses(qc),
   });
 };
+
+// ── Frame ↔ lens compatibility ───────────────────────────────────────────────
+// add-to-cart refuses a frame/lens pair with no FrameLensCompatibility row, and
+// nothing outside tests ever created one — so a newly added frame could not be
+// built with any lens at all.
+
+export const useFrameLensTypes = (frameId?: string) =>
+  useQuery({
+    queryKey: ['admin-frame-lens-types', frameId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/dashboard/admin/frames/${frameId}/lens-types/`);
+      return res.data.data.lens_type_ids as string[];
+    },
+    enabled: !!frameId,
+  });
+
+export const useSetFrameLensTypes = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ frameId, lensTypeIds }: { frameId: string; lensTypeIds: string[] }) =>
+      apiClient.put(`/dashboard/admin/frames/${frameId}/lens-types/`, { lens_type_ids: lensTypeIds }),
+    onSuccess: (_d, { frameId }) => {
+      qc.invalidateQueries({ queryKey: ['admin-frame-lens-types', frameId] });
+      // The builder reads compatibility off the frame payload.
+      qc.invalidateQueries({ queryKey: ['marketplace-frames'] });
+      qc.invalidateQueries({ queryKey: ['admin-frames'] });
+    },
+  });
+};

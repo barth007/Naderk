@@ -54,6 +54,7 @@ urlpatterns = [
     path('admin/frames/', apis.AdminFrameListAPI.as_view(), name='admin-frames'),
     path('admin/frames/<uuid:pk>/', apis.AdminFrameDetailAPI.as_view(), name='admin-frame-detail'),
     path('admin/frames/<uuid:pk>/toggle/', apis.AdminFrameToggleAPI.as_view(), name='admin-frame-toggle'),
+    path('admin/frames/<uuid:pk>/lens-types/', apis.AdminFrameLensCompatibilityAPI.as_view(), name='admin-frame-lens-types'),
     # Medical Services
     path('admin/services/', apis.AdminServiceListAPI.as_view(), name='admin-services'),
     path('admin/services/<uuid:pk>/', apis.AdminServiceDetailAPI.as_view(), name='admin-service-detail'),

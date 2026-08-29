@@ -1250,6 +1250,77 @@ class AdminAllOrdersAPI(APIView):
 
 # ── Category Management ──────────────────────────────────────────────────────
 
+class AdminFrameLensCompatibilityAPI(APIView):
+    """
+    Which lens types a frame can be built with.
+
+    FrameLensCompatibility was read by the add-to-cart validator and written
+    nowhere outside tests — no endpoint, no admin, no seeder, and the frame
+    create flow did not populate it. So every newly added frame was
+    incompatible with every lens, and the patient hit
+    "The selected frame X is incompatible with the lens type Y" at checkout
+    with no way for anyone to fix it.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        if _admin_only(request, 'frames'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import Frame
+        try:
+            frame = Frame.objects.get(id=pk)
+        except Frame.DoesNotExist:
+            return build_error_response('not-found', 'Not Found', 404, 'Frame not found.')
+        return build_success_response(
+            message="Frame lens compatibility retrieved.",
+            data={
+                'frame_id': str(frame.id),
+                'lens_type_ids': [str(c.lens_type_id) for c in frame.compatibilities.all()],
+            },
+            status_code=200,
+        )
+
+    def put(self, request, pk):
+        if _admin_only(request, 'frames'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import Frame, LensType, FrameLensCompatibility
+
+        try:
+            frame = Frame.objects.get(id=pk)
+        except Frame.DoesNotExist:
+            return build_error_response('not-found', 'Not Found', 404, 'Frame not found.')
+
+        raw = request.data.get('lens_type_ids')
+        if not isinstance(raw, list):
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                'lens_type_ids must be a list.',
+            )
+
+        wanted = {str(x) for x in raw}
+        known = {str(x) for x in LensType.objects.filter(id__in=wanted).values_list('id', flat=True)}
+        unknown = wanted - known
+        if unknown:
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                f'Unknown lens type id(s): {", ".join(sorted(unknown))}',
+            )
+
+        with transaction.atomic():
+            # Replace the set wholesale — simpler than diffing, and the table is
+            # a plain join with no other columns to preserve.
+            FrameLensCompatibility.objects.filter(frame=frame).delete()
+            FrameLensCompatibility.objects.bulk_create([
+                FrameLensCompatibility(frame=frame, lens_type_id=lt_id) for lt_id in known
+            ])
+
+        return build_success_response(
+            message="Frame lens compatibility updated.",
+            data={'frame_id': str(frame.id), 'lens_type_ids': sorted(known)},
+            status_code=200,
+        )
+
+
 # ── Lens Catalogue ───────────────────────────────────────────────────────────
 # Lens types and options had no write path anywhere: the list endpoints are
 # GET-only, ecommerce registers no Django admin, and there is no seeder — so

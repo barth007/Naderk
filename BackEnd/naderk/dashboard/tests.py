@@ -248,3 +248,79 @@ class LensCatalogueAdminTests(TestCase):
         self.client.force_authenticate(user=patient)
         res = self.client.get('/api/v1/dashboard/admin/lens-types/')
         self.assertEqual(res.status_code, 403)
+
+
+class FrameLensCompatibilityAdminTests(TestCase):
+    """
+    FrameLensCompatibility was read by the add-to-cart validator and written
+    nowhere outside tests, so a newly added frame was incompatible with every
+    lens and could not be bought at all.
+    """
+
+    def setUp(self):
+        from decimal import Decimal
+        from naderk.ecommerce.models import Frame, LensType
+        self.client = APIClient()
+        self.admin = User.objects.create_user(
+            email='frameadmin@x.com', password='pw12345!', role=User.Role.ADMIN
+        )
+        self.client.force_authenticate(user=self.admin)
+        self.frame = Frame.objects.create(
+            name='Ariana Cat Eye', brand='Ariana', style='Cat Eye',
+            material='Acetate', base_price=Decimal('50000.00'),
+        )
+        self.progressive = LensType.objects.create(
+            name='Progressive', description='Varifocal.', price_modifier='40000.00'
+        )
+        self.single = LensType.objects.create(
+            name='Single Vision', description='Standard.', price_modifier='0.00'
+        )
+
+    def _url(self):
+        return f'/api/v1/dashboard/admin/frames/{self.frame.id}/lens-types/'
+
+    def test_new_frame_starts_with_no_compatible_lenses(self):
+        res = self.client.get(self._url())
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()['data']['lens_type_ids'], [])
+
+    def test_setting_compatibility_makes_the_pair_valid(self):
+        from naderk.ecommerce.models import FrameLensCompatibility
+
+        res = self.client.put(self._url(), {
+            'lens_type_ids': [str(self.progressive.id), str(self.single.id)],
+        }, format='json')
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(
+            FrameLensCompatibility.objects.filter(
+                frame=self.frame, lens_type=self.progressive
+            ).exists()
+        )
+
+    def test_put_replaces_rather_than_appends(self):
+        from naderk.ecommerce.models import FrameLensCompatibility
+
+        self.client.put(self._url(), {
+            'lens_type_ids': [str(self.progressive.id), str(self.single.id)],
+        }, format='json')
+        self.client.put(self._url(), {'lens_type_ids': [str(self.single.id)]}, format='json')
+
+        remaining = list(
+            FrameLensCompatibility.objects.filter(frame=self.frame)
+            .values_list('lens_type_id', flat=True)
+        )
+        self.assertEqual(remaining, [self.single.id])
+
+    def test_unknown_lens_id_rejected(self):
+        res = self.client.put(self._url(), {
+            'lens_type_ids': ['00000000-0000-0000-0000-000000000000'],
+        }, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_frame_payload_exposes_compatibility_for_the_builder(self):
+        from naderk.ecommerce.serializers import FrameSerializer
+
+        self.client.put(self._url(), {'lens_type_ids': [str(self.single.id)]}, format='json')
+        self.frame.refresh_from_db()
+        data = FrameSerializer(self.frame).data
+        self.assertEqual(data['compatible_lens_type_ids'], [str(self.single.id)])

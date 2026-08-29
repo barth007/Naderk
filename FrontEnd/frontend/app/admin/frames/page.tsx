@@ -1,5 +1,6 @@
 'use client';
 
+import FrameLensCompatibility from '@/components/admin/FrameLensCompatibility';
 import React, { useState } from 'react';
 import { Plus, Pencil, Power, Trash2, Loader2, X, Glasses, Ruler } from 'lucide-react';
 import { toast } from 'sonner';
@@ -203,6 +204,14 @@ function FrameModal({ initial, onClose, onSaved }: { initial?: Frame; onClose: (
               ))}
             </div>
           </div>
+
+          {/* Lens compatibility — only once the frame exists, since the rows key
+              off its id. A frame with none cannot be added to a cart at all. */}
+          {isEdit && (
+            <div className="pt-4 border-t border-gray-100">
+              <FrameLensCompatibility frameId={initial!.id} frameName={initial!.name} />
+            </div>
+          )}
 
           {errors._form && <p className="text-xs text-red-500">{errors._form}</p>}
         </div>
