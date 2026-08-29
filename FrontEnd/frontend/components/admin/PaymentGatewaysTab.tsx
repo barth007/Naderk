@@ -1,5 +1,6 @@
 'use client';
 
+import { toastApiError } from '@/lib/api-errors';
 import React, { useState } from 'react';
 import { CreditCard, Plus, X, Loader2, Trash2, Pencil, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
@@ -66,7 +67,7 @@ function GatewayModal({ gateway, onClose }: { gateway: PaymentGateway | null; on
       toast.success(`Gateway ${isEdit ? 'updated' : 'created'}.`);
       onClose();
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to save gateway.');
+      toastApiError(err, 'Failed to save gateway.');
     }
   };
 

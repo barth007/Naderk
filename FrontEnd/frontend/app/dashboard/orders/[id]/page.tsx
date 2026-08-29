@@ -1,5 +1,6 @@
 'use client';
 
+import { toastApiError } from '@/lib/api-errors';
 import Link from "next/link"
 import React from 'react';
 import { useParams } from "next/navigation";
@@ -97,7 +98,7 @@ export default function OrderDetailPage() {
       await confirmDelivery.mutateAsync();
       toast.success('Delivery confirmed. Thank you!');
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Could not confirm delivery. Please try again.');
+      toastApiError(err, 'Could not confirm delivery. Please try again.');
     }
   };
 

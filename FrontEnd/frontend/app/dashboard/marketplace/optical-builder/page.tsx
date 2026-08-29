@@ -1,5 +1,6 @@
 "use client";
 
+import { toastApiError } from '@/lib/api-errors';
 import Link from "next/link"
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -95,6 +96,8 @@ export default function OpticalBuilderPage() {
   
   const submitPrescriptionMutation = useSubmitPrescription();
   const addToCartMutation = useAddToCart();
+  // Per-field messages from the API, shown beneath the matching inputs.
+  const [rxFieldErrors, setRxFieldErrors] = useState<Record<string, string>>({});
 
   // Admin-driven builder config + prescription-based lens recommendations
   const { data: fieldConfigs = [] } = useBuilderFields();
@@ -294,14 +297,18 @@ export default function OpticalBuilderPage() {
 
     if (Object.keys(extraValues).length) payload.extra_measurements = extraValues;
 
+    setRxFieldErrors({});
     submitPrescriptionMutation.mutate(payload, {
       onSuccess: (newRx) => {
         // Prescription saved — now add eyewear to cart and go to payment
         handleAddEyewearToCart(newRx.id);
       },
-      onError: (err: any) => {
-        const detail = err.response?.data?.detail || 'Failed to save prescription. Please check your values.';
-        toast.error(detail);
+      onError: (err) => {
+        // Surfaces the per-field messages (e.g. "Right eye SPH: SPH must be
+        // between -20.00 and +20.00.") and binds them to the inputs, instead of
+        // showing only the generic "Prescription validation failed".
+        const { fieldErrors } = toastApiError(err, 'Failed to save prescription. Please check your values.');
+        setRxFieldErrors(fieldErrors);
       },
     });
   };
@@ -321,9 +328,10 @@ export default function OpticalBuilderPage() {
         toast.success("Eyewear added to cart — proceeding to checkout!");
         router.push('/dashboard/checkout');
       },
-      onError: (err: any) => {
-        const detail = err.response?.data?.detail || "Failed to add configured eyewear to cart.";
-        toast.error(detail);
+      onError: (err) => {
+        // The reason lives in errors.non_field_errors — detail is only
+        // "Invalid fields for cart addition".
+        toastApiError(err, 'Failed to add configured eyewear to cart.');
       }
     });
   };
@@ -821,24 +829,36 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
                       <div className="grid grid-cols-4 gap-2 text-xs">
                         <div>
                           <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">SPH</label>
-                          <input type="text" value={rightSph} onChange={e => setRightSph(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                          <input type="text" value={rightSph} onChange={e => setRightSph(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.right_sph ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.right_sph && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.right_sph}</p>
+                          )}
                         </div>
                         {isFieldVisible('CYL') && (
                           <div>
                             <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">CYL</label>
-                            <input type="text" value={rightCyl} onChange={e => setRightCyl(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                            <input type="text" value={rightCyl} onChange={e => setRightCyl(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.right_cyl ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.right_cyl && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.right_cyl}</p>
+                          )}
                           </div>
                         )}
                         {isFieldVisible('AXIS') && (
                           <div>
                             <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">AXIS</label>
-                            <input type="text" value={rightAxis} onChange={e => setRightAxis(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                            <input type="text" value={rightAxis} onChange={e => setRightAxis(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.right_axis ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.right_axis && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.right_axis}</p>
+                          )}
                           </div>
                         )}
                         {isFieldVisible('ADD') && (
                           <div>
                             <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">ADD</label>
-                            <input type="text" value={rightAdd} onChange={e => setRightAdd(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                            <input type="text" value={rightAdd} onChange={e => setRightAdd(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.right_add ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.right_add && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.right_add}</p>
+                          )}
                           </div>
                         )}
                       </div>
@@ -850,24 +870,36 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
                       <div className="grid grid-cols-4 gap-2 text-xs">
                         <div>
                           <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">SPH</label>
-                          <input type="text" value={leftSph} onChange={e => setLeftSph(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                          <input type="text" value={leftSph} onChange={e => setLeftSph(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.left_sph ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.left_sph && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.left_sph}</p>
+                          )}
                         </div>
                         {isFieldVisible('CYL') && (
                           <div>
                             <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">CYL</label>
-                            <input type="text" value={leftCyl} onChange={e => setLeftCyl(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                            <input type="text" value={leftCyl} onChange={e => setLeftCyl(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.left_cyl ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.left_cyl && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.left_cyl}</p>
+                          )}
                           </div>
                         )}
                         {isFieldVisible('AXIS') && (
                           <div>
                             <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">AXIS</label>
-                            <input type="text" value={leftAxis} onChange={e => setLeftAxis(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                            <input type="text" value={leftAxis} onChange={e => setLeftAxis(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.left_axis ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.left_axis && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.left_axis}</p>
+                          )}
                           </div>
                         )}
                         {isFieldVisible('ADD') && (
                           <div>
                             <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">ADD</label>
-                            <input type="text" value={leftAdd} onChange={e => setLeftAdd(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                            <input type="text" value={leftAdd} onChange={e => setLeftAdd(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.left_add ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.left_add && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.left_add}</p>
+                          )}
                           </div>
                         )}
                       </div>

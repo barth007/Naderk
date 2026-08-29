@@ -1,5 +1,6 @@
 'use client';
 
+import { toastApiError } from '@/lib/api-errors';
 import Link from "next/link"
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -261,7 +262,7 @@ export default function CheckoutPage() {
         provider: gateway || undefined,
       });
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Could not initialize payment. Please try again.');
+      toastApiError(err, 'Could not initialize payment. Please try again.');
       setPaymentPhase('idle');
       return;
     }

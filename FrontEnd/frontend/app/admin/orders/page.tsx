@@ -1,5 +1,6 @@
 'use client';
 
+import { toastApiError } from '@/lib/api-errors';
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import {
@@ -88,7 +89,7 @@ function OrderDetailModal({ order, onClose }: { order: AdminOrder; onClose: () =
       toast.success(`Order moved to ${STATUS_META[nextStatus]?.label ?? nextStatus}.`);
       onClose();
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Could not update order status.');
+      toastApiError(err, 'Could not update order status.');
     }
   };
 

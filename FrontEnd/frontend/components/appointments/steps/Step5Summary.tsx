@@ -1,5 +1,6 @@
 'use client';
 
+import { parseApiError } from '@/lib/api-errors';
 import React, { useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
@@ -196,7 +197,10 @@ export default function Step5Summary() {
       });
     } catch (err: any) {
       setPhase('idle');
-      setErrorMsg(err?.response?.data?.detail || err?.message || 'Something went wrong. Please try again.');
+      // Was `detail` only, so per-field validation messages never reached the
+      // patient. parseApiError folds them into one readable block.
+      const info = parseApiError(err, 'Something went wrong. Please try again.');
+      setErrorMsg(info.description ? `${info.title}\n${info.description}` : info.title);
 
       // The appointment row is created before payment. If anything after that
       // fails we must not leave an unpaid PENDING booking behind — it showed up
@@ -338,7 +342,9 @@ export default function Step5Summary() {
           {errorMsg && (
             <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl text-sm space-y-1.5">
               <p className="font-bold">{unconfirmed ? 'Payment not confirmed yet' : 'Booking could not be completed'}</p>
-              <p>{errorMsg}</p>
+              {/* pre-line so the per-field lines parseApiError joins stay on
+                  separate rows instead of collapsing into one paragraph. */}
+              <p className="whitespace-pre-line">{errorMsg}</p>
               {!unconfirmed && (
                 <p className="text-red-700">
                   Nothing has been charged and no appointment was reserved. Press
