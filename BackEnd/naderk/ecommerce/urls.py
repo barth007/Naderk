@@ -1,7 +1,8 @@
 from django.urls import path
 from .apis import (
     CategoryListApi, ProductListApi, ProductDetailApi, FrameListApi, FrameDetailApi,
-    LensTypeListApi, LensOptionListApi, PrescriptionListCreateApi, PrescriptionReusableListApi,
+    LensTypeListApi, LensOptionListApi, PrescriptionListCreateApi, PrescriptionValidateApi,
+    PrescriptionReusableListApi,
     PrescriptionDetailApi, PrescriptionReviewQueueApi, PrescriptionReviewActionApi,
     CartDetailApi, CartAddItemApi, CartUpdateQuantityApi, CartRemoveItemApi, CartClearApi,
     WishlistDetailApi, WishlistToggleItemApi, CheckoutApi, OrderListApi, OrderDetailApi,
@@ -26,6 +27,7 @@ urlpatterns = [
 
     # Prescriptions & Approval Workflow
     path('prescriptions/', PrescriptionListCreateApi.as_view(), name='prescription-list-create'),
+    path('prescriptions/validate/', PrescriptionValidateApi.as_view(), name='prescription-validate'),
     path('prescriptions/reusable/', PrescriptionReusableListApi.as_view(), name='prescription-reusable-list'),
     path('prescriptions/<uuid:pk>/', PrescriptionDetailApi.as_view(), name='prescription-detail'),
     path('prescriptions/review-queue/', PrescriptionReviewQueueApi.as_view(), name='prescription-review-queue'),

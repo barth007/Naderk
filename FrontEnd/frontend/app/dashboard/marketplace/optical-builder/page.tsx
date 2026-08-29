@@ -20,6 +20,8 @@ import {
 import {
   useFrames,
   useLensTypes,
+  useValidatePrescription,
+  type PrescriptionPayload,
   useLensOptions,
   useReusablePrescriptions,
   useSubmitPrescription,
@@ -96,6 +98,7 @@ export default function OpticalBuilderPage() {
   
   const submitPrescriptionMutation = useSubmitPrescription();
   const addToCartMutation = useAddToCart();
+  const validatePrescription = useValidatePrescription();
   // Per-field messages from the API, shown beneath the matching inputs.
   const [rxFieldErrors, setRxFieldErrors] = useState<Record<string, string>>({});
 
@@ -220,8 +223,29 @@ export default function OpticalBuilderPage() {
     return true;
   };
 
+  /**
+   * The prescription values as the API expects them. Shared by the stage-gate
+   * dry run and the real save, so the two can never disagree about what is
+   * being checked.
+   */
+  const buildRxPayload = (): PrescriptionPayload => {
+    const pd = parseFloat(pupillaryDistance);
+    const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+    const int = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
+    const payload: PrescriptionPayload = {
+      pupillary_distance: isNaN(pd) ? 63 : pd,
+      right_sph: num(rightSph), right_cyl: num(rightCyl),
+      right_axis: int(rightAxis), right_add: num(rightAdd),
+      left_sph: num(leftSph), left_cyl: num(leftCyl),
+      left_axis: int(leftAxis), left_add: num(leftAdd),
+    };
+    if (prescriptionOption === 'upload') payload.prescription_file = fileUrl || null;
+    if (Object.keys(extraValues).length) payload.extra_measurements = extraValues;
+    return payload;
+  };
+
   // Move forward in steps with validations
-  const handleNextStep = () => {
+  const handleNextStep = async () => {
     if (step === 1 && !selectedFrameVariant) {
       toast.error("Please select a frame and color/size variant first.");
       return;
@@ -244,6 +268,18 @@ export default function OpticalBuilderPage() {
         const pd = parseFloat(pupillaryDistance);
         if (isNaN(pd) || pd < 40 || pd > 80) {
           toast.error("Pupillary Distance must be between 40 and 80 mm.");
+          return;
+        }
+
+        // Range checks (SPH, CYL, AXIS) live on the server. Run them here so a
+        // bad value is caught while the inputs are still on screen, rather than
+        // at checkout three stages later.
+        setRxFieldErrors({});
+        try {
+          await validatePrescription.mutateAsync(buildRxPayload());
+        } catch (err) {
+          const { fieldErrors } = toastApiError(err, 'Please correct the prescription values.');
+          setRxFieldErrors(fieldErrors);
           return;
         }
       }
@@ -276,26 +312,7 @@ export default function OpticalBuilderPage() {
     }
 
     // Upload or manual — save prescription record first, then add to cart and pay
-    const pd = parseFloat(pupillaryDistance);
-    const payload: any = { pupillary_distance: isNaN(pd) ? 63 : pd };
-
-    const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
-    const int = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
-
-    // Both manual and upload save the transcribed values; upload additionally keeps the file
-    payload.right_sph  = num(rightSph);
-    payload.right_cyl  = num(rightCyl);
-    payload.right_axis = int(rightAxis);
-    payload.right_add  = num(rightAdd);
-    payload.left_sph   = num(leftSph);
-    payload.left_cyl   = num(leftCyl);
-    payload.left_axis  = int(leftAxis);
-    payload.left_add   = num(leftAdd);
-    if (prescriptionOption === 'upload') {
-      payload.prescription_file = fileUrl || null;
-    }
-
-    if (Object.keys(extraValues).length) payload.extra_measurements = extraValues;
+    const payload = buildRxPayload();
 
     setRxFieldErrors({});
     submitPrescriptionMutation.mutate(payload, {
@@ -1099,10 +1116,22 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
               {step < 5 ? (
                 <button
                   onClick={handleNextStep}
-                  className="w-full bg-gray-900 hover:bg-gray-800 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer text-xs"
+                  disabled={validatePrescription.isPending}
+                  className="w-full bg-gray-900 hover:bg-gray-800 disabled:opacity-60 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer text-xs"
                 >
-                  <span>Continue</span>
-                  <ChevronRight className="w-4 h-4" />
+                  {/* Leaving the prescription stage checks the values with the
+                      server, so the button must show it is working. */}
+                  {validatePrescription.isPending ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Checking values…</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Continue</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </>
+                  )}
                 </button>
               ) : (
                 <div className="space-y-2">

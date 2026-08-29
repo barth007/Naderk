@@ -138,6 +138,24 @@ export const usePrescriptions = (patientId?: string) => {
   });
 };
 
+/**
+ * Dry-run the prescription rules without saving.
+ *
+ * The builder is a staged wizard, but the dioptre ranges were only enforced by
+ * the create call at checkout — so a patient finished every stage before being
+ * told a value several steps back was out of range. The prescription stage now
+ * runs this before letting them continue, against the same serializer the
+ * create endpoint uses.
+ */
+export const useValidatePrescription = () => {
+  return useMutation({
+    mutationFn: async (payload: PrescriptionPayload) => {
+      const res = await apiClient.post('/marketplace/prescriptions/validate/', payload);
+      return res.data.data as { valid: boolean };
+    },
+  });
+};
+
 export const useReusablePrescriptions = () => {
   return useQuery({
     queryKey: ['marketplace-prescriptions-reusable'],

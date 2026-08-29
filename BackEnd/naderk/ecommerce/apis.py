@@ -146,6 +146,35 @@ class LensOptionListApi(APIView):
         return build_success_response("Lens options retrieved successfully", serializer.data)
 
 
+class PrescriptionValidateApi(APIView):
+    """
+    Dry-run the prescription rules without saving.
+
+    The glasses builder is a staged wizard, but nothing checked the dioptre
+    ranges until the final POST at checkout — so a patient could complete every
+    stage and only then be told right_sph/left_cyl were out of range, with the
+    inputs several steps behind them. This lets the prescription stage run the
+    same validation before letting them move on.
+
+    Deliberately the same serializer as the create endpoint, so the two can
+    never disagree about what is valid.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = PrescriptionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return build_error_response(
+                type_uri=_problems_url('validation-error'),
+                title="Validation Error",
+                status_code=400,
+                detail="Prescription validation failed",
+                instance=request.path,
+                errors=serializer.errors,
+            )
+        return build_success_response("Prescription values are valid", {"valid": True})
+
+
 class PrescriptionListCreateApi(APIView):
     permission_classes = [IsAuthenticated]
     
