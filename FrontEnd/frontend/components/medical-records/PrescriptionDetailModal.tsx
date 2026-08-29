@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X, FileDown, Pill, Glasses, Calendar, User, ExternalLink } from 'lucide-react';
+import { X, FileDown, Pill, Glasses, Calendar, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { medicalRecordsApi } from '@/services/medical-records/records.api';
 import type { EyewearPrescription } from '@/services/medical-records/records.types';
@@ -209,16 +209,8 @@ function EyewearBody({ rx }: { rx: EyewearPrescription }) {
         <Field label="Expires" value={expiry} />
       </div>
 
-      {rx.prescription_file && (
-        <a
-          href={rx.prescription_file}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-1.5 text-xs font-bold text-[#E03E3E] hover:underline"
-        >
-          <ExternalLink className="w-3.5 h-3.5" /> View uploaded prescription file
-        </a>
-      )}
+      {/* The uploaded file lived on Cloudinary, which is no longer in use, so
+          linking it just 404s. The generated PDF in the footer is the record. */}
     </>
   );
 }

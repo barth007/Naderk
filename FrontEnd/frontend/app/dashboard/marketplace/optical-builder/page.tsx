@@ -603,9 +603,9 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
                         <div
                           key={lens.id}
                           onClick={() => selectable && setSelectedLensType(lens)}
-                          className={`relative p-4 rounded-xl border transition duration-300 flex justify-between items-center ${
+                          className={`relative w-full p-4 rounded-xl border transition-colors duration-200 flex items-start gap-4 ${
                             restricted
-                              ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50'
+                              ? 'opacity-50 cursor-not-allowed border-gray-100 bg-gray-50'
                               : selectedLensType?.id === lens.id
                               ? 'border-[#ff052f] bg-[#fff5f6] cursor-pointer'
                               : recommended
@@ -613,23 +613,46 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
                               : 'border-gray-100 hover:border-gray-200 cursor-pointer'
                           }`}
                         >
-                          <div className="flex-1 pr-4">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-bold text-gray-900 text-xs md:text-sm">{lens.name}</h3>
+                          {/* min-w-0 lets the name truncate instead of pushing
+                              the price out of the card. */}
+                          <div className="flex-1 min-w-0 space-y-1">
+                            {/* flex-wrap so a long name plus a badge stacks
+                                rather than overflowing on narrow screens. */}
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <h3 className="font-bold text-gray-900 text-xs md:text-sm break-words">{lens.name}</h3>
                               {recommended && (
-                                <span className="text-[8px] font-extrabold uppercase tracking-wider bg-[#ff052f] text-white px-1.5 py-0.5 rounded-full">Recommended</span>
+                                <span className="shrink-0 text-[8px] font-extrabold uppercase tracking-wider bg-[#ff052f] text-white px-1.5 py-0.5 rounded-full">Recommended</span>
                               )}
                               {restricted && (
-                                <span className="text-[8px] font-extrabold uppercase tracking-wider bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full">Not suitable</span>
+                                <span className="shrink-0 text-[8px] font-extrabold uppercase tracking-wider bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full">Not suitable</span>
                               )}
                             </div>
-                            <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">{lens.description}</p>
+                            {/* Rendered only when present — a lens added
+                                without one used to leave an empty line and an
+                                uneven card. */}
+                            {lens.description?.trim() ? (
+                              <p className="text-[11px] text-gray-400 leading-relaxed">{lens.description}</p>
+                            ) : null}
                           </div>
-                          <div className="text-right">
-                            <span className="font-bold text-gray-900 block text-sm">+₦{Number(lens.price_modifier).toLocaleString()}</span>
-                            {selectedLensType?.id === lens.id && (
-                              <span className="inline-block mt-2 bg-[#ff052f] text-white p-0.5 rounded-full"><Check className="w-3.5 h-3.5" /></span>
-                            )}
+
+                          {/* shrink-0 keeps the price on one line; the tick sits
+                              beside it so selecting a lens cannot change the
+                              card's height. */}
+                          <div className="shrink-0 flex items-center gap-2 pt-0.5">
+                            <span className="font-bold text-gray-900 text-sm whitespace-nowrap">
+                              {Number(lens.price_modifier) > 0
+                                ? `+₦${Number(lens.price_modifier).toLocaleString()}`
+                                : 'Included'}
+                            </span>
+                            <span
+                              className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors ${
+                                selectedLensType?.id === lens.id
+                                  ? 'bg-[#ff052f] text-white'
+                                  : 'border border-gray-200'
+                              }`}
+                            >
+                              {selectedLensType?.id === lens.id && <Check className="w-3 h-3" />}
+                            </span>
                           </div>
                         </div>
                       );
@@ -675,25 +698,29 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
                               setSelectedLensOptions([...selectedLensOptions, opt]);
                             }
                           }}
-                          className={`p-4 rounded-xl border transition duration-300 flex justify-between items-center ${
+                          className={`w-full p-4 rounded-xl border transition-colors duration-200 flex items-start gap-4 ${
                             restricted
-                              ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50'
+                              ? 'opacity-50 cursor-not-allowed border-gray-100 bg-gray-50'
                               : isSelected
                               ? 'border-[#ff052f] bg-[#fff5f6] cursor-pointer'
                               : 'border-gray-100 hover:border-gray-200 cursor-pointer'
                           }`}
                         >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-bold text-gray-900 text-xs md:text-sm">{opt.name}</h3>
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <h3 className="font-bold text-gray-900 text-xs md:text-sm break-words">{opt.name}</h3>
                               {recommended && (
-                                <span className="text-[8px] font-extrabold uppercase tracking-wider bg-[#ff052f] text-white px-1.5 py-0.5 rounded-full">Recommended</span>
+                                <span className="shrink-0 text-[8px] font-extrabold uppercase tracking-wider bg-[#ff052f] text-white px-1.5 py-0.5 rounded-full">Recommended</span>
                               )}
                             </div>
-                            <p className="text-[11px] text-gray-400 mt-1">Enhance your eyeglasses with high performance filters.</p>
+                            <p className="text-[11px] text-gray-400 leading-relaxed">Enhance your eyeglasses with high performance filters.</p>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <span className="font-bold text-gray-900 text-sm">+₦{Number(opt.price_modifier).toLocaleString()}</span>
+                          <div className="shrink-0 flex items-center gap-3 pt-0.5">
+                            <span className="font-bold text-gray-900 text-sm whitespace-nowrap">
+                              {Number(opt.price_modifier) > 0
+                                ? `+₦${Number(opt.price_modifier).toLocaleString()}`
+                                : 'Included'}
+                            </span>
                             <div className={`w-4 h-4 rounded border flex items-center justify-center transition ${
                               isSelected ? 'bg-[#ff052f] border-[#ff052f] text-white' : 'border-gray-300 bg-white'
                             }`}>

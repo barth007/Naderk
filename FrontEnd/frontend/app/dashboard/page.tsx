@@ -1,5 +1,6 @@
 "use client";
 
+import { PrescriptionPdfModal } from '@/components/medical-records/PrescriptionPdfModal';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
@@ -23,6 +24,7 @@ import { useBrand } from '@/services/cms/admin-cms.hooks';
 
 export default function DashboardPage() {
   const brand = useBrand();
+  const [pdfPrescriptionId, setPdfPrescriptionId] = useState<string | null>(null);
   const { user } = useAuth();
   
   // Queries
@@ -369,17 +371,17 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     </div>
-                    {p.prescription_file && (
-                      <a
-                        href={p.prescription_file}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-1.5 text-xs font-bold text-[#E03E3E] hover:underline mt-4 pt-3 border-t border-gray-50 cursor-pointer"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Download PDF
-                      </a>
-                    )}
+                    {/* Was a direct link to prescription_file — the Cloudinary
+                        upload, which is no longer used and 404s. Opens the
+                        generated, branded PDF instead. */}
+                    <button
+                      type="button"
+                      onClick={() => setPdfPrescriptionId(p.id)}
+                      className="flex items-center justify-center gap-1.5 w-full text-xs font-bold text-[#E03E3E] hover:underline mt-4 pt-3 border-t border-gray-50 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      View / Download PDF
+                    </button>
                   </Card>
                 ))}
               </div>
@@ -404,6 +406,11 @@ export default function DashboardPage() {
           <BlogWidget />
         </div>
       </div>
+
+      <PrescriptionPdfModal
+        prescriptionId={pdfPrescriptionId}
+        onClose={() => setPdfPrescriptionId(null)}
+      />
     </div>
   );
 }

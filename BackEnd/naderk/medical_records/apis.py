@@ -4,12 +4,13 @@ from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from django.http import FileResponse
+import logging
 from io import BytesIO
 from decimal import Decimal
 
 # ReportLab imports
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
@@ -31,6 +32,8 @@ from .serializers import (
 )
 from .permissions import IsRecordOwnerOrDoctorWithActiveAppointment
 from .selectors import get_doctor_patient_records
+
+logger = logging.getLogger(__name__)
 
 
 class PatientRecordsListApi(APIView):
@@ -362,6 +365,40 @@ class MedicationDetailApi(APIView):
         return build_success_response("Medication deleted.", {'deleted': True})
 
 
+def _prescription_pdf_brand():
+    """
+    (clinic name, logo bytes or None) for the prescription PDF header.
+
+    Falls back to the bundled default whenever the CMS has no logo, the URL is
+    unreachable, or the bytes are not a readable image — a prescription must
+    still render when branding is unavailable.
+    """
+    from naderk.cms.models import SiteSettings
+
+    name = 'Naderk Eye Clinic'
+    logo_url = None
+    try:
+        settings_row = SiteSettings.objects.first()
+        if settings_row:
+            name = settings_row.company_name or name
+            logo_url = settings_row.logo_url or None
+    except Exception:
+        logger.warning("Prescription PDF: could not read site settings", exc_info=True)
+
+    if not logo_url:
+        return name, None
+
+    try:
+        import requests
+        resp = requests.get(logo_url, timeout=5)
+        resp.raise_for_status()
+        # RLImage wants a file-like object, not an ImageReader.
+        return name, BytesIO(resp.content)
+    except Exception:
+        logger.warning("Prescription PDF: logo %s unavailable", logo_url, exc_info=True)
+        return name, None
+
+
 class PrescriptionPdfApi(APIView):
     permission_classes = [IsAuthenticated, IsRecordOwnerOrDoctorWithActiveAppointment]
 
@@ -417,7 +454,25 @@ class PrescriptionPdfApi(APIView):
             leading=14
         )
         
-        story.append(Paragraph("NADERK EYE CLINIC", title_style))
+        # Brand from the CMS rather than a hardcoded string — the clinic has
+        # been renamed there, and the PDF was still printing the old name.
+        brand_name, logo_reader = _prescription_pdf_brand()
+
+        if logo_reader is not None:
+            logo = RLImage(logo_reader)
+            # Fit inside a 150x50 box, preserving aspect ratio, so a wide
+            # wordmark and a tall shield mark both sit correctly.
+            ratio = logo.imageWidth / logo.imageHeight if logo.imageHeight else 1
+            max_w, max_h = 150, 50
+            if ratio >= max_w / max_h:
+                logo.drawWidth, logo.drawHeight = max_w, max_w / ratio
+            else:
+                logo.drawHeight, logo.drawWidth = max_h, max_h * ratio
+            logo.hAlign = 'CENTER'
+            story.append(logo)
+            story.append(Spacer(1, 10))
+
+        story.append(Paragraph(brand_name.upper(), title_style))
         story.append(Paragraph("Official Eyewear Prescription Document", subtitle_style))
         
         patient_name = f"{prescription.patient.first_name} {prescription.patient.last_name}".strip() or prescription.patient.email
@@ -427,7 +482,7 @@ class PrescriptionPdfApi(APIView):
         if prescription.encounter:
             doctor_name = f"Dr. {prescription.encounter.doctor.first_name} {prescription.encounter.doctor.last_name}"
             try:
-                doctor_specialty = prescription.encounter.doctor.doctor_profile.specialization
+                doctor_specialty = prescription.encounter.doctor.doctor_profile.specialization_display
             except Exception:
                 doctor_specialty = "General Practitioner"
         elif prescription.patient.appointments_as_patient.filter(status='COMPLETED').exists():
@@ -435,7 +490,7 @@ class PrescriptionPdfApi(APIView):
             if last_appt:
                 doctor_name = f"Dr. {last_appt.doctor.first_name} {last_appt.doctor.last_name}"
                 try:
-                    doctor_specialty = last_appt.doctor.doctor_profile.specialization
+                    doctor_specialty = last_appt.doctor.doctor_profile.specialization_display
                 except Exception:
                     doctor_specialty = "General Practitioner"
 
@@ -567,7 +622,12 @@ class PrescriptionPdfApi(APIView):
             leading=11
         )
         
-        story.append(Paragraph("This optical prescription is clinically validated by Naderk Eye Clinic. Please present this document during frame and lens selection. Keep a copy for your records.", disclaimer_style))
+        story.append(Paragraph(
+            f"This optical prescription is clinically validated by {brand_name}. "
+            "Please present this document during frame and lens selection. "
+            "Keep a copy for your records.",
+            disclaimer_style,
+        ))
         story.append(Spacer(1, 50))
         
         sig_data = [
@@ -586,6 +646,12 @@ class PrescriptionPdfApi(APIView):
         doc.build(story)
         buffer.seek(0)
         
+        # ?disposition=inline lets the patient preview the document in the
+        # browser; anything else keeps the download behaviour.
+        inline = request.query_params.get('disposition') == 'inline'
+        disposition = 'inline' if inline else 'attachment'
+        filename = f"prescription_{str(prescription.id)[:8].upper()}.pdf"
+
         response = FileResponse(buffer, content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="prescription_{prescription.id}.pdf"'
+        response['Content-Disposition'] = f'{disposition}; filename="{filename}"'
         return response

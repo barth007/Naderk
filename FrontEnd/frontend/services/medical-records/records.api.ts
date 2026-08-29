@@ -71,4 +71,21 @@ export const medicalRecordsApi = {
     a.remove();
     window.URL.revokeObjectURL(url);
   },
+
+  /**
+   * Object URL for previewing the prescription PDF in an <iframe>.
+   *
+   * Same auth problem as the download: the endpoint needs a JWT, so the blob
+   * has to come through the API client rather than being linked directly.
+   * Callers must revoke the URL when the preview closes.
+   */
+  prescriptionPdfPreviewUrl: async (id: string) => {
+    const response = await apiClient.get(
+      `/medical-records/prescriptions/${id}/pdf/`,
+      { params: { disposition: 'inline' }, responseType: 'blob' },
+    );
+    return window.URL.createObjectURL(
+      new Blob([response.data], { type: 'application/pdf' }),
+    );
+  },
 };
