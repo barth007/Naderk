@@ -1,5 +1,6 @@
 'use client';
 
+import TodayArrivalsPanel from '@/components/admin/TodayArrivalsPanel';
 import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -547,9 +548,15 @@ export default function AdminAppointmentsPage() {
 
       {/* Two-column layout */}
       <div className="flex gap-5 flex-1 min-h-0">
-        {/* ── Left: Requested panel ── */}
-        <div className="w-[320px] flex-shrink-0 flex flex-col">
-          <Card className="flex-1 rounded-xl border border-gray-100 shadow-none flex flex-col overflow-hidden">
+        {/* ── Left: desk work queues ── */}
+        <div className="w-[320px] flex-shrink-0 flex flex-col gap-5 min-h-0">
+          {/* Who is here now. Check-in had an endpoint but no interface, so no
+              appointment had ever reached CHECKED_IN. */}
+          <Card className="rounded-xl border border-gray-100 shadow-none flex flex-col overflow-hidden max-h-[45%]">
+            <TodayArrivalsPanel />
+          </Card>
+
+          <Card className="flex-1 rounded-xl border border-gray-100 shadow-none flex flex-col overflow-hidden min-h-0">
             <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex-shrink-0">
               <h2 className="font-bold text-gray-900 text-sm">Requested</h2>
               <p className="text-xs text-gray-400 mt-0.5">External requests from web portal awaiting verification</p>

@@ -54,6 +54,54 @@ export const useAdminAppointmentCalendar = () => {
   });
 };
 
+export interface AdminArrival {
+  id: string;
+  patient_name: string;
+  service_name: string;
+  doctor_name: string | null;
+  is_onsite: boolean;
+  appointment_time: string | null;
+  appointment_type: string;
+  status: string;
+  checked_in_at: string | null;
+}
+
+/** Today's expected patients, for the front desk to check in. */
+export const useAdminTodayArrivals = () =>
+  useQuery({
+    queryKey: ['admin-today-arrivals'],
+    queryFn: async () => {
+      const res = await apiClient.get('/dashboard/admin/appointments/today/');
+      return res.data.data as AdminArrival[];
+    },
+    refetchInterval: 60_000,
+  });
+
+function invalidateArrivals(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['admin-today-arrivals'] });
+  qc.invalidateQueries({ queryKey: ['admin-appointment-calendar'] });
+  qc.invalidateQueries({ queryKey: ['admin-dashboard'] });
+}
+
+export const useCheckInAppointment = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (appointmentId: string) =>
+      apiClient.post(`/appointments/${appointmentId}/check-in/`),
+    onSuccess: () => invalidateArrivals(queryClient),
+  });
+};
+
+/** Undo a check-in. Staff only — the API refuses a patient. */
+export const useUndoCheckIn = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (appointmentId: string) =>
+      apiClient.delete(`/appointments/${appointmentId}/check-in/`),
+    onSuccess: () => invalidateArrivals(queryClient),
+  });
+};
+
 export interface SchedulePayload {
   appointmentId: string;
   doctor_id: string;

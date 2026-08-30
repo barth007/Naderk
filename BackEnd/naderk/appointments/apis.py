@@ -501,23 +501,91 @@ class AppointmentDetailApi(APIView):
         appointment.delete()
         return build_success_response("Appointment deleted successfully", None)
 
+#: How early, and how late, a patient may check themselves in relative to their
+#: slot. Staff are not limited — they can see the person standing there.
+SELF_CHECKIN_EARLY_MINUTES = 60
+SELF_CHECKIN_LATE_MINUTES = 30
+
+
 class CheckInAppointmentApi(APIView):
+    """
+    Mark a patient as arrived.
+
+    Front desk is the authority: staff holding the appointments area may check
+    anyone in at any time, because they can see the patient in front of them.
+    A patient may also check themselves in, but only close to their slot —
+    otherwise "checked in" stops meaning "present" and the waiting queue no
+    longer reflects who is actually in the building.
+    """
     permission_classes = [IsAuthenticated]
-    
+
     def post(self, request, pk):
+        is_staff = can_manage_any_appointment(request.user)
+
         try:
-            appointment = Appointment.objects.get(id=pk, patient=request.user)
+            if is_staff:
+                appointment = Appointment.objects.get(id=pk)
+            else:
+                appointment = Appointment.objects.get(id=pk, patient=request.user)
         except Appointment.DoesNotExist:
             return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")
-            
+
+        if appointment.status == Appointment.Status.CHECKED_IN:
+            # Idempotent: two taps, or the desk repeating what the patient did.
+            return build_success_response("Already checked in", AppointmentSerializer(appointment).data)
+
         if appointment.status != Appointment.Status.CONFIRMED:
-            return build_error_response("invalid-state", "Cannot check-in", 400, "Appointment is not confirmed")
-            
+            return build_error_response(
+                "invalid-state", "Cannot check in", 400,
+                f"Only a confirmed appointment can be checked in (this one is {appointment.get_status_display()}).",
+            )
+
+        if not is_staff:
+            slot = timezone.make_aware(
+                datetime.datetime.combine(appointment.appointment_date, appointment.appointment_time)
+            )
+            now = timezone.now()
+            if now < slot - datetime.timedelta(minutes=SELF_CHECKIN_EARLY_MINUTES):
+                return build_error_response(
+                    "too-early", "Too early to check in", 400,
+                    f"You can check in from {SELF_CHECKIN_EARLY_MINUTES} minutes before your appointment.",
+                )
+            if now > slot + datetime.timedelta(minutes=SELF_CHECKIN_LATE_MINUTES):
+                return build_error_response(
+                    "too-late", "Check-in window has closed", 400,
+                    "Please speak to the front desk to check in.",
+                )
+
         appointment.status = Appointment.Status.CHECKED_IN
         appointment.checked_in_at = timezone.now()
-        appointment.save()
-        
+        appointment.save(update_fields=['status', 'checked_in_at'])
+
         return build_success_response("Checked in successfully", AppointmentSerializer(appointment).data)
+
+    def delete(self, request, pk):
+        """Undo a check-in. Staff only — the desk corrects its own mistakes."""
+        if not can_manage_any_appointment(request.user):
+            return build_error_response(
+                "forbidden", "Permission denied", 403,
+                "Only staff can undo a check-in.",
+            )
+
+        try:
+            appointment = Appointment.objects.get(id=pk)
+        except Appointment.DoesNotExist:
+            return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")
+
+        if appointment.status != Appointment.Status.CHECKED_IN:
+            return build_error_response(
+                "invalid-state", "Not checked in", 400,
+                "This appointment is not checked in.",
+            )
+
+        appointment.status = Appointment.Status.CONFIRMED
+        appointment.checked_in_at = None
+        appointment.save(update_fields=['status', 'checked_in_at'])
+
+        return build_success_response("Check-in undone", AppointmentSerializer(appointment).data)
 
 class StartAppointmentApi(APIView):
     permission_classes = [IsAuthenticated]

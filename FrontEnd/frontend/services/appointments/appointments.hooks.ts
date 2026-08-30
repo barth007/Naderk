@@ -112,6 +112,26 @@ export const useAppointmentHistory = (patientId?: string) => {
   });
 };
 
+/**
+ * Patient self check-in.
+ *
+ * The API only accepts this close to the slot — outside the window it returns a
+ * message telling the patient to see the front desk, which is the authority.
+ */
+export const useCheckInAppointment = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (appointmentId: string) => {
+      const response = await api.post(`/appointments/${appointmentId}/check-in/`);
+      return response.data.data as Appointment;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['appointment-history'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    },
+  });
+};
+
 export const useCancelAppointment = () => {
   const queryClient = useQueryClient();
   return useMutation({

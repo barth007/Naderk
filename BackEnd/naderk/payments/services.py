@@ -129,8 +129,20 @@ def confirm_appointment_payment(*, appointment, reference: str) -> bool:
     with db_transaction.atomic():
         appointment.payment_status = Appointment.PaymentStatus.PAID
         appointment.payment_reference = reference
-        # status stays PENDING — the doctor still has to accept the request.
-        appointment.save(update_fields=['payment_status', 'payment_reference'])
+
+        update_fields = ['payment_status', 'payment_reference']
+
+        # A doctor still has to accept a consultation, so those stay PENDING.
+        # A facility service has no doctor to accept it, and the only route to
+        # CONFIRMED (AdminScheduleAppointmentAPI) demands a doctor_id — so an
+        # on-site booking could never be confirmed, could never be checked in,
+        # and was eventually swept to NO_SHOW by mark_missed_appointments.
+        # Paid, with a slot held, is as confirmed as it can get.
+        if not appointment.service.requires_doctor and appointment.status == Appointment.Status.PENDING:
+            appointment.status = Appointment.Status.CONFIRMED
+            update_fields.append('status')
+
+        appointment.save(update_fields=update_fields)
         ConsultationService.create_service_plan(
             patient=appointment.patient,
             service=appointment.service,

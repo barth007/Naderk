@@ -5,6 +5,10 @@ import { Appointment } from '@/services/appointments/appointments.types';
 import { Button } from '@/components/ui/button';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { AppointmentTypeBadge } from './AppointmentTypeBadge';
+import { CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { toastApiError } from '@/lib/api-errors';
+import { useCheckInAppointment } from '@/services/appointments/appointments.hooks';
 
 interface AppointmentCardProps {
   apt: Appointment;
@@ -61,6 +65,7 @@ export default function AppointmentCard({
   const router = useRouter();
   const aptDate = parseISO(apt.appointment_date);
   const isMissed = apt.status === 'NO_SHOW';
+  const checkIn = useCheckInAppointment();
 
   if (isPrimary) {
     return (
@@ -162,10 +167,27 @@ export default function AppointmentCard({
                   Join Consultation
                 </Button>
               )}
+              {/* Was a button with no onClick at all. The API accepts this only
+                  near the slot; outside the window it explains that the front
+                  desk handles it. */}
               {apt.is_physical && apt.status === 'CONFIRMED' && (
-                <Button variant="default" size="md" className="font-bold px-4 w-full sm:w-auto">
-                  Check-in Online
+                <Button
+                  variant="default"
+                  size="md"
+                  className="font-bold px-4 w-full sm:w-auto"
+                  isLoading={checkIn.isPending}
+                  onClick={() => checkIn.mutate(apt.id, {
+                    onSuccess: () => toast.success("You're checked in — please take a seat."),
+                    onError: (e) => toastApiError(e, 'Could not check you in.'),
+                  })}
+                >
+                  Check in
                 </Button>
+              )}
+              {apt.is_physical && apt.status === 'CHECKED_IN' && (
+                <span className="inline-flex items-center justify-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-md w-full sm:w-auto">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Checked in
+                </span>
               )}
               <Button 
                 variant="secondary" 

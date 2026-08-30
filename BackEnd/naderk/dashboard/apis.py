@@ -520,6 +520,53 @@ class AdminAppointmentCalendarAPI(APIView):
         return build_success_response(message="Appointment calendar retrieved.", data=results, status_code=200)
 
 
+class AdminTodayArrivalsAPI(APIView):
+    """
+    Today's confirmed appointments, for the front desk to check patients in.
+
+    Check-in previously had no UI at all — the endpoint existed, nothing called
+    it, and no appointment had ever reached CHECKED_IN. This is the desk's
+    working list: who is expected today and who has arrived.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if _admin_only(request, 'appointments'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+
+        today = timezone.localdate()
+        appointments = (
+            Appointment.objects
+            .filter(
+                appointment_date=today,
+                status__in=[
+                    Appointment.Status.CONFIRMED,
+                    Appointment.Status.CHECKED_IN,
+                    Appointment.Status.IN_PROGRESS,
+                ],
+            )
+            .select_related('patient', 'doctor', 'service')
+            .order_by('appointment_time')
+        )
+
+        results = [
+            {
+                'id': str(a.id),
+                'patient_name': f"{a.patient.first_name} {a.patient.last_name}".strip() or a.patient.email,
+                'service_name': a.service.name if a.service else '—',
+                'doctor_name': f"Dr. {a.doctor.last_name}" if a.doctor else None,
+                # Facility services have no doctor; the desk still runs them.
+                'is_onsite': bool(a.service and not a.service.requires_doctor),
+                'appointment_time': a.appointment_time.strftime('%H:%M') if a.appointment_time else None,
+                'appointment_type': a.appointment_type,
+                'status': a.status,
+                'checked_in_at': a.checked_in_at.isoformat() if a.checked_in_at else None,
+            }
+            for a in appointments
+        ]
+        return build_success_response(message="Today's arrivals retrieved.", data=results, status_code=200)
+
+
 class AdminScheduleAppointmentAPI(APIView):
     permission_classes = [IsAuthenticated]
 
