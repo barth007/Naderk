@@ -287,6 +287,303 @@ class DoctorScratchpadAPI(APIView):
         )
 
 
+def _admin_dashboard_summary():
+    """
+    Today's headline numbers.
+
+    Extracted so the JSON summary and the daily PDF report are computed
+    once — two implementations would drift, and a report that disagrees
+    with the dashboard it summarises is worse than no report.
+    """
+    today = timezone.now().date()
+    yesterday = today - timedelta(days=1)
+    six_months_ago = today - timedelta(days=182)
+    month_start = today.replace(day=1)
+
+    # --- Stat: appointments today ---
+    appts_today = Appointment.objects.filter(
+        appointment_date=today
+    ).exclude(status=Appointment.Status.CANCELLED).count()
+
+    appts_yesterday = Appointment.objects.filter(
+        appointment_date=yesterday
+    ).exclude(status=Appointment.Status.CANCELLED).count()
+
+    if appts_yesterday > 0:
+        appts_change = round((appts_today - appts_yesterday) / appts_yesterday * 100)
+    else:
+        appts_change = 100 if appts_today > 0 else 0
+
+    # --- Stat: active telehealth ---
+    active_telehealth = TelehealthSession.objects.filter(
+        status=TelehealthSession.Status.ACTIVE
+    ).count()
+
+    # --- Stat: pending prescriptions ---
+    pending_prescriptions = Prescription.objects.filter(
+        status__in=[Prescription.Status.PENDING_REVIEW, Prescription.Status.UNDER_REVIEW]
+    ).count()
+
+    # --- Stat: optical revenue today ---
+    revenue_today = (
+        Order.objects.filter(payment_status=Order.PaymentStatus.PAID, updated_at__date=today)
+        .aggregate(total=Sum('total_price'))['total'] or 0
+    )
+    revenue_yesterday = (
+        Order.objects.filter(payment_status=Order.PaymentStatus.PAID, updated_at__date=yesterday)
+        .aggregate(total=Sum('total_price'))['total'] or 0
+    )
+    if revenue_yesterday > 0:
+        revenue_change = round((float(revenue_today) - float(revenue_yesterday)) / float(revenue_yesterday) * 100)
+    else:
+        revenue_change = 100 if revenue_today > 0 else 0
+
+    # --- Appointment queue: today's appointments (must match the summary count above,
+    # which counts all non-cancelled appointments, including PENDING) ---
+    queue_qs = (
+        Appointment.objects.filter(appointment_date=today)
+        .exclude_unpaid_checkouts()
+        .exclude(status=Appointment.Status.CANCELLED)
+        .order_by('appointment_time')
+        .select_related('patient', 'service')[:20]
+    )
+
+    appointment_queue = []
+    for appt in queue_qs:
+        appointment_queue.append({
+            "id": str(appt.id),
+            "patient_name": f"{appt.patient.first_name} {appt.patient.last_name}".strip() or appt.patient.email,
+            "status": appt.status,
+            "service": appt.service.name if appt.service else "—",
+            "date": appt.appointment_date.isoformat(),
+            "time": appt.appointment_time.isoformat(),
+            "type": appt.appointment_type,
+        })
+
+    # --- Patient volume trends: last 6 months ---
+    trends_qs = (
+        Appointment.objects.filter(appointment_date__gte=six_months_ago)
+        .annotate(month=TruncMonth('appointment_date'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('month')
+    )
+    MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    patient_volume_trends = [
+        {"month": MONTH_NAMES[row['month'].month - 1], "count": row['count']}
+        for row in trends_qs
+    ]
+
+    # --- Revenue breakdown (current month, as percentages) ---
+    medical_rev = (
+        Appointment.objects.filter(
+            appointment_date__gte=month_start,
+            payment_status=Appointment.PaymentStatus.PAID,
+            appointment_type=Appointment.AppointmentType.PHYSICAL
+        ).aggregate(total=Sum('consultation_fee'))['total'] or 0
+    )
+    telehealth_rev = (
+        Appointment.objects.filter(
+            appointment_date__gte=month_start,
+            payment_status=Appointment.PaymentStatus.PAID,
+            appointment_type=Appointment.AppointmentType.TELEHEALTH
+        ).aggregate(total=Sum('consultation_fee'))['total'] or 0
+    )
+    optical_rev = (
+        Order.objects.filter(
+            payment_status=Order.PaymentStatus.PAID,
+            updated_at__date__gte=month_start
+        ).aggregate(total=Sum('total_price'))['total'] or 0
+    )
+    total_rev = float(medical_rev) + float(telehealth_rev) + float(optical_rev)
+    if total_rev > 0:
+        revenue_breakdown = {
+            "medical_services": round(float(medical_rev) / total_rev * 100),
+            "optical_store": round(float(optical_rev) / total_rev * 100),
+            "telehealth": round(float(telehealth_rev) / total_rev * 100),
+        }
+    else:
+        revenue_breakdown = {"medical_services": 65, "optical_store": 25, "telehealth": 10}
+
+    data = {
+        "stats": {
+            "appointments_today": appts_today,
+            "appointments_today_change": appts_change,
+            "active_telehealth": active_telehealth,
+            "pending_prescriptions": pending_prescriptions,
+            "optical_revenue_today": float(revenue_today),
+            "optical_revenue_change": revenue_change,
+        },
+        "appointment_queue": appointment_queue,
+        "patient_volume_trends": patient_volume_trends,
+        "revenue_breakdown": revenue_breakdown,
+    }
+    return data
+
+
+class AdminDailyReportPdfAPI(APIView):
+    """
+    Today's numbers as a branded PDF.
+
+    The dashboard's "Generate Daily Report" action only ever raised a "coming
+    soon" toast. Everything it needs was already computed for the summary
+    endpoint, so this renders the same figures rather than recomputing them.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if _admin_only(request, 'dashboard'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+
+        from io import BytesIO
+        from django.http import FileResponse
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage,
+        )
+        from naderk.medical_records.apis import _prescription_pdf_brand
+
+        data = _admin_dashboard_summary()
+        stats = data['stats']
+        today = timezone.localdate()
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer, pagesize=letter,
+            rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40,
+        )
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'ReportTitle', parent=styles['Heading1'], fontSize=20,
+            textColor=colors.HexColor('#0f172a'), spaceAfter=4, alignment=1,
+        )
+        subtitle_style = ParagraphStyle(
+            'ReportSubtitle', parent=styles['Normal'], fontSize=10,
+            textColor=colors.HexColor('#64748b'), spaceAfter=22, alignment=1,
+        )
+        heading_style = ParagraphStyle(
+            'ReportHeading', parent=styles['Heading2'], fontSize=12,
+            textColor=colors.HexColor('#0f172a'), spaceBefore=16, spaceAfter=8,
+        )
+
+        story = []
+
+        # Same brand source as the prescription PDF, so both stay in step with
+        # the CMS rather than hardcoding a clinic name.
+        brand_name, logo = _prescription_pdf_brand()
+        if logo is not None:
+            img = RLImage(logo)
+            ratio = img.imageWidth / img.imageHeight if img.imageHeight else 1
+            max_w, max_h = 130, 44
+            if ratio >= max_w / max_h:
+                img.drawWidth, img.drawHeight = max_w, max_w / ratio
+            else:
+                img.drawHeight, img.drawWidth = max_h, max_h * ratio
+            img.hAlign = 'CENTER'
+            story.append(img)
+            story.append(Spacer(1, 8))
+
+        story.append(Paragraph(brand_name.upper(), title_style))
+        story.append(Paragraph(f"Daily Operations Report — {today.strftime('%A, %d %B %Y')}", subtitle_style))
+
+        def money(v):
+            return f"NGN {float(v):,.2f}"
+
+        def change(v):
+            return f"{v:+d}% vs yesterday" if v else "no change"
+
+        story.append(Paragraph("Today at a glance", heading_style))
+        overview = [
+            ['Metric', 'Value', 'Movement'],
+            ['Appointments today', str(stats['appointments_today']), change(stats['appointments_today_change'])],
+            ['Optical revenue today', money(stats['optical_revenue_today']), change(stats['optical_revenue_change'])],
+            ['Active telehealth sessions', str(stats['active_telehealth']), '—'],
+            ['Prescriptions awaiting review', str(stats['pending_prescriptions']), '—'],
+        ]
+        table = Table(overview, colWidths=[220, 150, 150])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0f172a')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 7),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+        ]))
+        story.append(table)
+
+        breakdown = data.get('revenue_breakdown') or {}
+        if breakdown:
+            story.append(Paragraph("Revenue mix", heading_style))
+            rows = [['Stream', 'Share']] + [
+                [k.replace('_', ' ').title(), f"{v}%"] for k, v in breakdown.items()
+            ]
+            mix = Table(rows, colWidths=[370, 150])
+            mix.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            story.append(mix)
+
+        queue = data.get('appointment_queue') or []
+        story.append(Paragraph("Appointment queue", heading_style))
+        if queue:
+            rows = [['Time', 'Patient', 'Service', 'Status']] + [
+                [q.get('time') or '—', q.get('patient_name') or '—',
+                 q.get('service') or '—', (q.get('status') or '').replace('_', ' ').title()]
+                for q in queue[:25]
+            ]
+            qt = Table(rows, colWidths=[70, 170, 170, 110])
+            qt.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ]))
+            story.append(qt)
+            if len(queue) > 25:
+                story.append(Spacer(1, 6))
+                story.append(Paragraph(
+                    f"Showing the first 25 of {len(queue)} appointments.",
+                    ParagraphStyle('Note', parent=styles['Normal'], fontSize=8,
+                                   textColor=colors.HexColor('#94a3b8')),
+                ))
+        else:
+            story.append(Paragraph(
+                "No appointments scheduled for today.",
+                ParagraphStyle('Empty', parent=styles['Normal'], fontSize=9,
+                               textColor=colors.HexColor('#94a3b8')),
+            ))
+
+        story.append(Spacer(1, 26))
+        story.append(Paragraph(
+            f"Generated {timezone.localtime().strftime('%d %b %Y, %H:%M')} by "
+            f"{request.user.first_name or request.user.email}.",
+            ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8,
+                           textColor=colors.HexColor('#94a3b8'), alignment=1),
+        ))
+
+        doc.build(story)
+        buffer.seek(0)
+
+        inline = request.query_params.get('disposition') == 'inline'
+        filename = f"daily-report-{today.isoformat()}.pdf"
+        response = FileResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = f'{"inline" if inline else "attachment"}; filename="{filename}"'
+        return response
+
+
 class AdminDashboardSummaryAPI(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -297,130 +594,7 @@ class AdminDashboardSummaryAPI(APIView):
                 detail='Forbidden.',
             )
 
-        today = timezone.now().date()
-        yesterday = today - timedelta(days=1)
-        six_months_ago = today - timedelta(days=182)
-        month_start = today.replace(day=1)
-
-        # --- Stat: appointments today ---
-        appts_today = Appointment.objects.filter(
-            appointment_date=today
-        ).exclude(status=Appointment.Status.CANCELLED).count()
-
-        appts_yesterday = Appointment.objects.filter(
-            appointment_date=yesterday
-        ).exclude(status=Appointment.Status.CANCELLED).count()
-
-        if appts_yesterday > 0:
-            appts_change = round((appts_today - appts_yesterday) / appts_yesterday * 100)
-        else:
-            appts_change = 100 if appts_today > 0 else 0
-
-        # --- Stat: active telehealth ---
-        active_telehealth = TelehealthSession.objects.filter(
-            status=TelehealthSession.Status.ACTIVE
-        ).count()
-
-        # --- Stat: pending prescriptions ---
-        pending_prescriptions = Prescription.objects.filter(
-            status__in=[Prescription.Status.PENDING_REVIEW, Prescription.Status.UNDER_REVIEW]
-        ).count()
-
-        # --- Stat: optical revenue today ---
-        revenue_today = (
-            Order.objects.filter(payment_status=Order.PaymentStatus.PAID, updated_at__date=today)
-            .aggregate(total=Sum('total_price'))['total'] or 0
-        )
-        revenue_yesterday = (
-            Order.objects.filter(payment_status=Order.PaymentStatus.PAID, updated_at__date=yesterday)
-            .aggregate(total=Sum('total_price'))['total'] or 0
-        )
-        if revenue_yesterday > 0:
-            revenue_change = round((float(revenue_today) - float(revenue_yesterday)) / float(revenue_yesterday) * 100)
-        else:
-            revenue_change = 100 if revenue_today > 0 else 0
-
-        # --- Appointment queue: today's appointments (must match the summary count above,
-        # which counts all non-cancelled appointments, including PENDING) ---
-        queue_qs = (
-            Appointment.objects.filter(appointment_date=today)
-            .exclude_unpaid_checkouts()
-            .exclude(status=Appointment.Status.CANCELLED)
-            .order_by('appointment_time')
-            .select_related('patient', 'service')[:20]
-        )
-
-        appointment_queue = []
-        for appt in queue_qs:
-            appointment_queue.append({
-                "id": str(appt.id),
-                "patient_name": f"{appt.patient.first_name} {appt.patient.last_name}".strip() or appt.patient.email,
-                "status": appt.status,
-                "service": appt.service.name if appt.service else "—",
-                "date": appt.appointment_date.isoformat(),
-                "time": appt.appointment_time.isoformat(),
-                "type": appt.appointment_type,
-            })
-
-        # --- Patient volume trends: last 6 months ---
-        trends_qs = (
-            Appointment.objects.filter(appointment_date__gte=six_months_ago)
-            .annotate(month=TruncMonth('appointment_date'))
-            .values('month')
-            .annotate(count=Count('id'))
-            .order_by('month')
-        )
-        MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        patient_volume_trends = [
-            {"month": MONTH_NAMES[row['month'].month - 1], "count": row['count']}
-            for row in trends_qs
-        ]
-
-        # --- Revenue breakdown (current month, as percentages) ---
-        medical_rev = (
-            Appointment.objects.filter(
-                appointment_date__gte=month_start,
-                payment_status=Appointment.PaymentStatus.PAID,
-                appointment_type=Appointment.AppointmentType.PHYSICAL
-            ).aggregate(total=Sum('consultation_fee'))['total'] or 0
-        )
-        telehealth_rev = (
-            Appointment.objects.filter(
-                appointment_date__gte=month_start,
-                payment_status=Appointment.PaymentStatus.PAID,
-                appointment_type=Appointment.AppointmentType.TELEHEALTH
-            ).aggregate(total=Sum('consultation_fee'))['total'] or 0
-        )
-        optical_rev = (
-            Order.objects.filter(
-                payment_status=Order.PaymentStatus.PAID,
-                updated_at__date__gte=month_start
-            ).aggregate(total=Sum('total_price'))['total'] or 0
-        )
-        total_rev = float(medical_rev) + float(telehealth_rev) + float(optical_rev)
-        if total_rev > 0:
-            revenue_breakdown = {
-                "medical_services": round(float(medical_rev) / total_rev * 100),
-                "optical_store": round(float(optical_rev) / total_rev * 100),
-                "telehealth": round(float(telehealth_rev) / total_rev * 100),
-            }
-        else:
-            revenue_breakdown = {"medical_services": 65, "optical_store": 25, "telehealth": 10}
-
-        data = {
-            "stats": {
-                "appointments_today": appts_today,
-                "appointments_today_change": appts_change,
-                "active_telehealth": active_telehealth,
-                "pending_prescriptions": pending_prescriptions,
-                "optical_revenue_today": float(revenue_today),
-                "optical_revenue_change": revenue_change,
-            },
-            "appointment_queue": appointment_queue,
-            "patient_volume_trends": patient_volume_trends,
-            "revenue_breakdown": revenue_breakdown,
-        }
+        data = _admin_dashboard_summary()
         return build_success_response(message="Admin dashboard summary retrieved.", data=data, status_code=200)
 
 
@@ -664,6 +838,142 @@ class AdminDoctorListAPI(APIView):
             for p in profiles
         ]
         return build_success_response(message="Doctors retrieved.", data=results, status_code=200)
+
+
+def _prescription_pdf_brand_name():
+    """Brand name for outbound copy. Thin wrapper so callers that only need the
+    name do not have to unpack the logo the PDF header uses."""
+    from naderk.medical_records.apis import _prescription_pdf_brand
+    return _prescription_pdf_brand()
+
+
+class AdminPatientCreateAPI(APIView):
+    """
+    Register a patient from the front desk.
+
+    The dashboard's "New Patient Record" action linked at /admin/records/new,
+    which is not a route — it matched /admin/records/[id] with id="new", so the
+    page tried to load a patient literally called "new" and reported "unable to
+    access medical records". That read as a permissions problem; it was a 404.
+
+    Nothing could create a patient either: CREATABLE_STAFF_ROLES deliberately
+    excludes PATIENT and no other path exists. A desk taking a walk-in, or an
+    agent booking for a first-time caller, had nowhere to start.
+
+    Mirrors the staff invite: the account is created with an unusable password
+    and the patient sets their own through a 24-hour reset link. Marked verified
+    because a person at the desk did the verifying.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # Records staff register walk-ins; booking agents need it for a
+        # first-time caller. Blocked only when neither area is held.
+        if _admin_only(request, 'patient_records') and _admin_only(request, 'appointments'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+
+        import datetime as _dt
+        import secrets
+        from django.conf import settings as dj_settings
+        from django.db import transaction as db_transaction
+        from naderk.core.models import User
+        from naderk.authentication.models import PasswordResetToken
+
+        first_name = (request.data.get('first_name') or '').strip()
+        last_name = (request.data.get('last_name') or '').strip()
+        email = (request.data.get('email') or '').strip().lower()
+        phone = (request.data.get('phone_number') or '').strip()
+
+        if not first_name or not email:
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                'first_name and email are required.',
+                errors={
+                    'first_name': ['Required.'] if not first_name else [],
+                    'email': ['Required.'] if not email else [],
+                },
+            )
+
+        if User.objects.filter(email__iexact=email).exists():
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                'A user with this email already exists.',
+                errors={'email': ['A user with this email already exists.']},
+            )
+
+        with db_transaction.atomic():
+            patient = User(
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+                role='PATIENT',
+                is_active=True,
+                # The desk saw this person, so there is no OTP round trip.
+                is_verified=True,
+                otp_verified=True,
+                profile_completion_status='PENDING',
+            )
+            if phone:
+                patient.phone_number = phone
+            for field in ('date_of_birth', 'gender'):
+                value = request.data.get(field)
+                if value:
+                    setattr(patient, field, value)
+            patient.set_unusable_password()
+            patient.save()
+            # A signal creates the PatientProfile.
+
+            token = secrets.token_urlsafe(32)
+            PasswordResetToken.objects.create(
+                user=patient, token=token,
+                expires_at=timezone.now() + _dt.timedelta(hours=24),
+            )
+
+        frontend_url = getattr(dj_settings, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')
+        invite_url = f"{frontend_url}/reset-password?token={token}"
+
+        # The account is usable by the desk either way, so a failed email must
+        # not fail the registration — it is reported instead.
+        invite_sent = True
+        try:
+            from naderk.common.email._provider_registry import get_provider
+            from naderk.common.email.providers.base import EmailMessage
+
+            brand_name, _logo = _prescription_pdf_brand_name()
+            get_provider().send(EmailMessage(
+                to=[email],
+                subject=f"Set up your {brand_name} account",
+                html_body=(
+                    f"<p>Hi {first_name},</p>"
+                    f"<p>An account has been created for you at {brand_name}. "
+                    f'<a href="{invite_url}">Set your password</a> to sign in and '
+                    f"see your appointments and records.</p>"
+                    f"<p>This link expires in 24 hours. Your login email is {email}.</p>"
+                ),
+                text_body=(
+                    f"Hi {first_name},\n\n"
+                    f"An account has been created for you at {brand_name}.\n\n"
+                    f"Set your password here (expires in 24 hours):\n{invite_url}\n\n"
+                    f"Your login email: {email}"
+                ),
+            ))
+        except Exception:
+            logger.warning("Patient invite email to %s failed", email, exc_info=True)
+            invite_sent = False
+
+        profile = getattr(patient, 'patient_profile', None)
+        return build_success_response(
+            message="Patient registered.",
+            data={
+                'id': str(patient.id),
+                'name': f"{patient.first_name} {patient.last_name}".strip() or patient.email,
+                'email': patient.email,
+                'phone_number': patient.phone_number or '',
+                'patient_id': getattr(profile, 'patient_id', None) or f"NDK-{str(patient.id)[:6].upper()}",
+                'invite_sent': invite_sent,
+            },
+            status_code=201,
+        )
 
 
 class AdminPatientLookupAPI(APIView):

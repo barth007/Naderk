@@ -54,6 +54,52 @@ export const useAdminAppointmentCalendar = () => {
   });
 };
 
+export interface NewPatientPayload {
+  first_name: string;
+  last_name?: string;
+  email: string;
+  phone_number?: string;
+}
+
+/**
+ * Register a walk-in patient from the desk.
+ *
+ * Nothing could create a patient before: CREATABLE_STAFF_ROLES excludes
+ * PATIENT and no other path existed, so the dashboard's "New Patient Record"
+ * action pointed at a route that does not exist.
+ */
+export const useCreatePatient = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: NewPatientPayload) => {
+      const res = await apiClient.post('/dashboard/admin/patients/create/', payload);
+      return res.data.data as {
+        id: string; name: string; email: string;
+        patient_id: string; invite_sent: boolean;
+      };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-patient-lookup'] });
+      queryClient.invalidateQueries({ queryKey: ['patient-records'] });
+    },
+  });
+};
+
+/** Today's report as a PDF. Needs a JWT, so it cannot be a plain <a href>. */
+export const adminReportsApi = {
+  downloadDailyReport: async () => {
+    const res = await apiClient.get('/dashboard/admin/reports/daily/', { responseType: 'blob' });
+    const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `daily-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
+};
+
 export interface AdminArrival {
   id: string;
   patient_name: string;
