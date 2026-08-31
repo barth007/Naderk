@@ -227,6 +227,119 @@ class HeroSlideDetailApi(_CmsDetailView):
         return _parse_hero(data)
 
 
+# ── Page sections ────────────────────────────────────────────────────────────
+
+
+def _serialize_section(o):
+    return {
+        'id': o.id,
+        'page': o.page,
+        'section_key': o.section_key,
+        'content': o.content or {},
+        'order': o.order,
+        'is_active': o.is_active,
+    }
+
+
+class PageContentApi(APIView):
+    """
+    Every editable section of a page, keyed by section_key.
+
+    Public so the marketing pages can render it. The frontend keeps its
+    constants as fallbacks, so a page still renders if a section has not been
+    filled in yet.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, page):
+        from naderk.cms.models import PageSection
+        from naderk.cms.page_schemas import schema_for
+
+        if not schema_for(page):
+            return build_error_response("not-found", "Unknown page", 404, f"No editable content for '{page}'.")
+
+        sections = PageSection.objects.filter(page=page, is_active=True)
+        return build_success_response(
+            "Retrieved successfully",
+            {"page": page, "sections": {s.section_key: s.content or {} for s in sections}},
+        )
+
+
+class PageSchemaApi(APIView):
+    """
+    The field definitions the admin renders its forms from, paired with whatever
+    is currently saved. Keeps the editor in step with page_schemas.py rather
+    than duplicating the shape in the frontend.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, page):
+        from naderk.cms.models import PageSection
+        from naderk.cms.page_schemas import schema_for
+
+        if not _is_admin(request.user):
+            return build_error_response("forbidden", "Access denied", 403, "Admin access required.")
+
+        schema = schema_for(page)
+        if not schema:
+            return build_error_response("not-found", "Unknown page", 404, f"No editable content for '{page}'.")
+
+        saved = {s.section_key: s for s in PageSection.objects.filter(page=page)}
+        return build_success_response("Retrieved successfully", {
+            'page': page,
+            'label': schema['label'],
+            'sections': [
+                {
+                    'key': sec['key'],
+                    'label': sec['label'],
+                    'fields': sec['fields'],
+                    'content': (saved[sec['key']].content if sec['key'] in saved else {}),
+                    'is_active': (saved[sec['key']].is_active if sec['key'] in saved else True),
+                }
+                for sec in schema['sections']
+            ],
+        })
+
+
+class PageSectionUpdateApi(APIView):
+    """Save one section. Upserts, so a section that has never been edited saves."""
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, page, section_key):
+        from naderk.cms.models import PageSection
+        from naderk.cms.page_schemas import section_schema
+
+        if not _is_admin(request.user):
+            return build_error_response("forbidden", "Access denied", 403, "Admin access required.")
+
+        schema = section_schema(page, section_key)
+        if not schema:
+            return build_error_response(
+                "not-found", "Unknown section", 404,
+                f"'{section_key}' is not an editable section of '{page}'.",
+            )
+
+        content = request.data.get('content')
+        if not isinstance(content, dict):
+            return build_error_response(
+                "validation-error", "Validation Error", 400, "content must be an object.",
+            )
+
+        # Only keep fields the schema declares, so a stale client cannot write
+        # arbitrary keys into the JSON blob.
+        allowed = {f['name'] for f in schema['fields']}
+        cleaned = {k: v for k, v in content.items() if k in allowed}
+
+        obj, _ = PageSection.objects.update_or_create(
+            page=page, section_key=section_key,
+            defaults={
+                'content': cleaned,
+                'is_active': bool(request.data.get('is_active', True)),
+            },
+        )
+        return build_success_response("Saved successfully", _serialize_section(obj))
+
+
 # ── Testimonials ─────────────────────────────────────────────────────────────
 
 def _parse_testimonial(data):

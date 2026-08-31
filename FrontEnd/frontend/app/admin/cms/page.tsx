@@ -1,11 +1,12 @@
 'use client';
 
+import PageContentEditor from '@/components/admin/PageContentEditor';
 import React, { useState, useRef } from 'react';
 import {
   Plus, Pencil, Trash2, X,
   Image as ImageIcon, Loader2, Globe, Star, Users, MessageSquare,
   HelpCircle, BarChart2, Building, Settings, ChevronDown, ChevronUp,
-  Upload, PenLine, Eye, EyeOff,
+  Upload, PenLine, Eye, EyeOff, FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
@@ -175,6 +176,7 @@ function SectionHeader({ title, subtitle, icon: Icon, count, onAdd }: {
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
+  { id: 'pages', label: 'Page Content', icon: FileText },
   { id: 'hero', label: 'Hero Slides', icon: Globe },
   { id: 'testimonials', label: 'Testimonials', icon: MessageSquare },
   { id: 'team', label: 'Team', icon: Users },
@@ -1269,6 +1271,7 @@ export default function AdminCMSPage() {
 
       {/* Tab content */}
       <div>
+        {activeTab === 'pages' && <PageContentEditor page="about" />}
         {activeTab === 'hero' && <HeroSlidesTab />}
         {activeTab === 'testimonials' && <TestimonialsTab />}
         {activeTab === 'team' && <TeamTab />}
