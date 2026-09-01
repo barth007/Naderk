@@ -1,7 +1,4 @@
-import { Metadata } from 'next';
 import { getSiteBrand } from '@/lib/site-brand';
-import Link from 'next/link';
-import { Calendar, Clock, ArrowLeft, Share2 } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import { BlogPost, BlogDetailResponse, PaginatedBlogResponse } from '@/services/cms/cms.types';
 import { BlogArticleView } from '@/components/blog/BlogArticleView';
@@ -33,41 +30,14 @@ async function getRelatedBlogs(categorySlug: string): Promise<BlogPost[]> {
   }
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const { slug } = await params;
-  const blog = await getBlog(slug);
-  
-  if (!blog) {
-    return {
-      title: 'Article Not Found',
-    };
-  }
 
-  const title = blog.meta_title || blog.title;
-  const description = blog.meta_description || blog.excerpt;
-
-  return {
-    title,
-    description,
-    keywords: blog.meta_keywords,
-    openGraph: {
-      title,
-      description,
-      type: 'article',
-      publishedTime: blog.published_at,
-      authors: [`${blog.author.first_name} ${blog.author.last_name}`],
-      images: blog.image_url ? [{ url: blog.image_url }] : undefined,
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-      images: blog.image_url ? [blog.image_url] : undefined,
-    }
-  };
-}
-
-export default async function BlogDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+/**
+ * The same article, kept inside the dashboard shell.
+ *
+ * Reading one from the dashboard widget used to send the patient to the public
+ * marketing site, losing the sidebar and navbar entirely.
+ */
+export default async function DashboardBlogDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const brand = await getSiteBrand();
   const { slug } = await params;
   const blog = await getBlog(slug);
@@ -77,7 +47,6 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ slu
   }
 
   const relatedBlogs = await getRelatedBlogs(blog.category.slug);
-  // Filter out current blog and limit to 3
   const filteredRelated = relatedBlogs.filter(b => b.id !== blog.id).slice(0, 3);
 
   return (
@@ -85,7 +54,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ slu
       blog={blog}
       filteredRelated={filteredRelated}
       brand={brand}
-      basePath="/blog"
+      basePath="/dashboard/blog"
     />
   );
 }

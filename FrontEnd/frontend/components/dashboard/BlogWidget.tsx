@@ -79,7 +79,7 @@ export function BlogWidget() {
     <section className="space-y-4 flex flex-col">
       <div className="flex items-center justify-between shrink-0">
         <h2 className="text-base font-bold text-gray-900 mb-1">Health Care News & Tips</h2>
-        <Link href="/blog" className="text-xs font-semibold text-[#E03E3E] hover:underline">View All</Link>
+        <Link href="/dashboard/blog" className="text-xs font-semibold text-[#E03E3E] hover:underline">View All</Link>
       </div>
 
       {/* 
@@ -111,7 +111,7 @@ export function BlogWidget() {
               {blogs.map((blog) => (
                 <Link
                   key={blog.id}
-                  href={`/blog/${blog.slug}`}
+                  href={`/dashboard/blog/${blog.slug}`}
                   className="block bg-white p-5 rounded-md border border-gray-100 shadow-sm space-y-2 cursor-pointer hover:border-gray-200 hover:shadow-md transition-all"
                 >
                   <div className="flex items-center justify-between mb-1">

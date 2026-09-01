@@ -51,6 +51,7 @@ export const ROLE_CONFIGS: Record<string, RoleConfig> = {
       { name: 'Messages', href: '/dashboard/messages', iconName: 'MessageSquare' },
       { name: 'Telehealth', href: '/dashboard/telehealth', iconName: 'Video' },
       { name: 'Marketplace', href: '/dashboard/marketplace', iconName: 'ShoppingCart' },
+      { name: 'Health Articles', href: '/dashboard/blog', iconName: 'Newspaper' },
       { name: 'Settings', href: '/profile', iconName: 'Settings' },
     ],
     profileSections: ['personal', 'contact', 'insurance', 'security', 'emergency'],
