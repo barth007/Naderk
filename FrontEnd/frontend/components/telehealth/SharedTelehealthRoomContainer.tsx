@@ -47,6 +47,8 @@ export function SharedTelehealthRoomContainer({ sessionId }: SharedTelehealthRoo
   // two simultaneous calls leave isPending permanently true after the first resolves.
   const [loading, setLoading] = useState(true);
   const [credentials, setCredentials] = useState<{ room_name: string; token: string; server_url: string } | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [connected, setConnected] = useState(false);
   const [showPostWorkflow, setShowPostWorkflow] = useState(false);
 
   const audioEnabled = searchParams.get('audio') !== 'false';
@@ -148,12 +150,39 @@ export function SharedTelehealthRoomContainer({ sessionId }: SharedTelehealthRoo
 
   return (
     <div className="h-[calc(100vh-160px)] flex flex-col overflow-hidden bg-white rounded-3xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.015)]">
+      {connectionError && (
+        <div className="shrink-0 bg-red-50 border-b border-red-100 px-5 py-3 flex items-start gap-2.5">
+          <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-red-800">Video connection problem</p>
+            <p className="text-xs text-red-700 mt-0.5 leading-relaxed">{connectionError}</p>
+          </div>
+        </div>
+      )}
+      {!connected && !connectionError && (
+        <div className="shrink-0 bg-blue-50 border-b border-blue-100 px-5 py-2.5 flex items-center gap-2">
+          <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin shrink-0" />
+          <p className="text-xs font-semibold text-blue-800">Connecting to the video room…</p>
+        </div>
+      )}
       <LiveKitRoom
         token={credentials.token}
         serverUrl={credentials.server_url}
         connect={true}
         audio={audioEnabled}
         video={videoEnabled}
+        // Without this a failed connection renders an empty box and the call
+        // just looks broken — no error, nothing to act on.
+        onError={(err) => {
+          console.error('LiveKit connection error:', err);
+          setConnectionError(
+            err?.message?.includes('permission') || err?.name === 'NotAllowedError'
+              ? 'Camera and microphone access was blocked. Allow them in your browser, then rejoin.'
+              : 'Could not connect to the video service. Check your connection and try rejoining.',
+          );
+        }}
+        onDisconnected={() => setConnected(false)}
+        onConnected={() => { setConnected(true); setConnectionError(null); }}
         className="flex-grow flex flex-col h-full overflow-hidden"
       >
         <RoomWorkspace 

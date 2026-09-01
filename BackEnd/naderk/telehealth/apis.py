@@ -1,3 +1,4 @@
+import logging
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from naderk.common.responses.builders import build_success_response, build_error_response
@@ -10,6 +11,8 @@ from django.conf import settings
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 import datetime
+
+logger = logging.getLogger(__name__)
 
 class SessionListApi(APIView):
     permission_classes = [IsAuthenticated]
@@ -131,6 +134,31 @@ class JoinSessionApi(APIView):
             server_url = server_url.replace('http://', 'ws://', 1)
         elif server_url.startswith('https://'):
             server_url = server_url.replace('https://', 'wss://', 1)
+
+        # A localhost URL handed to a remote browser points at the patient's own
+        # machine, so the call connects to nothing and renders blank. Fail loudly
+        # here rather than shipping a URL that cannot work.
+        if not settings.DEBUG and ('localhost' in server_url or '127.0.0.1' in server_url):
+            logger.error(
+                "LIVEKIT_URL is %s outside DEBUG — a remote browser cannot reach that.",
+                server_url,
+            )
+            return build_error_response(
+                "misconfigured", "Telehealth unavailable", 503,
+                "The video service is not configured for this environment. "
+                "Please contact support.",
+            )
+
+        # ws:// on an https page is blocked as mixed content, so the call would
+        # silently never connect.
+        if not settings.DEBUG and server_url.startswith('ws://'):
+            logger.error("LIVEKIT_URL is insecure (%s); browsers block ws:// from https pages.", server_url)
+            return build_error_response(
+                "misconfigured", "Telehealth unavailable", 503,
+                "The video service is not configured for this environment. "
+                "Please contact support.",
+            )
+
             
         data = {
             'room_name': session.room_name,
