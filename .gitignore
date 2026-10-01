@@ -2,8 +2,8 @@
 # Never commit real .env files — use .env.example as the template
 BackEnd/.env
 BackEnd/.env.production
-FrontEnd/fronend/.env.local
-FrontEnd/fronend/.env.production
+FrontEnd/frontend/.env.local
+FrontEnd/frontend/.env.production
 .env
 .env.production
 .env.local
@@ -33,8 +33,8 @@ BackEnd/*.log
 # ── Node / Next.js ─────────────────────────────────────────────────────────────
 node_modules/
 .next/
-FrontEnd/fronend/.next/
-FrontEnd/fronend/out/
+FrontEnd/frontend/.next/
+FrontEnd/frontend/out/
 
 # ── Docker ─────────────────────────────────────────────────────────────────────
 *.log

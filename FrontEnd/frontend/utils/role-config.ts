@@ -85,9 +85,6 @@ export const ROLE_CONFIGS: Record<string, RoleConfig> = {
     defaultTitle: 'Optician Portal',
     sidebarItems: [
       { name: 'Dashboard', href: '/optician/dashboard', iconName: 'LayoutGrid' },
-      { name: 'Prescription Reviews', href: '/optician/prescriptions', iconName: 'ClipboardCheck' },
-      { name: 'Marketplace Orders', href: '/optician/orders', iconName: 'Package' },
-      { name: 'Inventory', href: '/optician/inventory', iconName: 'Layers' },
       { name: 'Settings', href: '/profile', iconName: 'Settings' },
     ],
     profileSections: ['personal', 'security'],

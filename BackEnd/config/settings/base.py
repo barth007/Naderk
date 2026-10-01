@@ -38,10 +38,7 @@ INSTALLED_APPS = [
     'naderk.users',
     'naderk.appointments',
     'naderk.telehealth',
-    'naderk.laboratory',
     'naderk.ecommerce',
-    'naderk.prescriptions',
-    'naderk.donations',
     'naderk.notifications',
     'naderk.dashboard',
     'naderk.cms',
@@ -193,7 +190,7 @@ EMAIL_PORT = env.int('EMAIL_PORT', default=587)
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='notification@totalesg360.com')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='no-reply@naderkela.com')
 
 # Email provider: postmark | smtp | resend | ses | mailtrap
 EMAIL_PROVIDER = env('EMAIL_PROVIDER', default='smtp')
