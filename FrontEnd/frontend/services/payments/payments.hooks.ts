@@ -4,6 +4,7 @@ import { useCallback, useRef } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import { Order } from '@/services/marketplace/marketplace.types';
+import { toast } from 'sonner';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ export interface InitializePaymentResult {
   authorization_url: string;
   access_code: string;
   public_key: string;
+  public_config?: Record<string, any>;
   provider: string;
   order_id: string;   // poll this until payment_status = PAID
 }
@@ -94,6 +96,7 @@ export interface InitializeAppointmentPaymentResult {
   authorization_url: string;
   access_code: string;
   public_key: string;
+  public_config?: Record<string, any>;
   provider: string;
   appointment_id: string;
 }
@@ -149,13 +152,14 @@ export function usePollAppointmentPayment(appointmentId: string | null) {
 
 /**
  * Returns a stable function that opens the Paystack inline popup.
- * Requires the Paystack inline script loaded in layout.tsx.
+ * Requires <PaymentScripts /> mounted on the route.
  */
 export function usePaystackPopup() {
   return useCallback((opts: PaystackPopupOptions) => {
     const PaystackPop = (window as any).PaystackPop;
     if (!PaystackPop) {
       console.error('Paystack inline script not loaded.');
+      toast.error('Payment is still loading', { description: 'Give it a moment and try again.' });
       opts.onClose();
       return;
     }
@@ -170,6 +174,76 @@ export function usePaystackPopup() {
       onClose: opts.onClose,
     });
 
+    handler.openIframe();
+  }, []);
+}
+
+// ── Provider-agnostic checkout dispatcher ──────────────────────────────────────
+
+export interface PaymentCheckoutOptions {
+  provider: string;
+  publicConfig?: Record<string, any>;   // from the initialize response
+  amountKobo: number;
+  email: string;
+  reference: string;
+  customerName?: string;
+  paymentDescription?: string;
+  accessCode?: string;                   // Paystack only
+  onSuccess: (reference: string) => void;
+  onClose: () => void;
+}
+
+/**
+ * Opens the correct payment UI for the chosen provider: Paystack's inline popup
+ * or Monnify's inline SDK. Both call onSuccess with our reference (the backend
+ * then verifies it authoritatively). Requires <PaymentScripts /> on the route.
+ */
+export function usePaymentCheckout() {
+  return useCallback((opts: PaymentCheckoutOptions) => {
+    const provider = (opts.provider || 'PAYSTACK').toUpperCase();
+    const cfg = opts.publicConfig || {};
+
+    if (provider === 'MONNIFY') {
+      const MonnifySDK = (window as any).MonnifySDK;
+      if (!MonnifySDK) {
+        console.error('Monnify SDK not loaded.');
+        toast.error('Payment is still loading', { description: 'Give it a moment and try again.' });
+        opts.onClose();
+        return;
+      }
+      MonnifySDK.initialize({
+        amount: opts.amountKobo / 100,          // Monnify amounts are in Naira
+        currency: 'NGN',
+        reference: opts.reference,
+        customerFullName: opts.customerName || opts.email,
+        customerEmail: opts.email,
+        apiKey: cfg.apiKey,
+        contractCode: cfg.contractCode,
+        paymentDescription: opts.paymentDescription || 'Payment',
+        isTestMode: !!cfg.isTestMode,
+        onComplete: () => opts.onSuccess(opts.reference),
+        onClose: () => opts.onClose(),
+      });
+      return;
+    }
+
+    // Default: Paystack inline popup.
+    const PaystackPop = (window as any).PaystackPop;
+    if (!PaystackPop) {
+      console.error('Paystack inline script not loaded.');
+      toast.error('Payment is still loading', { description: 'Give it a moment and try again.' });
+      opts.onClose();
+      return;
+    }
+    const handler = PaystackPop.setup({
+      key: cfg.public_key,
+      email: opts.email,
+      amount: opts.amountKobo,
+      ref: opts.reference,
+      ...(opts.accessCode ? { access_code: opts.accessCode } : {}),
+      callback: (response: { reference: string }) => opts.onSuccess(response.reference),
+      onClose: opts.onClose,
+    });
     handler.openIframe();
   }, []);
 }

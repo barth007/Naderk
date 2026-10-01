@@ -53,6 +53,7 @@ class TelehealthSessionSerializer(serializers.ModelSerializer):
     appointment_id = serializers.UUIDField(source='appointment.id', read_only=True)
     participants = TelehealthParticipantSerializer(many=True, read_only=True)
     events = TelehealthEventSerializer(many=True, read_only=True)
+    encounter_id = serializers.SerializerMethodField()
 
     class Meta:
         model = TelehealthSession
@@ -60,5 +61,19 @@ class TelehealthSessionSerializer(serializers.ModelSerializer):
             'id', 'appointment_id', 'patient', 'doctor', 'service_name', 
             'room_name', 'room_id', 'status', 'scheduled_start', 'scheduled_end',
             'started_at', 'ended_at', 'duration_minutes', 'conversation_id',
-            'session_notes', 'participants', 'events', 'created_at', 'updated_at'
+            'session_notes', 'participants', 'events', 'encounter_id',
+            'created_at', 'updated_at'
         ]
+
+    def get_encounter_id(self, obj):
+        """
+        The ConsultationEncounter this session produced, once it has ended.
+
+        The post-consultation panel needs it to attach diagnostic results to
+        the right consultation — that link is what makes a result visible in
+        the patient's consultation record rather than only in their flat
+        diagnostics list.
+        """
+        from naderk.medical_records.models import ConsultationEncounter
+        encounter = ConsultationEncounter.objects.filter(telehealth_session=obj).first()
+        return str(encounter.id) if encounter else None

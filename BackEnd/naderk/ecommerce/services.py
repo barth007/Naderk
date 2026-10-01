@@ -1,5 +1,6 @@
 import logging
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
@@ -326,6 +327,16 @@ def order_process_payment(*, order: Order, actor: User, payment_reference: str, 
                 raise ValidationError(f"Insufficient stock for {pv.product.name} ({pv.variant_name}). Available: {pv.quantity_available}")
             pv.quantity_available -= item.quantity
             pv.save()
+
+            # Product.quantity_available is the total across a product's
+            # variants. Only the variant used to be decremented here, so the
+            # product-level figure never moved — and that is the number the
+            # admin inventory page, its summary totals and the product
+            # serializers all read. Selling six units left stock showing
+            # unchanged. F() so concurrent sales can't lose an update.
+            Product.objects.filter(pk=pv.product_id).update(
+                quantity_available=F('quantity_available') - item.quantity
+            )
             
             if pv.quantity_available <= pv.low_stock_threshold:
                 low_stock_warnings.append({
@@ -396,6 +407,70 @@ def order_process_payment(*, order: Order, actor: User, payment_reference: str, 
         metadata={'low_stock_warnings': low_stock_warnings}
     )
 
+    return order
+
+
+# --- Order fulfillment state machine -----------------------------------------
+
+# The forward-only path a paid order travels from production to delivery. Staff
+# advance it stage by stage; a patient can confirm receipt (SHIPPED -> DELIVERED).
+ORDER_FULFILLMENT_FLOW = [
+    Order.Status.PAID,
+    Order.Status.PRESCRIPTION_REVIEW,
+    Order.Status.FRAME_RESERVED,
+    Order.Status.IN_PRODUCTION,
+    Order.Status.LENS_CUTTING,
+    Order.Status.FRAME_ASSEMBLY,
+    Order.Status.QUALITY_CHECK,
+    Order.Status.READY_FOR_PICKUP,
+    Order.Status.SHIPPED,
+    Order.Status.DELIVERED,
+]
+
+
+@transaction.atomic
+def order_update_status(*, order: Order, actor: User, new_status: str, notes: str = '') -> Order:
+    """
+    Move an order forward along the fulfillment flow, or cancel it.
+
+    Rules:
+      * Forward-only — a status can only advance to a later stage, never back.
+      * CANCELLED is allowed from any stage that isn't already terminal
+        (DELIVERED/CANCELLED).
+      * Re-setting the current status is a no-op.
+
+    Every change is recorded as an OrderActivity so the timeline stays truthful.
+    """
+    order = Order.objects.select_for_update().get(pk=order.pk)
+    current = order.status
+
+    if new_status == current:
+        return order
+
+    valid_targets = set(Order.Status.values)
+    if new_status not in valid_targets:
+        raise ValidationError(f"Unknown order status: {new_status}")
+
+    if new_status == Order.Status.CANCELLED:
+        if current in (Order.Status.DELIVERED, Order.Status.CANCELLED):
+            raise ValidationError("A delivered or cancelled order cannot be cancelled.")
+    else:
+        if current not in ORDER_FULFILLMENT_FLOW or new_status not in ORDER_FULFILLMENT_FLOW:
+            raise ValidationError(f"Cannot transition from {current} to {new_status}.")
+        if ORDER_FULFILLMENT_FLOW.index(new_status) <= ORDER_FULFILLMENT_FLOW.index(current):
+            raise ValidationError("Order status can only move forward.")
+
+    order.status = new_status
+    if notes:
+        order.production_notes = notes
+    order.save(update_fields=['status', 'production_notes', 'updated_at'])
+
+    OrderActivity.objects.create(
+        order=order,
+        actor=actor,
+        action=f'STATUS_{new_status}',
+        metadata={'from': current, 'to': new_status, 'notes': notes or ''}
+    )
     return order
 
 

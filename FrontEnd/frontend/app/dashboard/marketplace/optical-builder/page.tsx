@@ -1,5 +1,7 @@
 "use client";
 
+import { toastApiError } from '@/lib/api-errors';
+import Link from "next/link"
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,6 +20,8 @@ import {
 import {
   useFrames,
   useLensTypes,
+  useValidatePrescription,
+  type PrescriptionPayload,
   useLensOptions,
   useReusablePrescriptions,
   useSubmitPrescription,
@@ -79,11 +83,24 @@ export default function OpticalBuilderPage() {
     ? frames.filter(f => f.brand === selectedBrand)
     : frames;
   const { data: lensTypes = [], isLoading: loadingLensTypes } = useLensTypes();
+
+  // Only lenses the chosen frame is actually compatible with. The builder used
+  // to list every active lens type, so a patient could pick one the frame does
+  // not support and only find out when add-to-cart returned
+  // "The selected frame X is incompatible with the lens type Y".
+  const compatibleLensTypes = useMemo(() => {
+    const allowed = selectedFrame?.compatible_lens_type_ids;
+    if (!allowed) return lensTypes;
+    return lensTypes.filter((l) => allowed.includes(l.id));
+  }, [lensTypes, selectedFrame]);
   const { data: lensOptions = [], isLoading: loadingLensOptions } = useLensOptions();
   const { data: reusablePrescriptions = [], refetch: refetchReusable } = useReusablePrescriptions();
   
   const submitPrescriptionMutation = useSubmitPrescription();
   const addToCartMutation = useAddToCart();
+  const validatePrescription = useValidatePrescription();
+  // Per-field messages from the API, shown beneath the matching inputs.
+  const [rxFieldErrors, setRxFieldErrors] = useState<Record<string, string>>({});
 
   // Admin-driven builder config + prescription-based lens recommendations
   const { data: fieldConfigs = [] } = useBuilderFields();
@@ -206,8 +223,29 @@ export default function OpticalBuilderPage() {
     return true;
   };
 
+  /**
+   * The prescription values as the API expects them. Shared by the stage-gate
+   * dry run and the real save, so the two can never disagree about what is
+   * being checked.
+   */
+  const buildRxPayload = (): PrescriptionPayload => {
+    const pd = parseFloat(pupillaryDistance);
+    const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+    const int = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
+    const payload: PrescriptionPayload = {
+      pupillary_distance: isNaN(pd) ? 63 : pd,
+      right_sph: num(rightSph), right_cyl: num(rightCyl),
+      right_axis: int(rightAxis), right_add: num(rightAdd),
+      left_sph: num(leftSph), left_cyl: num(leftCyl),
+      left_axis: int(leftAxis), left_add: num(leftAdd),
+    };
+    if (prescriptionOption === 'upload') payload.prescription_file = fileUrl || null;
+    if (Object.keys(extraValues).length) payload.extra_measurements = extraValues;
+    return payload;
+  };
+
   // Move forward in steps with validations
-  const handleNextStep = () => {
+  const handleNextStep = async () => {
     if (step === 1 && !selectedFrameVariant) {
       toast.error("Please select a frame and color/size variant first.");
       return;
@@ -230,6 +268,18 @@ export default function OpticalBuilderPage() {
         const pd = parseFloat(pupillaryDistance);
         if (isNaN(pd) || pd < 40 || pd > 80) {
           toast.error("Pupillary Distance must be between 40 and 80 mm.");
+          return;
+        }
+
+        // Range checks (SPH, CYL, AXIS) live on the server. Run them here so a
+        // bad value is caught while the inputs are still on screen, rather than
+        // at checkout three stages later.
+        setRxFieldErrors({});
+        try {
+          await validatePrescription.mutateAsync(buildRxPayload());
+        } catch (err) {
+          const { fieldErrors } = toastApiError(err, 'Please correct the prescription values.');
+          setRxFieldErrors(fieldErrors);
           return;
         }
       }
@@ -262,35 +312,20 @@ export default function OpticalBuilderPage() {
     }
 
     // Upload or manual — save prescription record first, then add to cart and pay
-    const pd = parseFloat(pupillaryDistance);
-    const payload: any = { pupillary_distance: isNaN(pd) ? 63 : pd };
+    const payload = buildRxPayload();
 
-    const num = (v: string) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
-    const int = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
-
-    // Both manual and upload save the transcribed values; upload additionally keeps the file
-    payload.right_sph  = num(rightSph);
-    payload.right_cyl  = num(rightCyl);
-    payload.right_axis = int(rightAxis);
-    payload.right_add  = num(rightAdd);
-    payload.left_sph   = num(leftSph);
-    payload.left_cyl   = num(leftCyl);
-    payload.left_axis  = int(leftAxis);
-    payload.left_add   = num(leftAdd);
-    if (prescriptionOption === 'upload') {
-      payload.prescription_file = fileUrl || null;
-    }
-
-    if (Object.keys(extraValues).length) payload.extra_measurements = extraValues;
-
+    setRxFieldErrors({});
     submitPrescriptionMutation.mutate(payload, {
       onSuccess: (newRx) => {
         // Prescription saved — now add eyewear to cart and go to payment
         handleAddEyewearToCart(newRx.id);
       },
-      onError: (err: any) => {
-        const detail = err.response?.data?.detail || 'Failed to save prescription. Please check your values.';
-        toast.error(detail);
+      onError: (err) => {
+        // Surfaces the per-field messages (e.g. "Right eye SPH: SPH must be
+        // between -20.00 and +20.00.") and binds them to the inputs, instead of
+        // showing only the generic "Prescription validation failed".
+        const { fieldErrors } = toastApiError(err, 'Failed to save prescription. Please check your values.');
+        setRxFieldErrors(fieldErrors);
       },
     });
   };
@@ -310,9 +345,10 @@ export default function OpticalBuilderPage() {
         toast.success("Eyewear added to cart — proceeding to checkout!");
         router.push('/dashboard/checkout');
       },
-      onError: (err: any) => {
-        const detail = err.response?.data?.detail || "Failed to add configured eyewear to cart.";
-        toast.error(detail);
+      onError: (err) => {
+        // The reason lives in errors.non_field_errors — detail is only
+        // "Invalid fields for cart addition".
+        toastApiError(err, 'Failed to add configured eyewear to cart.');
       }
     });
   };
@@ -335,12 +371,12 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
           </span>
           <h1 className="text-2xl font-extrabold text-[#111827]">Optical Configuration Studio</h1>
         </div>
-        <button 
-          onClick={() => router.push('/dashboard/marketplace')}
+        <Link
+          href="/dashboard/marketplace"
           className="text-xs font-bold text-gray-500 hover:text-[#ff052f] transition bg-gray-50 hover:bg-gray-100 px-4 py-2 rounded-xl"
         >
           Exit Builder
-        </button>
+        </Link>
       </div>
 
       {step <= 6 && (
@@ -538,9 +574,22 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
 
                 {loadingLensTypes ? (
                   <div className="py-20 flex justify-center"><RefreshCw className="animate-spin text-[#ff052f]" /></div>
+                ) : compatibleLensTypes.length === 0 ? (
+                  // add-to-cart rejects any frame/lens pair the admin has not
+                  // linked, so say so here rather than letting the patient
+                  // configure a pair that cannot be bought.
+                  <div className="py-16 text-center space-y-2">
+                    <p className="text-sm font-bold text-gray-700">
+                      No lenses available for this frame yet.
+                    </p>
+                    <p className="text-xs text-gray-500 max-w-sm mx-auto leading-relaxed">
+                      {selectedFrame?.name ?? 'This frame'} has not been matched to any lens type.
+                      Please choose another frame, or contact support.
+                    </p>
+                  </div>
                 ) : (
                   <div className="space-y-3">
-                    {lensTypes.map((lens) => {
+                    {compatibleLensTypes.map((lens) => {
                       // Apply admin recommendation rules
                       const hidden = recommendation?.hidden_lens_type_ids.includes(lens.id) ?? false;
                       const allowed = recommendation?.allowed_lens_type_ids;
@@ -554,9 +603,9 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
                         <div
                           key={lens.id}
                           onClick={() => selectable && setSelectedLensType(lens)}
-                          className={`relative p-4 rounded-xl border transition duration-300 flex justify-between items-center ${
+                          className={`relative w-full p-4 rounded-xl border transition-colors duration-200 flex items-start gap-4 ${
                             restricted
-                              ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50'
+                              ? 'opacity-50 cursor-not-allowed border-gray-100 bg-gray-50'
                               : selectedLensType?.id === lens.id
                               ? 'border-[#ff052f] bg-[#fff5f6] cursor-pointer'
                               : recommended
@@ -564,23 +613,46 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
                               : 'border-gray-100 hover:border-gray-200 cursor-pointer'
                           }`}
                         >
-                          <div className="flex-1 pr-4">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-bold text-gray-900 text-xs md:text-sm">{lens.name}</h3>
+                          {/* min-w-0 lets the name truncate instead of pushing
+                              the price out of the card. */}
+                          <div className="flex-1 min-w-0 space-y-1">
+                            {/* flex-wrap so a long name plus a badge stacks
+                                rather than overflowing on narrow screens. */}
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <h3 className="font-bold text-gray-900 text-xs md:text-sm break-words">{lens.name}</h3>
                               {recommended && (
-                                <span className="text-[8px] font-extrabold uppercase tracking-wider bg-[#ff052f] text-white px-1.5 py-0.5 rounded-full">Recommended</span>
+                                <span className="shrink-0 text-[8px] font-extrabold uppercase tracking-wider bg-[#ff052f] text-white px-1.5 py-0.5 rounded-full">Recommended</span>
                               )}
                               {restricted && (
-                                <span className="text-[8px] font-extrabold uppercase tracking-wider bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full">Not suitable</span>
+                                <span className="shrink-0 text-[8px] font-extrabold uppercase tracking-wider bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full">Not suitable</span>
                               )}
                             </div>
-                            <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">{lens.description}</p>
+                            {/* Rendered only when present — a lens added
+                                without one used to leave an empty line and an
+                                uneven card. */}
+                            {lens.description?.trim() ? (
+                              <p className="text-[11px] text-gray-400 leading-relaxed">{lens.description}</p>
+                            ) : null}
                           </div>
-                          <div className="text-right">
-                            <span className="font-bold text-gray-900 block text-sm">+₦{Number(lens.price_modifier).toLocaleString()}</span>
-                            {selectedLensType?.id === lens.id && (
-                              <span className="inline-block mt-2 bg-[#ff052f] text-white p-0.5 rounded-full"><Check className="w-3.5 h-3.5" /></span>
-                            )}
+
+                          {/* shrink-0 keeps the price on one line; the tick sits
+                              beside it so selecting a lens cannot change the
+                              card's height. */}
+                          <div className="shrink-0 flex items-center gap-2 pt-0.5">
+                            <span className="font-bold text-gray-900 text-sm whitespace-nowrap">
+                              {Number(lens.price_modifier) > 0
+                                ? `+₦${Number(lens.price_modifier).toLocaleString()}`
+                                : 'Included'}
+                            </span>
+                            <span
+                              className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors ${
+                                selectedLensType?.id === lens.id
+                                  ? 'bg-[#ff052f] text-white'
+                                  : 'border border-gray-200'
+                              }`}
+                            >
+                              {selectedLensType?.id === lens.id && <Check className="w-3 h-3" />}
+                            </span>
                           </div>
                         </div>
                       );
@@ -626,25 +698,29 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
                               setSelectedLensOptions([...selectedLensOptions, opt]);
                             }
                           }}
-                          className={`p-4 rounded-xl border transition duration-300 flex justify-between items-center ${
+                          className={`w-full p-4 rounded-xl border transition-colors duration-200 flex items-start gap-4 ${
                             restricted
-                              ? 'opacity-40 cursor-not-allowed border-gray-100 bg-gray-50'
+                              ? 'opacity-50 cursor-not-allowed border-gray-100 bg-gray-50'
                               : isSelected
                               ? 'border-[#ff052f] bg-[#fff5f6] cursor-pointer'
                               : 'border-gray-100 hover:border-gray-200 cursor-pointer'
                           }`}
                         >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-bold text-gray-900 text-xs md:text-sm">{opt.name}</h3>
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <h3 className="font-bold text-gray-900 text-xs md:text-sm break-words">{opt.name}</h3>
                               {recommended && (
-                                <span className="text-[8px] font-extrabold uppercase tracking-wider bg-[#ff052f] text-white px-1.5 py-0.5 rounded-full">Recommended</span>
+                                <span className="shrink-0 text-[8px] font-extrabold uppercase tracking-wider bg-[#ff052f] text-white px-1.5 py-0.5 rounded-full">Recommended</span>
                               )}
                             </div>
-                            <p className="text-[11px] text-gray-400 mt-1">Enhance your eyeglasses with high performance filters.</p>
+                            <p className="text-[11px] text-gray-400 leading-relaxed">Enhance your eyeglasses with high performance filters.</p>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <span className="font-bold text-gray-900 text-sm">+₦{Number(opt.price_modifier).toLocaleString()}</span>
+                          <div className="shrink-0 flex items-center gap-3 pt-0.5">
+                            <span className="font-bold text-gray-900 text-sm whitespace-nowrap">
+                              {Number(opt.price_modifier) > 0
+                                ? `+₦${Number(opt.price_modifier).toLocaleString()}`
+                                : 'Included'}
+                            </span>
                             <div className={`w-4 h-4 rounded border flex items-center justify-center transition ${
                               isSelected ? 'bg-[#ff052f] border-[#ff052f] text-white' : 'border-gray-300 bg-white'
                             }`}>
@@ -797,24 +873,36 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
                       <div className="grid grid-cols-4 gap-2 text-xs">
                         <div>
                           <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">SPH</label>
-                          <input type="text" value={rightSph} onChange={e => setRightSph(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                          <input type="text" value={rightSph} onChange={e => setRightSph(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.right_sph ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.right_sph && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.right_sph}</p>
+                          )}
                         </div>
                         {isFieldVisible('CYL') && (
                           <div>
                             <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">CYL</label>
-                            <input type="text" value={rightCyl} onChange={e => setRightCyl(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                            <input type="text" value={rightCyl} onChange={e => setRightCyl(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.right_cyl ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.right_cyl && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.right_cyl}</p>
+                          )}
                           </div>
                         )}
                         {isFieldVisible('AXIS') && (
                           <div>
                             <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">AXIS</label>
-                            <input type="text" value={rightAxis} onChange={e => setRightAxis(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                            <input type="text" value={rightAxis} onChange={e => setRightAxis(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.right_axis ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.right_axis && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.right_axis}</p>
+                          )}
                           </div>
                         )}
                         {isFieldVisible('ADD') && (
                           <div>
                             <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">ADD</label>
-                            <input type="text" value={rightAdd} onChange={e => setRightAdd(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                            <input type="text" value={rightAdd} onChange={e => setRightAdd(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.right_add ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.right_add && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.right_add}</p>
+                          )}
                           </div>
                         )}
                       </div>
@@ -826,24 +914,36 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
                       <div className="grid grid-cols-4 gap-2 text-xs">
                         <div>
                           <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">SPH</label>
-                          <input type="text" value={leftSph} onChange={e => setLeftSph(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                          <input type="text" value={leftSph} onChange={e => setLeftSph(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.left_sph ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.left_sph && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.left_sph}</p>
+                          )}
                         </div>
                         {isFieldVisible('CYL') && (
                           <div>
                             <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">CYL</label>
-                            <input type="text" value={leftCyl} onChange={e => setLeftCyl(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                            <input type="text" value={leftCyl} onChange={e => setLeftCyl(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.left_cyl ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.left_cyl && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.left_cyl}</p>
+                          )}
                           </div>
                         )}
                         {isFieldVisible('AXIS') && (
                           <div>
                             <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">AXIS</label>
-                            <input type="text" value={leftAxis} onChange={e => setLeftAxis(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                            <input type="text" value={leftAxis} onChange={e => setLeftAxis(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.left_axis ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.left_axis && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.left_axis}</p>
+                          )}
                           </div>
                         )}
                         {isFieldVisible('ADD') && (
                           <div>
                             <label className="text-gray-400 block mb-1 text-[9px] uppercase font-bold">ADD</label>
-                            <input type="text" value={leftAdd} onChange={e => setLeftAdd(e.target.value)} className="w-full p-2 border border-gray-200 focus:outline-none focus:border-[#ff052f] rounded-lg bg-white" />
+                            <input type="text" value={leftAdd} onChange={e => setLeftAdd(e.target.value)} className={`w-full p-2 border focus:outline-none focus:border-[#ff052f] rounded-lg bg-white ${rxFieldErrors.left_add ? 'border-red-400' : 'border-gray-200'}`} />
+                          {rxFieldErrors.left_add && (
+                            <p className="text-[9px] text-red-500 mt-1 leading-tight">{rxFieldErrors.left_add}</p>
+                          )}
                           </div>
                         )}
                       </div>
@@ -1043,10 +1143,22 @@ const stepNames = ["Choose Frame", "Prescription", "Select Lens", "Upgrades", "S
               {step < 5 ? (
                 <button
                   onClick={handleNextStep}
-                  className="w-full bg-gray-900 hover:bg-gray-800 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer text-xs"
+                  disabled={validatePrescription.isPending}
+                  className="w-full bg-gray-900 hover:bg-gray-800 disabled:opacity-60 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer text-xs"
                 >
-                  <span>Continue</span>
-                  <ChevronRight className="w-4 h-4" />
+                  {/* Leaving the prescription stage checks the values with the
+                      server, so the button must show it is working. */}
+                  {validatePrescription.isPending ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Checking values…</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Continue</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </>
+                  )}
                 </button>
               ) : (
                 <div className="space-y-2">

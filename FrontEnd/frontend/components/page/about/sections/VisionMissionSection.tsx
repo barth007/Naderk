@@ -1,6 +1,8 @@
+"use client"
+
 import Image from "next/image"
 import { Card } from "@/components/ui"
-import { VISION_MISSION_CONTENT } from "./about.constants"
+import { useAboutContent } from "../useAboutContent"
 
 function StatCard({ value, label }: { value: string; label: string }) {
   return (
@@ -12,7 +14,7 @@ function StatCard({ value, label }: { value: string; label: string }) {
 }
 
 export function VisionMissionSection() {
-  const content = VISION_MISSION_CONTENT
+  const content = useAboutContent().visionMission
 
   return (
     <section className="bg-background py-10 sm:py-14 lg:py-16" aria-labelledby="vision-mission-title">

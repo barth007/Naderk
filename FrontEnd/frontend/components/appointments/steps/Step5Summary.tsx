@@ -1,5 +1,6 @@
 'use client';
 
+import { parseApiError } from '@/lib/api-errors';
 import React, { useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
@@ -9,8 +10,9 @@ import {
   useInitializeAppointmentPayment,
   usePollAppointmentPayment,
   useVerifyAppointmentPayment,
-  usePaystackPopup,
+  usePaymentCheckout,
 } from '@/services/payments/payments.hooks';
+import { usePaymentGateways } from '@/services/payments/admin-payments.hooks';
 import { useAuth } from '@/hooks/useAuth';
 import { format, parseISO } from 'date-fns';
 
@@ -33,31 +35,59 @@ export default function Step5Summary() {
   const [idempotencyKey, setIdempotencyKey] = React.useState(() => `appt-${crypto.randomUUID()}`);
   const initPaymentMutation = useInitializeAppointmentPayment(idempotencyKey);
   const verifyPayment = useVerifyAppointmentPayment();
-  const openPaystack = usePaystackPopup();
+  const payCheckout = usePaymentCheckout();
+  const { data: gateways = [] } = usePaymentGateways();
+  const [gateway, setGateway] = React.useState<string>('');
+
+  useEffect(() => {
+    if (!gateway && gateways.length) {
+      setGateway((gateways.find((g) => g.is_default) ?? gateways[0]).provider);
+    }
+  }, [gateways, gateway]);
 
   const [phase, setPhase] = React.useState<Phase>('idle');
   const [pendingAppointmentId, setPendingAppointmentId] = React.useState<string | null>(null);
+  const [pendingReference, setPendingReference] = React.useState<string | null>(null);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
   // True when we genuinely could not confirm a payment that may have gone
   // through. Never tell someone nothing was charged unless we know it.
   const [unconfirmed, setUnconfirmed] = React.useState(false);
 
-  const pollQuery = usePollAppointmentPayment(
-    phase === 'confirming' ? pendingAppointmentId : null
-  );
+  const paying = phase === 'confirming' || phase === 'popup_open';
+  const pollQuery = usePollAppointmentPayment(paying ? pendingAppointmentId : null);
 
-  // When payment is confirmed (by our verify call or the webhook), advance.
+  // When payment is confirmed (by our verify poll or the webhook), advance.
   useEffect(() => {
-    if (phase === 'confirming' && pollQuery.data?.payment_status === 'PAID') {
+    if (!paying) return;
+    if (pollQuery.data?.payment_status === 'PAID') {
       setPhase('idle');
+      setPendingReference(null);
       nextStep();
     }
-    if (phase === 'confirming' && pollQuery.data?.payment_status === 'FAILED') {
+    if (pollQuery.data?.payment_status === 'FAILED') {
       setPhase('idle');
       setErrorMsg('Payment failed. Please try again.');
       setPendingAppointmentId(null);
+      setPendingReference(null);
     }
-  }, [pollQuery.data?.payment_status, phase]);
+  }, [pollQuery.data?.payment_status, paying]);
+
+  // Actively verify against the provider — Monnify's SDK onComplete is
+  // unreliable (especially bank transfer), so we poll the verify endpoint, which
+  // confirms the appointment the moment the provider reports PAID. Idempotent,
+  // and a harmless backstop for Paystack.
+  useEffect(() => {
+    if (!pendingReference || !pendingAppointmentId || !paying) return;
+    let attempts = 0;
+    const id = setInterval(async () => {
+      attempts += 1;
+      if (attempts > 45) { clearInterval(id); return; }   // ~3 min at 4s
+      try {
+        await apiClient.post('/payments/verify-appointment/', { reference: pendingReference });
+      } catch { /* keep trying; the poll picks up PAID */ }
+    }, 4000);
+    return () => clearInterval(id);
+  }, [pendingReference, pendingAppointmentId, paying]);
 
   // Polling had no time limit, so if confirmation never arrived the patient sat
   // on "Confirming payment…" indefinitely with no idea whether they had been
@@ -120,17 +150,24 @@ export default function Step5Summary() {
       if (!appointmentId) throw new Error('No appointment ID returned.');
       setPendingAppointmentId(appointmentId);
 
-      // 2. Initialize Paystack
+      // 2. Initialize payment with the chosen gateway
       setPhase('initializing');
-      const payData = await initPaymentMutation.mutateAsync({ appointment_id: appointmentId });
+      const payData = await initPaymentMutation.mutateAsync({
+        appointment_id: appointmentId,
+        provider: gateway || undefined,
+      });
 
-      // 3. Open Paystack popup
+      // 3. Open the gateway's payment UI (Paystack popup / Monnify SDK)
       setPhase('popup_open');
-      openPaystack({
-        publicKey: payData.public_key,
+      setPendingReference(payData.reference);   // drives the verify-poll above
+      payCheckout({
+        provider: payData.provider,
+        publicConfig: payData.public_config ?? { public_key: payData.public_key },
+        amountKobo: numericFee * 100,
         email: user?.email ?? '',
-        amount: numericFee * 100,
         reference: payData.reference,
+        customerName: [user?.first_name, user?.last_name].filter(Boolean).join(' '),
+        paymentDescription: `Consultation: ${service?.name ?? ''}`,
         accessCode: payData.access_code,
         onSuccess: () => {
           setPhase('confirming');
@@ -143,18 +180,27 @@ export default function Step5Summary() {
           );
         },
         onClose: () => {
-          // User closed popup without paying — delete the pending appointment
-          setPhase('cancelling');
-          apiClient.delete(`/appointments/${appointmentId}/`).finally(() => {
-            setPendingAppointmentId(null);
-            setPhase('idle');
-            setErrorMsg('Payment cancelled. Your slot reservation may have expired.');
-          });
+          // The popup can close right after a successful transfer (Monnify), so
+          // do NOT delete immediately — that would discard a just-paid booking.
+          // Keep verifying briefly; only clean up if it never confirms.
+          setTimeout(() => {
+            setPhase((cur) => {
+              if (cur !== 'popup_open' && cur !== 'confirming') return cur; // already paid/advanced
+              apiClient.delete(`/appointments/${appointmentId}/`).catch(() => {});
+              setPendingAppointmentId(null);
+              setPendingReference(null);
+              setErrorMsg('Payment was not completed. Your slot reservation may have expired.');
+              return 'idle';
+            });
+          }, 15000);
         },
       });
     } catch (err: any) {
       setPhase('idle');
-      setErrorMsg(err?.response?.data?.detail || err?.message || 'Something went wrong. Please try again.');
+      // Was `detail` only, so per-field validation messages never reached the
+      // patient. parseApiError folds them into one readable block.
+      const info = parseApiError(err, 'Something went wrong. Please try again.');
+      setErrorMsg(info.description ? `${info.title}\n${info.description}` : info.title);
 
       // The appointment row is created before payment. If anything after that
       // fails we must not leave an unpaid PENDING booking behind — it showed up
@@ -296,7 +342,9 @@ export default function Step5Summary() {
           {errorMsg && (
             <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl text-sm space-y-1.5">
               <p className="font-bold">{unconfirmed ? 'Payment not confirmed yet' : 'Booking could not be completed'}</p>
-              <p>{errorMsg}</p>
+              {/* pre-line so the per-field lines parseApiError joins stay on
+                  separate rows instead of collapsing into one paragraph. */}
+              <p className="whitespace-pre-line">{errorMsg}</p>
               {!unconfirmed && (
                 <p className="text-red-700">
                   Nothing has been charged and no appointment was reserved. Press

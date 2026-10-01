@@ -134,7 +134,8 @@ export default function RegisterPage() {
         <h2 className="text-2xl font-bold text-gray-900 mb-1.5">Create Account</h2>
         <p className="text-gray-500 mb-8 text-sm">The first step to accessing your patient portal.</p>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {/* POST so a pre-hydration native submit can't leak password into the URL. */}
+        <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-gray-700">Full Name</label>
             <Input 

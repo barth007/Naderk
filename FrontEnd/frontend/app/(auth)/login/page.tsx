@@ -13,6 +13,7 @@ import { LogIn, UserPlus, ShieldCheck, CalendarClock, EyeOff, Eye } from 'lucide
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/Checkbox';
+import { requiresOnboarding, portalHomeFor } from '@/utils/role-config';
 import { apiClient } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { ProblemDetailsResponse, AuthTokens } from '@/types';
@@ -52,24 +53,16 @@ export default function LoginPage() {
       setAuth(tokens.user, tokens.access, tokens.refresh);
       toast.success(response.data.message);
 
-      const { role, profile_completion_status } = tokens.user;
+      const { role, profile_completion_status, areas } = tokens.user;
 
-      if (profile_completion_status !== 'COMPLETED') {
+      // Only patients and doctors are held at onboarding; staff go straight to
+      // work and can complete their profile from Settings later.
+      if (requiresOnboarding(role) && profile_completion_status !== 'COMPLETED') {
         router.push('/onboarding');
         return;
       }
 
-      if (role === 'DOCTOR') {
-        router.push('/doctor/dashboard');
-      } else if (role === 'OPTICIAN') {
-        router.push('/optician/dashboard');
-      } else if (role === 'MEDICAL_AGENT') {
-        router.push('/agent/dashboard');
-      } else if (role === 'ADMIN' || role === 'SUPER_ADMIN') {
-        router.push('/admin/dashboard');
-      } else {
-        router.push('/dashboard');
-      }
+      router.push(portalHomeFor(role, areas));
     } catch (error) {
       const err = error as AxiosError<ProblemDetailsResponse>;
       if (err.response?.data) {
@@ -102,7 +95,11 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold text-gray-900 mb-1.5">Welcome Back!</h1>
         <p className="text-gray-500 mb-6 text-sm">Log in to access your medical records and appointments.</p>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 flex-grow">
+        {/* method="post" is a safety net: react-hook-form preventDefaults once
+            hydrated, but a native submit before hydration would otherwise GET
+            the current URL with email+password in the query string. POST keeps
+            credentials out of the URL (and browser history / server logs). */}
+        <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-5 flex-grow">
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-gray-700">Email address</label>
             <Input 

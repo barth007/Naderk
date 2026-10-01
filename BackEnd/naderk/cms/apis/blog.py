@@ -15,8 +15,10 @@ from ..selectors import (
 )
 from ..services.blog import create_blog_post, publish_blog_post, archive_blog_post
 
-BLOG_AUTHOR_ROLES = {'DOCTOR', 'ADMIN', 'SUPER_ADMIN'}
-ADMIN_ROLES = {'ADMIN', 'SUPER_ADMIN'}
+# Doctors may author their own posts; CMS-area staff may author and manage any.
+BLOG_AUTHOR_ROLES = {'DOCTOR', 'ADMIN', 'SUPER_ADMIN', 'OPERATIONS_MANAGER', 'MEDICAL_AGENT'}
+# "Manage any post" (publish/feature/delete regardless of author) = CMS area.
+ADMIN_ROLES = {'ADMIN', 'SUPER_ADMIN', 'OPERATIONS_MANAGER', 'MEDICAL_AGENT'}
 
 
 def _serialize_blog_with_status(blog):
@@ -379,6 +381,22 @@ class BlogUpdateDeleteAPI(APIView):
 
         blog.reading_time = ''  # force recalc on save
         blog.save()
+
+        # Honor an explicit status transition. The Edit modal's "Publish Now" /
+        # "Save as Draft" sends `status` through this PUT; it used to be dropped
+        # here, so publishing an existing draft silently left it a draft (and the
+        # patient-facing page then 404'd because it only serves published posts).
+        # Reuse the same services as the dedicated publish/draft endpoints so
+        # `published_at` is set consistently.
+        if 'status' in data:
+            requested = str(data['status']).strip().upper()
+            if requested == 'PUBLISHED' and blog.status != BlogPost.StatusChoices.PUBLISHED:
+                publish_blog_post(blog)
+            elif requested == 'ARCHIVED' and blog.status != BlogPost.StatusChoices.ARCHIVED:
+                archive_blog_post(blog)
+            elif requested == 'DRAFT' and blog.status != BlogPost.StatusChoices.DRAFT:
+                blog.status = BlogPost.StatusChoices.DRAFT
+                blog.save(update_fields=['status', 'updated_at'])
 
         return build_success_response(
             message="Blog post updated successfully.",

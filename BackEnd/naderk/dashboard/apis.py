@@ -3,6 +3,7 @@ import logging
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import Sum, Count, Q, F
 from django.db.models.functions import TruncMonth, TruncDate
 from naderk.common.responses.builders import build_success_response, build_error_response
@@ -286,6 +287,303 @@ class DoctorScratchpadAPI(APIView):
         )
 
 
+def _admin_dashboard_summary():
+    """
+    Today's headline numbers.
+
+    Extracted so the JSON summary and the daily PDF report are computed
+    once — two implementations would drift, and a report that disagrees
+    with the dashboard it summarises is worse than no report.
+    """
+    today = timezone.now().date()
+    yesterday = today - timedelta(days=1)
+    six_months_ago = today - timedelta(days=182)
+    month_start = today.replace(day=1)
+
+    # --- Stat: appointments today ---
+    appts_today = Appointment.objects.filter(
+        appointment_date=today
+    ).exclude(status=Appointment.Status.CANCELLED).count()
+
+    appts_yesterday = Appointment.objects.filter(
+        appointment_date=yesterday
+    ).exclude(status=Appointment.Status.CANCELLED).count()
+
+    if appts_yesterday > 0:
+        appts_change = round((appts_today - appts_yesterday) / appts_yesterday * 100)
+    else:
+        appts_change = 100 if appts_today > 0 else 0
+
+    # --- Stat: active telehealth ---
+    active_telehealth = TelehealthSession.objects.filter(
+        status=TelehealthSession.Status.ACTIVE
+    ).count()
+
+    # --- Stat: pending prescriptions ---
+    pending_prescriptions = Prescription.objects.filter(
+        status__in=[Prescription.Status.PENDING_REVIEW, Prescription.Status.UNDER_REVIEW]
+    ).count()
+
+    # --- Stat: optical revenue today ---
+    revenue_today = (
+        Order.objects.filter(payment_status=Order.PaymentStatus.PAID, updated_at__date=today)
+        .aggregate(total=Sum('total_price'))['total'] or 0
+    )
+    revenue_yesterday = (
+        Order.objects.filter(payment_status=Order.PaymentStatus.PAID, updated_at__date=yesterday)
+        .aggregate(total=Sum('total_price'))['total'] or 0
+    )
+    if revenue_yesterday > 0:
+        revenue_change = round((float(revenue_today) - float(revenue_yesterday)) / float(revenue_yesterday) * 100)
+    else:
+        revenue_change = 100 if revenue_today > 0 else 0
+
+    # --- Appointment queue: today's appointments (must match the summary count above,
+    # which counts all non-cancelled appointments, including PENDING) ---
+    queue_qs = (
+        Appointment.objects.filter(appointment_date=today)
+        .exclude_unpaid_checkouts()
+        .exclude(status=Appointment.Status.CANCELLED)
+        .order_by('appointment_time')
+        .select_related('patient', 'service')[:20]
+    )
+
+    appointment_queue = []
+    for appt in queue_qs:
+        appointment_queue.append({
+            "id": str(appt.id),
+            "patient_name": f"{appt.patient.first_name} {appt.patient.last_name}".strip() or appt.patient.email,
+            "status": appt.status,
+            "service": appt.service.name if appt.service else "—",
+            "date": appt.appointment_date.isoformat(),
+            "time": appt.appointment_time.isoformat(),
+            "type": appt.appointment_type,
+        })
+
+    # --- Patient volume trends: last 6 months ---
+    trends_qs = (
+        Appointment.objects.filter(appointment_date__gte=six_months_ago)
+        .annotate(month=TruncMonth('appointment_date'))
+        .values('month')
+        .annotate(count=Count('id'))
+        .order_by('month')
+    )
+    MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    patient_volume_trends = [
+        {"month": MONTH_NAMES[row['month'].month - 1], "count": row['count']}
+        for row in trends_qs
+    ]
+
+    # --- Revenue breakdown (current month, as percentages) ---
+    medical_rev = (
+        Appointment.objects.filter(
+            appointment_date__gte=month_start,
+            payment_status=Appointment.PaymentStatus.PAID,
+            appointment_type=Appointment.AppointmentType.PHYSICAL
+        ).aggregate(total=Sum('consultation_fee'))['total'] or 0
+    )
+    telehealth_rev = (
+        Appointment.objects.filter(
+            appointment_date__gte=month_start,
+            payment_status=Appointment.PaymentStatus.PAID,
+            appointment_type=Appointment.AppointmentType.TELEHEALTH
+        ).aggregate(total=Sum('consultation_fee'))['total'] or 0
+    )
+    optical_rev = (
+        Order.objects.filter(
+            payment_status=Order.PaymentStatus.PAID,
+            updated_at__date__gte=month_start
+        ).aggregate(total=Sum('total_price'))['total'] or 0
+    )
+    total_rev = float(medical_rev) + float(telehealth_rev) + float(optical_rev)
+    if total_rev > 0:
+        revenue_breakdown = {
+            "medical_services": round(float(medical_rev) / total_rev * 100),
+            "optical_store": round(float(optical_rev) / total_rev * 100),
+            "telehealth": round(float(telehealth_rev) / total_rev * 100),
+        }
+    else:
+        revenue_breakdown = {"medical_services": 65, "optical_store": 25, "telehealth": 10}
+
+    data = {
+        "stats": {
+            "appointments_today": appts_today,
+            "appointments_today_change": appts_change,
+            "active_telehealth": active_telehealth,
+            "pending_prescriptions": pending_prescriptions,
+            "optical_revenue_today": float(revenue_today),
+            "optical_revenue_change": revenue_change,
+        },
+        "appointment_queue": appointment_queue,
+        "patient_volume_trends": patient_volume_trends,
+        "revenue_breakdown": revenue_breakdown,
+    }
+    return data
+
+
+class AdminDailyReportPdfAPI(APIView):
+    """
+    Today's numbers as a branded PDF.
+
+    The dashboard's "Generate Daily Report" action only ever raised a "coming
+    soon" toast. Everything it needs was already computed for the summary
+    endpoint, so this renders the same figures rather than recomputing them.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if _admin_only(request, 'dashboard'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+
+        from io import BytesIO
+        from django.http import FileResponse
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage,
+        )
+        from naderk.medical_records.apis import _prescription_pdf_brand
+
+        data = _admin_dashboard_summary()
+        stats = data['stats']
+        today = timezone.localdate()
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer, pagesize=letter,
+            rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40,
+        )
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'ReportTitle', parent=styles['Heading1'], fontSize=20,
+            textColor=colors.HexColor('#0f172a'), spaceAfter=4, alignment=1,
+        )
+        subtitle_style = ParagraphStyle(
+            'ReportSubtitle', parent=styles['Normal'], fontSize=10,
+            textColor=colors.HexColor('#64748b'), spaceAfter=22, alignment=1,
+        )
+        heading_style = ParagraphStyle(
+            'ReportHeading', parent=styles['Heading2'], fontSize=12,
+            textColor=colors.HexColor('#0f172a'), spaceBefore=16, spaceAfter=8,
+        )
+
+        story = []
+
+        # Same brand source as the prescription PDF, so both stay in step with
+        # the CMS rather than hardcoding a clinic name.
+        brand_name, logo = _prescription_pdf_brand()
+        if logo is not None:
+            img = RLImage(logo)
+            ratio = img.imageWidth / img.imageHeight if img.imageHeight else 1
+            max_w, max_h = 130, 44
+            if ratio >= max_w / max_h:
+                img.drawWidth, img.drawHeight = max_w, max_w / ratio
+            else:
+                img.drawHeight, img.drawWidth = max_h, max_h * ratio
+            img.hAlign = 'CENTER'
+            story.append(img)
+            story.append(Spacer(1, 8))
+
+        story.append(Paragraph(brand_name.upper(), title_style))
+        story.append(Paragraph(f"Daily Operations Report — {today.strftime('%A, %d %B %Y')}", subtitle_style))
+
+        def money(v):
+            return f"NGN {float(v):,.2f}"
+
+        def change(v):
+            return f"{v:+d}% vs yesterday" if v else "no change"
+
+        story.append(Paragraph("Today at a glance", heading_style))
+        overview = [
+            ['Metric', 'Value', 'Movement'],
+            ['Appointments today', str(stats['appointments_today']), change(stats['appointments_today_change'])],
+            ['Optical revenue today', money(stats['optical_revenue_today']), change(stats['optical_revenue_change'])],
+            ['Active telehealth sessions', str(stats['active_telehealth']), '—'],
+            ['Prescriptions awaiting review', str(stats['pending_prescriptions']), '—'],
+        ]
+        table = Table(overview, colWidths=[220, 150, 150])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0f172a')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 7),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+        ]))
+        story.append(table)
+
+        breakdown = data.get('revenue_breakdown') or {}
+        if breakdown:
+            story.append(Paragraph("Revenue mix", heading_style))
+            rows = [['Stream', 'Share']] + [
+                [k.replace('_', ' ').title(), f"{v}%"] for k, v in breakdown.items()
+            ]
+            mix = Table(rows, colWidths=[370, 150])
+            mix.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            story.append(mix)
+
+        queue = data.get('appointment_queue') or []
+        story.append(Paragraph("Appointment queue", heading_style))
+        if queue:
+            rows = [['Time', 'Patient', 'Service', 'Status']] + [
+                [q.get('time') or '—', q.get('patient_name') or '—',
+                 q.get('service') or '—', (q.get('status') or '').replace('_', ' ').title()]
+                for q in queue[:25]
+            ]
+            qt = Table(rows, colWidths=[70, 170, 170, 110])
+            qt.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ]))
+            story.append(qt)
+            if len(queue) > 25:
+                story.append(Spacer(1, 6))
+                story.append(Paragraph(
+                    f"Showing the first 25 of {len(queue)} appointments.",
+                    ParagraphStyle('Note', parent=styles['Normal'], fontSize=8,
+                                   textColor=colors.HexColor('#94a3b8')),
+                ))
+        else:
+            story.append(Paragraph(
+                "No appointments scheduled for today.",
+                ParagraphStyle('Empty', parent=styles['Normal'], fontSize=9,
+                               textColor=colors.HexColor('#94a3b8')),
+            ))
+
+        story.append(Spacer(1, 26))
+        story.append(Paragraph(
+            f"Generated {timezone.localtime().strftime('%d %b %Y, %H:%M')} by "
+            f"{request.user.first_name or request.user.email}.",
+            ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8,
+                           textColor=colors.HexColor('#94a3b8'), alignment=1),
+        ))
+
+        doc.build(story)
+        buffer.seek(0)
+
+        inline = request.query_params.get('disposition') == 'inline'
+        filename = f"daily-report-{today.isoformat()}.pdf"
+        response = FileResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = f'{"inline" if inline else "attachment"}; filename="{filename}"'
+        return response
+
+
 class AdminDashboardSummaryAPI(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -296,144 +594,33 @@ class AdminDashboardSummaryAPI(APIView):
                 detail='Forbidden.',
             )
 
-        today = timezone.now().date()
-        yesterday = today - timedelta(days=1)
-        six_months_ago = today - timedelta(days=182)
-        month_start = today.replace(day=1)
-
-        # --- Stat: appointments today ---
-        appts_today = Appointment.objects.filter(
-            appointment_date=today
-        ).exclude(status=Appointment.Status.CANCELLED).count()
-
-        appts_yesterday = Appointment.objects.filter(
-            appointment_date=yesterday
-        ).exclude(status=Appointment.Status.CANCELLED).count()
-
-        if appts_yesterday > 0:
-            appts_change = round((appts_today - appts_yesterday) / appts_yesterday * 100)
-        else:
-            appts_change = 100 if appts_today > 0 else 0
-
-        # --- Stat: active telehealth ---
-        active_telehealth = TelehealthSession.objects.filter(
-            status=TelehealthSession.Status.ACTIVE
-        ).count()
-
-        # --- Stat: pending prescriptions ---
-        pending_prescriptions = Prescription.objects.filter(
-            status__in=[Prescription.Status.PENDING_REVIEW, Prescription.Status.UNDER_REVIEW]
-        ).count()
-
-        # --- Stat: optical revenue today ---
-        revenue_today = (
-            Order.objects.filter(payment_status=Order.PaymentStatus.PAID, updated_at__date=today)
-            .aggregate(total=Sum('total_price'))['total'] or 0
-        )
-        revenue_yesterday = (
-            Order.objects.filter(payment_status=Order.PaymentStatus.PAID, updated_at__date=yesterday)
-            .aggregate(total=Sum('total_price'))['total'] or 0
-        )
-        if revenue_yesterday > 0:
-            revenue_change = round((float(revenue_today) - float(revenue_yesterday)) / float(revenue_yesterday) * 100)
-        else:
-            revenue_change = 100 if revenue_today > 0 else 0
-
-        # --- Appointment queue: today's appointments (must match the summary count above,
-        # which counts all non-cancelled appointments, including PENDING) ---
-        queue_qs = (
-            Appointment.objects.filter(appointment_date=today)
-            .exclude_unpaid_checkouts()
-            .exclude(status=Appointment.Status.CANCELLED)
-            .order_by('appointment_time')
-            .select_related('patient', 'service')[:20]
-        )
-
-        appointment_queue = []
-        for appt in queue_qs:
-            appointment_queue.append({
-                "id": str(appt.id),
-                "patient_name": f"{appt.patient.first_name} {appt.patient.last_name}".strip() or appt.patient.email,
-                "status": appt.status,
-                "service": appt.service.name if appt.service else "—",
-                "date": appt.appointment_date.isoformat(),
-                "time": appt.appointment_time.isoformat(),
-                "type": appt.appointment_type,
-            })
-
-        # --- Patient volume trends: last 6 months ---
-        trends_qs = (
-            Appointment.objects.filter(appointment_date__gte=six_months_ago)
-            .annotate(month=TruncMonth('appointment_date'))
-            .values('month')
-            .annotate(count=Count('id'))
-            .order_by('month')
-        )
-        MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        patient_volume_trends = [
-            {"month": MONTH_NAMES[row['month'].month - 1], "count": row['count']}
-            for row in trends_qs
-        ]
-
-        # --- Revenue breakdown (current month, as percentages) ---
-        medical_rev = (
-            Appointment.objects.filter(
-                appointment_date__gte=month_start,
-                payment_status=Appointment.PaymentStatus.PAID,
-                appointment_type=Appointment.AppointmentType.PHYSICAL
-            ).aggregate(total=Sum('consultation_fee'))['total'] or 0
-        )
-        telehealth_rev = (
-            Appointment.objects.filter(
-                appointment_date__gte=month_start,
-                payment_status=Appointment.PaymentStatus.PAID,
-                appointment_type=Appointment.AppointmentType.TELEHEALTH
-            ).aggregate(total=Sum('consultation_fee'))['total'] or 0
-        )
-        optical_rev = (
-            Order.objects.filter(
-                payment_status=Order.PaymentStatus.PAID,
-                updated_at__date__gte=month_start
-            ).aggregate(total=Sum('total_price'))['total'] or 0
-        )
-        total_rev = float(medical_rev) + float(telehealth_rev) + float(optical_rev)
-        if total_rev > 0:
-            revenue_breakdown = {
-                "medical_services": round(float(medical_rev) / total_rev * 100),
-                "optical_store": round(float(optical_rev) / total_rev * 100),
-                "telehealth": round(float(telehealth_rev) / total_rev * 100),
-            }
-        else:
-            revenue_breakdown = {"medical_services": 65, "optical_store": 25, "telehealth": 10}
-
-        data = {
-            "stats": {
-                "appointments_today": appts_today,
-                "appointments_today_change": appts_change,
-                "active_telehealth": active_telehealth,
-                "pending_prescriptions": pending_prescriptions,
-                "optical_revenue_today": float(revenue_today),
-                "optical_revenue_change": revenue_change,
-            },
-            "appointment_queue": appointment_queue,
-            "patient_volume_trends": patient_volume_trends,
-            "revenue_breakdown": revenue_breakdown,
-        }
+        data = _admin_dashboard_summary()
         return build_success_response(message="Admin dashboard summary retrieved.", data=data, status_code=200)
 
 
 # ─── Admin Appointment APIs ────────────────────────────────────────────────────
 
-def _admin_only(request):
-    return request.user.role not in ('ADMIN', 'SUPER_ADMIN')
+def _admin_only(request, area=None):
+    """
+    True when the request must be blocked. ADMIN/SUPER_ADMIN are always
+    allowed. When `area` is given, a non-admin holding that capability area
+    is also allowed (see naderk.common.permissions); otherwise the endpoint
+    stays admin-only.
+    """
+    if getattr(request.user, 'role', None) in ('ADMIN', 'SUPER_ADMIN'):
+        return False
+    if area is not None:
+        from naderk.common.permissions import user_has_area
+        if user_has_area(request.user, area):
+            return False
+    return True
 
 
 class AdminAppointmentRequestsAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'appointments'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -481,7 +668,7 @@ class AdminAppointmentCalendarAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'appointments'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -507,11 +694,58 @@ class AdminAppointmentCalendarAPI(APIView):
         return build_success_response(message="Appointment calendar retrieved.", data=results, status_code=200)
 
 
+class AdminTodayArrivalsAPI(APIView):
+    """
+    Today's confirmed appointments, for the front desk to check patients in.
+
+    Check-in previously had no UI at all — the endpoint existed, nothing called
+    it, and no appointment had ever reached CHECKED_IN. This is the desk's
+    working list: who is expected today and who has arrived.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if _admin_only(request, 'appointments'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+
+        today = timezone.localdate()
+        appointments = (
+            Appointment.objects
+            .filter(
+                appointment_date=today,
+                status__in=[
+                    Appointment.Status.CONFIRMED,
+                    Appointment.Status.CHECKED_IN,
+                    Appointment.Status.IN_PROGRESS,
+                ],
+            )
+            .select_related('patient', 'doctor', 'service')
+            .order_by('appointment_time')
+        )
+
+        results = [
+            {
+                'id': str(a.id),
+                'patient_name': f"{a.patient.first_name} {a.patient.last_name}".strip() or a.patient.email,
+                'service_name': a.service.name if a.service else '—',
+                'doctor_name': f"Dr. {a.doctor.last_name}" if a.doctor else None,
+                # Facility services have no doctor; the desk still runs them.
+                'is_onsite': bool(a.service and not a.service.requires_doctor),
+                'appointment_time': a.appointment_time.strftime('%H:%M') if a.appointment_time else None,
+                'appointment_type': a.appointment_type,
+                'status': a.status,
+                'checked_in_at': a.checked_in_at.isoformat() if a.checked_in_at else None,
+            }
+            for a in appointments
+        ]
+        return build_success_response(message="Today's arrivals retrieved.", data=results, status_code=200)
+
+
 class AdminScheduleAppointmentAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'appointments'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -583,7 +817,7 @@ class AdminDoctorListAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'appointments'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -606,13 +840,196 @@ class AdminDoctorListAPI(APIView):
         return build_success_response(message="Doctors retrieved.", data=results, status_code=200)
 
 
+def _prescription_pdf_brand_name():
+    """Brand name for outbound copy. Thin wrapper so callers that only need the
+    name do not have to unpack the logo the PDF header uses."""
+    from naderk.medical_records.apis import _prescription_pdf_brand
+    return _prescription_pdf_brand()
+
+
+class AdminPatientCreateAPI(APIView):
+    """
+    Register a patient from the front desk.
+
+    The dashboard's "New Patient Record" action linked at /admin/records/new,
+    which is not a route — it matched /admin/records/[id] with id="new", so the
+    page tried to load a patient literally called "new" and reported "unable to
+    access medical records". That read as a permissions problem; it was a 404.
+
+    Nothing could create a patient either: CREATABLE_STAFF_ROLES deliberately
+    excludes PATIENT and no other path exists. A desk taking a walk-in, or an
+    agent booking for a first-time caller, had nowhere to start.
+
+    Mirrors the staff invite: the account is created with an unusable password
+    and the patient sets their own through a 24-hour reset link. Marked verified
+    because a person at the desk did the verifying.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # Records staff register walk-ins; booking agents need it for a
+        # first-time caller. Blocked only when neither area is held.
+        if _admin_only(request, 'patient_records') and _admin_only(request, 'appointments'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+
+        import datetime as _dt
+        import secrets
+        from django.conf import settings as dj_settings
+        from django.db import transaction as db_transaction
+        from naderk.core.models import User
+        from naderk.authentication.models import PasswordResetToken
+
+        first_name = (request.data.get('first_name') or '').strip()
+        last_name = (request.data.get('last_name') or '').strip()
+        email = (request.data.get('email') or '').strip().lower()
+        phone = (request.data.get('phone_number') or '').strip()
+
+        if not first_name or not email:
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                'first_name and email are required.',
+                errors={
+                    'first_name': ['Required.'] if not first_name else [],
+                    'email': ['Required.'] if not email else [],
+                },
+            )
+
+        if User.objects.filter(email__iexact=email).exists():
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                'A user with this email already exists.',
+                errors={'email': ['A user with this email already exists.']},
+            )
+
+        with db_transaction.atomic():
+            patient = User(
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+                role='PATIENT',
+                is_active=True,
+                # The desk saw this person, so there is no OTP round trip.
+                is_verified=True,
+                otp_verified=True,
+                profile_completion_status='PENDING',
+            )
+            if phone:
+                patient.phone_number = phone
+            for field in ('date_of_birth', 'gender'):
+                value = request.data.get(field)
+                if value:
+                    setattr(patient, field, value)
+            patient.set_unusable_password()
+            patient.save()
+            # A signal creates the PatientProfile.
+
+            token = secrets.token_urlsafe(32)
+            PasswordResetToken.objects.create(
+                user=patient, token=token,
+                expires_at=timezone.now() + _dt.timedelta(hours=24),
+            )
+
+        frontend_url = getattr(dj_settings, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')
+        invite_url = f"{frontend_url}/reset-password?token={token}"
+
+        # The account is usable by the desk either way, so a failed email must
+        # not fail the registration — it is reported instead.
+        invite_sent = True
+        try:
+            from naderk.common.email._provider_registry import get_provider
+            from naderk.common.email.providers.base import EmailMessage
+
+            brand_name, _logo = _prescription_pdf_brand_name()
+            get_provider().send(EmailMessage(
+                to=[email],
+                subject=f"Set up your {brand_name} account",
+                html_body=(
+                    f"<p>Hi {first_name},</p>"
+                    f"<p>An account has been created for you at {brand_name}. "
+                    f'<a href="{invite_url}">Set your password</a> to sign in and '
+                    f"see your appointments and records.</p>"
+                    f"<p>This link expires in 24 hours. Your login email is {email}.</p>"
+                ),
+                text_body=(
+                    f"Hi {first_name},\n\n"
+                    f"An account has been created for you at {brand_name}.\n\n"
+                    f"Set your password here (expires in 24 hours):\n{invite_url}\n\n"
+                    f"Your login email: {email}"
+                ),
+            ))
+        except Exception:
+            logger.warning("Patient invite email to %s failed", email, exc_info=True)
+            invite_sent = False
+
+        profile = getattr(patient, 'patient_profile', None)
+        return build_success_response(
+            message="Patient registered.",
+            data={
+                'id': str(patient.id),
+                'name': f"{patient.first_name} {patient.last_name}".strip() or patient.email,
+                'email': patient.email,
+                'phone_number': patient.phone_number or '',
+                'patient_id': getattr(profile, 'patient_id', None) or f"NDK-{str(patient.id)[:6].upper()}",
+                'invite_sent': invite_sent,
+            },
+            status_code=201,
+        )
+
+
+class AdminPatientLookupAPI(APIView):
+    """
+    Patient search for staff booking on a patient's behalf.
+
+    The existing /medical-records/patients/ list derives its patients from
+    Appointment rows, so someone who has never booked before does not appear —
+    exactly the person an agent needs when taking a first booking over chat.
+    This queries the user table directly.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if _admin_only(request, 'appointments'):
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Forbidden.',
+            )
+
+        from naderk.core.models import User
+
+        query = (request.query_params.get('q') or '').strip()
+        patients = User.objects.filter(role='PATIENT', is_active=True)
+        if query:
+            patients = patients.filter(
+                Q(first_name__icontains=query)
+                | Q(last_name__icontains=query)
+                | Q(email__icontains=query)
+                | Q(phone_number__icontains=query)
+                | Q(patient_profile__patient_id__icontains=query)
+            )
+
+        patients = patients.select_related('patient_profile').order_by('first_name', 'last_name')[:25]
+
+        results = [
+            {
+                "id": str(u.id),
+                "name": f"{u.first_name} {u.last_name}".strip() or u.email,
+                "email": u.email,
+                "phone_number": u.phone_number or "",
+                "patient_id": getattr(getattr(u, 'patient_profile', None), 'patient_id', None)
+                or f"NDK-{str(u.id)[:6].upper()}",
+            }
+            for u in patients
+        ]
+        return build_success_response(message="Patients retrieved.", data=results, status_code=200)
+
+
 # ─── Admin Inventory APIs ──────────────────────────────────────────────────────
 
 class AdminInventorySummaryAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -658,7 +1075,7 @@ class AdminProductsAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -767,7 +1184,7 @@ class AdminProductCreateAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -871,7 +1288,7 @@ class AdminProductRestockAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -893,12 +1310,50 @@ class AdminProductRestockAPI(APIView):
                 detail='Quantity must be positive.',
             )
 
-        product.quantity_available += quantity
-        product.save(update_fields=['quantity_available'])
+        # Stock for a product with variants lives on the variant — that is what
+        # a sale deducts. Restocking only bumped the product-level total, so
+        # added units never reached the counter the storefront sells from, and
+        # the two figures silently drifted apart.
+        from naderk.ecommerce.models import ProductVariant
+
+        variants = list(product.variants.all())
+        variant_id = request.data.get('variant_id')
+        target_variant = None
+
+        if variants:
+            if variant_id:
+                target_variant = next((v for v in variants if str(v.id) == str(variant_id)), None)
+                if target_variant is None:
+                    return build_error_response(
+                        type_uri='validation-error', title='Validation Error', status_code=400,
+                        detail='That variant does not belong to this product.',
+                    )
+            elif len(variants) == 1:
+                # The common case: one auto-created "Standard" variant.
+                target_variant = variants[0]
+            else:
+                return build_error_response(
+                    type_uri='validation-error', title='Validation Error', status_code=400,
+                    detail='This product has multiple variants — specify variant_id to restock.',
+                )
+
+        with transaction.atomic():
+            if target_variant is not None:
+                ProductVariant.objects.filter(pk=target_variant.pk).update(
+                    quantity_available=F('quantity_available') + quantity
+                )
+            Product.objects.filter(pk=product.pk).update(
+                quantity_available=F('quantity_available') + quantity
+            )
+            product.refresh_from_db(fields=['quantity_available'])
 
         return build_success_response(
             message="Stock updated.",
-            data={'id': str(product.id), 'quantity_available': product.quantity_available},
+            data={
+                'id': str(product.id),
+                'quantity_available': product.quantity_available,
+                'variant_id': str(target_variant.id) if target_variant else None,
+            },
             status_code=200
         )
 
@@ -907,7 +1362,7 @@ class AdminProductToggleStatusAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -936,7 +1391,7 @@ class AdminProductDetailAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -976,7 +1431,7 @@ class AdminProductDetailAPI(APIView):
         }, status_code=200)
 
     def patch(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1025,7 +1480,7 @@ class AdminProductDetailAPI(APIView):
         return build_success_response(message="Product updated.", data={'id': str(product.id)}, status_code=200)
 
     def delete(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1046,7 +1501,7 @@ class AdminProductHistoryAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1075,11 +1530,17 @@ class AdminProductHistoryAPI(APIView):
         return build_success_response(message="History retrieved.", data=history, status_code=200)
 
 
+#: How many orders the Order Book fetches by default, and the ceiling a caller
+#: may request. The page filters and paginates these client-side.
+ORDER_BOOK_DEFAULT_LIMIT = 200
+ORDER_BOOK_MAX_LIMIT = 500
+
+
 class AdminAllOrdersAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'orders'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1094,8 +1555,21 @@ class AdminAllOrdersAPI(APIView):
         if status_filter:
             qs = qs.filter(status=status_filter)
 
+        # The Order Book filters and paginates client-side over whatever this
+        # returns, so a hard slice here is the real page size. It was 20 — the
+        # same as the client's own page size — so page 2 was always empty and
+        # everything older than the 20 most recent orders was unreachable.
+        # Delivered and cancelled orders now show too, so they share this window.
+        try:
+            limit = int(request.query_params.get('limit', ORDER_BOOK_DEFAULT_LIMIT))
+        except (TypeError, ValueError):
+            limit = ORDER_BOOK_DEFAULT_LIMIT
+        limit = max(1, min(limit, ORDER_BOOK_MAX_LIMIT))
+
+        total = qs.count()
+
         data = []
-        for o in qs[:20]:
+        for o in qs[:limit]:
             first_item = o.items.first()
             item_name = '—'
             item_image = None
@@ -1120,16 +1594,327 @@ class AdminAllOrdersAPI(APIView):
                 'first_item_qty': item_qty,
             })
 
+        # Say so when the window truncates, rather than looking like the tail
+        # of the order history simply does not exist.
+        if total > limit:
+            logger.info(
+                "Order Book truncated: returned %s of %s orders (limit=%s)",
+                len(data), total, limit,
+            )
+
         return build_success_response(message="Orders retrieved.", data=data, status_code=200)
 
 
 # ── Category Management ──────────────────────────────────────────────────────
 
+class AdminFrameLensCompatibilityAPI(APIView):
+    """
+    Which lens types a frame can be built with.
+
+    FrameLensCompatibility was read by the add-to-cart validator and written
+    nowhere outside tests — no endpoint, no admin, no seeder, and the frame
+    create flow did not populate it. So every newly added frame was
+    incompatible with every lens, and the patient hit
+    "The selected frame X is incompatible with the lens type Y" at checkout
+    with no way for anyone to fix it.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        if _admin_only(request, 'frames'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import Frame
+        try:
+            frame = Frame.objects.get(id=pk)
+        except Frame.DoesNotExist:
+            return build_error_response('not-found', 'Not Found', 404, 'Frame not found.')
+        return build_success_response(
+            message="Frame lens compatibility retrieved.",
+            data={
+                'frame_id': str(frame.id),
+                'lens_type_ids': [str(c.lens_type_id) for c in frame.compatibilities.all()],
+            },
+            status_code=200,
+        )
+
+    def put(self, request, pk):
+        if _admin_only(request, 'frames'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import Frame, LensType, FrameLensCompatibility
+
+        try:
+            frame = Frame.objects.get(id=pk)
+        except Frame.DoesNotExist:
+            return build_error_response('not-found', 'Not Found', 404, 'Frame not found.')
+
+        raw = request.data.get('lens_type_ids')
+        if not isinstance(raw, list):
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                'lens_type_ids must be a list.',
+            )
+
+        wanted = {str(x) for x in raw}
+        known = {str(x) for x in LensType.objects.filter(id__in=wanted).values_list('id', flat=True)}
+        unknown = wanted - known
+        if unknown:
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                f'Unknown lens type id(s): {", ".join(sorted(unknown))}',
+            )
+
+        with transaction.atomic():
+            # Replace the set wholesale — simpler than diffing, and the table is
+            # a plain join with no other columns to preserve.
+            FrameLensCompatibility.objects.filter(frame=frame).delete()
+            FrameLensCompatibility.objects.bulk_create([
+                FrameLensCompatibility(frame=frame, lens_type_id=lt_id) for lt_id in known
+            ])
+
+        return build_success_response(
+            message="Frame lens compatibility updated.",
+            data={'frame_id': str(frame.id), 'lens_type_ids': sorted(known)},
+            status_code=200,
+        )
+
+
+# ── Lens Catalogue ───────────────────────────────────────────────────────────
+# Lens types and options had no write path anywhere: the list endpoints are
+# GET-only, ecommerce registers no Django admin, and there is no seeder — so
+# the only way to add one was inserting rows directly into the database.
+# The glasses-builder page reads them to target its recommendation rules but
+# could never create them.
+
+
+def _lens_price(raw, field='price_modifier'):
+    """Parse a price modifier, returning (value, error_response_or_None)."""
+    from decimal import Decimal, InvalidOperation
+    if raw is None or raw == '':
+        return Decimal('0.00'), None
+    try:
+        value = Decimal(str(raw))
+    except (InvalidOperation, TypeError, ValueError):
+        return None, f'{field} must be a number.'
+    if value < 0:
+        return None, f'{field} cannot be negative.'
+    return value, None
+
+
+def _lens_type_row(lt):
+    return {
+        'id': str(lt.id),
+        'name': lt.name,
+        'description': lt.description or '',
+        'price_modifier': str(lt.price_modifier),
+        'is_active': lt.is_active,
+    }
+
+
+def _lens_option_row(lo):
+    return {
+        'id': str(lo.id),
+        'name': lo.name,
+        'price_modifier': str(lo.price_modifier),
+        'is_active': lo.is_active,
+    }
+
+
+class AdminLensTypeListAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensType
+        # Unlike the storefront endpoint, inactive rows are included — the
+        # admin needs to see and reactivate what they have retired.
+        rows = LensType.objects.all().order_by('name')
+        return build_success_response(
+            message="Lens types retrieved.",
+            data=[_lens_type_row(x) for x in rows], status_code=200,
+        )
+
+    def post(self, request):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensType
+
+        name = (request.data.get('name') or '').strip()
+        if not name:
+            return build_error_response('validation-error', 'Validation Error', 400, 'Name is required.')
+        if LensType.objects.filter(name__iexact=name).exists():
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                f'A lens type named "{name}" already exists.',
+            )
+
+        price, err = _lens_price(request.data.get('price_modifier'))
+        if err:
+            return build_error_response('validation-error', 'Validation Error', 400, err)
+
+        lt = LensType.objects.create(
+            name=name,
+            # description is NOT NULL on the model, so never pass None.
+            description=(request.data.get('description') or '').strip(),
+            price_modifier=price,
+            is_active=bool(request.data.get('is_active', True)),
+        )
+        return build_success_response("Lens type created.", _lens_type_row(lt), status_code=201)
+
+
+class AdminLensTypeDetailAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensType
+        try:
+            lt = LensType.objects.get(id=pk)
+        except LensType.DoesNotExist:
+            return build_error_response('not-found', 'Not Found', 404, 'Lens type not found.')
+
+        if 'name' in request.data:
+            name = (request.data.get('name') or '').strip()
+            if not name:
+                return build_error_response('validation-error', 'Validation Error', 400, 'Name cannot be empty.')
+            if LensType.objects.filter(name__iexact=name).exclude(pk=lt.pk).exists():
+                return build_error_response(
+                    'validation-error', 'Validation Error', 400,
+                    f'A lens type named "{name}" already exists.',
+                )
+            lt.name = name
+        if 'description' in request.data:
+            lt.description = (request.data.get('description') or '').strip()
+        if 'price_modifier' in request.data:
+            price, err = _lens_price(request.data.get('price_modifier'))
+            if err:
+                return build_error_response('validation-error', 'Validation Error', 400, err)
+            lt.price_modifier = price
+        if 'is_active' in request.data:
+            lt.is_active = bool(request.data.get('is_active'))
+        lt.save()
+        return build_success_response("Lens type updated.", _lens_type_row(lt), status_code=200)
+
+    def delete(self, request, pk):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from django.db.models import ProtectedError
+        from naderk.ecommerce.models import LensType
+        try:
+            lt = LensType.objects.get(id=pk)
+        except LensType.DoesNotExist:
+            return build_error_response('not-found', 'Not Found', 404, 'Lens type not found.')
+
+        # OrderItem.lens_type is PROTECT, so a sold lens cannot be removed
+        # without rewriting order history. Deactivating hides it from the
+        # storefront while leaving past orders intact.
+        try:
+            lt.delete()
+        except ProtectedError:
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                'This lens type is used by existing orders. Deactivate it instead of deleting.',
+            )
+        return build_success_response("Lens type deleted.", None, status_code=200)
+
+
+class AdminLensOptionListAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensOption
+        rows = LensOption.objects.all().order_by('name')
+        return build_success_response(
+            message="Lens options retrieved.",
+            data=[_lens_option_row(x) for x in rows], status_code=200,
+        )
+
+    def post(self, request):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensOption
+
+        name = (request.data.get('name') or '').strip()
+        if not name:
+            return build_error_response('validation-error', 'Validation Error', 400, 'Name is required.')
+        if LensOption.objects.filter(name__iexact=name).exists():
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                f'A lens option named "{name}" already exists.',
+            )
+
+        price, err = _lens_price(request.data.get('price_modifier'))
+        if err:
+            return build_error_response('validation-error', 'Validation Error', 400, err)
+
+        lo = LensOption.objects.create(
+            name=name,
+            price_modifier=price,
+            is_active=bool(request.data.get('is_active', True)),
+        )
+        return build_success_response("Lens option created.", _lens_option_row(lo), status_code=201)
+
+
+class AdminLensOptionDetailAPI(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensOption
+        try:
+            lo = LensOption.objects.get(id=pk)
+        except LensOption.DoesNotExist:
+            return build_error_response('not-found', 'Not Found', 404, 'Lens option not found.')
+
+        if 'name' in request.data:
+            name = (request.data.get('name') or '').strip()
+            if not name:
+                return build_error_response('validation-error', 'Validation Error', 400, 'Name cannot be empty.')
+            if LensOption.objects.filter(name__iexact=name).exclude(pk=lo.pk).exists():
+                return build_error_response(
+                    'validation-error', 'Validation Error', 400,
+                    f'A lens option named "{name}" already exists.',
+                )
+            lo.name = name
+        if 'price_modifier' in request.data:
+            price, err = _lens_price(request.data.get('price_modifier'))
+            if err:
+                return build_error_response('validation-error', 'Validation Error', 400, err)
+            lo.price_modifier = price
+        if 'is_active' in request.data:
+            lo.is_active = bool(request.data.get('is_active'))
+        lo.save()
+        return build_success_response("Lens option updated.", _lens_option_row(lo), status_code=200)
+
+    def delete(self, request, pk):
+        if _admin_only(request, 'glass_builder'):
+            return build_error_response('forbidden', 'Forbidden', 403, 'Forbidden.')
+        from naderk.ecommerce.models import LensOption, OrderItem
+        try:
+            lo = LensOption.objects.get(id=pk)
+        except LensOption.DoesNotExist:
+            return build_error_response('not-found', 'Not Found', 404, 'Lens option not found.')
+
+        # lens_options is M2M, so a delete would silently unlink it from past
+        # orders rather than raising. Check explicitly instead.
+        if OrderItem.objects.filter(lens_options=lo).exists():
+            return build_error_response(
+                'validation-error', 'Validation Error', 400,
+                'This lens option is used by existing orders. Deactivate it instead of deleting.',
+            )
+        lo.delete()
+        return build_success_response("Lens option deleted.", None, status_code=200)
+
+
 class AdminCategoryListAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1148,7 +1933,7 @@ class AdminCategoryListAPI(APIView):
         return build_success_response(message="Categories retrieved.", data=data, status_code=200)
 
     def post(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1180,7 +1965,7 @@ class AdminCategoryDetailAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1205,7 +1990,7 @@ class AdminCategoryDetailAPI(APIView):
         )
 
     def delete(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1233,7 +2018,7 @@ class AdminFlashSaleListAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1258,7 +2043,7 @@ class AdminFlashSaleListAPI(APIView):
         return build_success_response(message="Flash sales retrieved.", data=data, status_code=200)
 
     def post(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1316,7 +2101,7 @@ class AdminFlashSaleDetailAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1346,7 +2131,7 @@ class AdminFlashSaleDetailAPI(APIView):
         return build_success_response(message="Flash sale updated.", data={'id': str(sale.id)}, status_code=200)
 
     def delete(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'inventory'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1404,6 +2189,19 @@ class AdminActiveFlashSaleAPI(APIView):
 
 # ── Staff Management ──────────────────────────────────────────────────────────
 
+#: Roles the Staff Management page can create. SUPER_ADMIN is deliberately not
+#: creatable from the UI.
+CREATABLE_STAFF_ROLES = [
+    'DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'OPERATIONS_MANAGER', 'AGENT', 'ADMIN',
+]
+
+#: Roles the page lists. Everything creatable must appear here, or a staff
+#: member could be created and then be invisible — which is what happened to
+#: AGENT and OPERATIONS_MANAGER: the create form offered them and the API
+#: accepted them, but the list filtered to a separate, shorter hardcoded set.
+STAFF_ROLES = CREATABLE_STAFF_ROLES + ['SUPER_ADMIN']
+
+
 class AdminStaffListAPI(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1415,9 +2213,8 @@ class AdminStaffListAPI(APIView):
             )
 
         from naderk.core.models import User
-        staff_roles = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'ADMIN', 'SUPER_ADMIN']
         users = (
-            User.objects.filter(role__in=staff_roles)
+            User.objects.filter(role__in=STAFF_ROLES)
             .select_related('staff_profile', 'doctor_profile')
             .order_by('first_name', 'last_name')
         )
@@ -1493,7 +2290,7 @@ class AdminStaffListAPI(APIView):
         department = (request.data.get('department')  or '').strip()
         specialization = (request.data.get('specialization') or '').strip()
 
-        ALLOWED_ROLES = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'ADMIN']
+        ALLOWED_ROLES = CREATABLE_STAFF_ROLES
         if not all([first_name, email, role]):
             return build_error_response(
                 type_uri='validation-error', title='Validation Error', status_code=400,
@@ -1652,7 +2449,7 @@ class AdminWeekScheduleAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'appointments'):
             return build_error_response(
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
@@ -1987,23 +2784,8 @@ class SpecializationDetailAPI(APIView):
 
 
 # ── Role Permissions Management ───────────────────────────────────────────────
-
-SYSTEM_PERMISSIONS = [
-    {'id': 'view_patient_records',   'label': 'View Patient Records',       'category': 'Records'},
-    {'id': 'edit_patient_records',   'label': 'Edit Patient Records',       'category': 'Records'},
-    {'id': 'manage_appointments',    'label': 'Manage Appointments',        'category': 'Appointments'},
-    {'id': 'conduct_telehealth',     'label': 'Conduct Telehealth Sessions','category': 'Clinical'},
-    {'id': 'manage_prescriptions',   'label': 'Manage Prescriptions',       'category': 'Clinical'},
-    {'id': 'view_billing',           'label': 'View Billing',               'category': 'Finance'},
-    {'id': 'manage_billing',         'label': 'Manage Billing',             'category': 'Finance'},
-    {'id': 'manage_inventory',       'label': 'Manage Inventory',           'category': 'Inventory'},
-    {'id': 'view_reports',           'label': 'View Reports',               'category': 'Reporting'},
-    {'id': 'manage_staff',           'label': 'Manage Staff',               'category': 'Administration'},
-    {'id': 'manage_cms',             'label': 'Manage CMS Content',         'category': 'Administration'},
-    {'id': 'access_messaging',       'label': 'Access Messaging',           'category': 'Communication'},
-]
-
-MANAGEABLE_ROLES = ['DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT', 'ADMIN']
+# The permission catalog and editable roles now live in naderk.common.permissions
+# (AREA_CATALOG / AREA_EDITABLE_ROLES) and drive real enforcement via user_areas().
 
 
 class AdminPermissionsAPI(APIView):
@@ -2015,14 +2797,22 @@ class AdminPermissionsAPI(APIView):
                 type_uri='forbidden', title='Forbidden', status_code=403,
                 detail='Forbidden.',
             )
-        from naderk.users.models import RolePermissionConfig
-        configs = {c.role: c.permissions for c in RolePermissionConfig.objects.filter(role__in=MANAGEABLE_ROLES)}
-        roles = []
-        for role in MANAGEABLE_ROLES:
-            roles.append({'role': role, 'permissions': configs.get(role, [])})
+        from naderk.common.permissions import (
+            AREA_CATALOG, AREA_EDITABLE_ROLES, resolved_areas_for_role,
+        )
+        # Show each editable role's *effective* areas (saved override or default),
+        # so the toggles reflect reality out of the box.
+        role_permissions = [
+            {'role': role, 'permissions': sorted(resolved_areas_for_role(role))}
+            for role in AREA_EDITABLE_ROLES
+        ]
         return build_success_response(
             message="Permissions retrieved.",
-            data={'roles': roles, 'available_permissions': SYSTEM_PERMISSIONS},
+            data={
+                'system_permissions': AREA_CATALOG,
+                'manageable_roles': AREA_EDITABLE_ROLES,
+                'role_permissions': role_permissions,
+            },
             status_code=200
         )
 
@@ -2033,19 +2823,25 @@ class AdminPermissionsAPI(APIView):
                 detail='Forbidden.',
             )
         from naderk.users.models import RolePermissionConfig
+        from naderk.common.permissions import AREA_EDITABLE_ROLES, ALL_AREAS
         role = (request.data.get('role') or '').strip()
         permissions = request.data.get('permissions', [])
-        if role not in MANAGEABLE_ROLES:
+        if role not in AREA_EDITABLE_ROLES:
             return build_error_response(
                 type_uri='validation-error', title='Validation Error', status_code=400,
-                detail='Invalid role.',
+                detail='This role\'s areas cannot be edited here.',
             )
-        valid_ids = {p['id'] for p in SYSTEM_PERMISSIONS}
-        clean_perms = [p for p in permissions if p in valid_ids]
+        # Persist only recognised areas; this immediately changes access because
+        # all gates resolve through naderk.common.permissions.user_areas().
+        clean_perms = sorted(a for a in permissions if a in ALL_AREAS)
         config, _ = RolePermissionConfig.objects.get_or_create(role=role, defaults={'permissions': []})
         config.permissions = clean_perms
         config.save()
-        return build_success_response(message="Permissions updated.", data={'role': role, 'permissions': clean_perms}, status_code=200)
+        return build_success_response(
+            message="Permissions updated.",
+            data={'role': role, 'permissions': clean_perms},
+            status_code=200,
+        )
 
 
 # ─── Admin Medical Services ───────────────────────────────────────────────────
@@ -2077,7 +2873,7 @@ class AdminServiceListAPI(APIView):
         }
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'services'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.appointments.models import MedicalService
         services = MedicalService.objects.all().order_by('name')
@@ -2088,7 +2884,7 @@ class AdminServiceListAPI(APIView):
         )
 
     def post(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'services'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.appointments.models import MedicalService
         from django.utils.text import slugify
@@ -2204,7 +3000,7 @@ class AdminServiceDetailAPI(APIView):
         }
 
     def get(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'services'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         service = self._get(pk)
         if not service:
@@ -2212,7 +3008,7 @@ class AdminServiceDetailAPI(APIView):
         return build_success_response(message="Service retrieved.", data=self._serialize(service), status_code=200)
 
     def patch(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'services'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         service = self._get(pk)
         if not service:
@@ -2274,7 +3070,7 @@ class AdminServiceDetailAPI(APIView):
         return build_success_response(message="Service updated.", data=self._serialize(service), status_code=200)
 
     def delete(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'services'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         service = self._get(pk)
         if not service:
@@ -2330,7 +3126,7 @@ class AdminFrameListAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'frames'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.ecommerce.models import Frame
         from naderk.ecommerce.serializers import FrameSerializer
@@ -2338,7 +3134,7 @@ class AdminFrameListAPI(APIView):
         return build_success_response("Frames retrieved.", FrameSerializer(frames, many=True).data)
 
     def post(self, request):
-        if _admin_only(request):
+        if _admin_only(request, 'frames'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.ecommerce.models import Frame
         from naderk.ecommerce.serializers import FrameSerializer
@@ -2382,7 +3178,7 @@ class AdminFrameDetailAPI(APIView):
             return None
 
     def get(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'frames'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.ecommerce.serializers import FrameSerializer
         frame = self._get(pk)
@@ -2391,7 +3187,7 @@ class AdminFrameDetailAPI(APIView):
         return build_success_response("Frame retrieved.", FrameSerializer(frame).data)
 
     def patch(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'frames'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.ecommerce.serializers import FrameSerializer
         frame = self._get(pk)
@@ -2413,7 +3209,7 @@ class AdminFrameDetailAPI(APIView):
         return build_success_response("Frame updated.", FrameSerializer(frame).data)
 
     def delete(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'frames'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         frame = self._get(pk)
         if not frame:
@@ -2433,7 +3229,7 @@ class AdminFrameToggleAPI(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        if _admin_only(request):
+        if _admin_only(request, 'frames'):
             return build_error_response('forbidden', 'Forbidden', 403, 'Admin access required.')
         from naderk.ecommerce.models import Frame
         from naderk.ecommerce.serializers import FrameSerializer

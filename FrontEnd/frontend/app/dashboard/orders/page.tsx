@@ -2,7 +2,7 @@
 
 import React, { useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from "next/navigation";
 import {
   ArrowLeft, Package, CheckCircle2, Clock, Truck,
   Loader2, ShoppingBag, ChevronRight, Glasses,
@@ -64,7 +64,6 @@ const TIMELINE_STEPS: Array<{ key: Order['status']; label: string }> = [
 const STATUS_ORDER = TIMELINE_STEPS.map(s => s.key);
 
 function OrderCard({ order, isNew }: { order: Order; isNew: boolean }) {
-  const router = useRouter();
   const level = statusLevel(order.status);
   const cfg = STATUS_CONFIG[level];
   const stepIdx = STATUS_ORDER.indexOf(order.status);
@@ -94,12 +93,13 @@ function OrderCard({ order, isNew }: { order: Order; isNew: boolean }) {
           <span className={cn("text-[10px] font-bold border px-2 py-0.5 rounded-sm", cfg.badge)}>
             {order.status_display}
           </span>
-          <button
-            onClick={() => router.push(`/dashboard/orders/${order.id}`)}
+          <Link
+            href={`/dashboard/orders/${order.id}`}
+            aria-label={`View order ${order.id.slice(0, 8).toUpperCase()}`}
             className="p-1 text-gray-300 hover:text-[#ff052f] transition"
           >
             <ChevronRight className="w-4 h-4" />
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -170,7 +170,6 @@ function OrderCard({ order, isNew }: { order: Order; isNew: boolean }) {
 }
 
 export default function OrdersPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const newOrderId = searchParams.get('new');
   const { data: orders = [], isLoading } = useOrders();
@@ -200,11 +199,13 @@ export default function OrdersPage() {
       {/* Header */}
       <div className="flex items-center gap-3 mb-8">
         <Button
+          asChild
           variant="outline" size="icon"
-          onClick={() => router.push('/dashboard/marketplace')}
           className="rounded-full w-9 h-9 border-gray-200 shrink-0"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <Link href="/dashboard/marketplace" aria-label="Back to marketplace">
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
         </Button>
         <div>
           <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Your Orders</h1>

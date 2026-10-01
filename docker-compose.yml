@@ -29,8 +29,18 @@ services:
   livekit:
     image: livekit/livekit-server:latest
     command: --config /etc/livekit.yaml
+    # One config was mounted in every environment, and it pins node_ip to
+    # 127.0.0.1 for local Docker port mapping. On a server that makes LiveKit
+    # advertise the browser's own machine as the media address, so calls
+    # connect but never show video. Deployments set
+    # LIVEKIT_CONFIG=livekit.prod.yaml.
     volumes:
-      - ./infrastructure/livekit/livekit.yaml:/etc/livekit.yaml:ro
+      - ./infrastructure/livekit/${LIVEKIT_CONFIG:-livekit.dev.yaml}:/etc/livekit.yaml:ro
+    environment:
+      # Deployed environments supply their own keys rather than using the
+      # committed dev pair. Format: "<api-key>: <api-secret>".
+      LIVEKIT_KEYS: ${LIVEKIT_KEYS:-}
+      LIVEKIT_TURN_DOMAIN: ${LIVEKIT_TURN_DOMAIN:-}
     ports:
       - "7880:7880"
       - "7881:7881"

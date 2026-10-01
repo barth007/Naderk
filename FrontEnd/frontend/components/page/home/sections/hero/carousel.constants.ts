@@ -9,7 +9,10 @@ export const CAROUSEL_SLIDES: CarouselSlideData[] = [
     image: "/images/premium_eyewear_banner.png",
     mobileImage: "/images/premium_eyewear_banner.png",
     ctaText: "Shop the Collection",
-    ctaLink: "/services/optical-store",
+    // Point at the real destination. /services/optical-store is a permanent
+    // redirect (next.config.ts), so linking to it costs an extra hop on both
+    // the prefetch and the click. The redirect stays for external/stale links.
+    ctaLink: "/dashboard/marketplace",
     badge: "NEW ARRIVALS",
     discount: "40% OFF",
     backgroundColor: "linear-gradient(135deg, #fdf8f5 0%, #faeae1 100%)",

@@ -23,6 +23,7 @@ name_of() { docker inspect -f '{{.Name}}' "$1" 2>/dev/null | sed 's|^/||'; }
 step "1. Every container claiming each service alias"
 for alias in db redis minio; do
   echo "  '$alias':"
+  nets_seen=""
   found=0
   for c in $(docker ps -q); do
     svc=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$c" 2>/dev/null)
@@ -30,9 +31,21 @@ for alias in db redis minio; do
     proj=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$c" 2>/dev/null)
     nets=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}={{$v.IPAddress}} {{end}}' "$c")
     printf '    %-30s project=%-12s %s\n' "$(name_of "$c")" "$proj" "$nets"
+    for n in $nets; do nets_seen="$nets_seen ${n%%=*}"; done
     found=$((found+1))
   done
-  [ "$found" -gt 1 ] && echo "    >> $found containers answer to '$alias'. If they share a network, DNS is ambiguous."
+  if [ "$found" -gt 1 ]; then
+    # Two containers with the same service name are only a problem when they
+    # sit on the SAME network — that is when Docker's DNS round-robins between
+    # them. Separate networks per project is the fixed, healthy state.
+    dupes=$(echo "$nets_seen" | tr ' ' '\n' | grep -v '^$' | sort | uniq -d)
+    if [ -n "$dupes" ]; then
+      echo "    >> AMBIGUOUS: $found containers answer to '$alias' on the same"
+      echo "       network(s): $(echo $dupes). Docker will round-robin between them."
+    else
+      echo "    >> OK: $found containers, but on separate networks — no ambiguity."
+    fi
+  fi
   echo
 done
 

@@ -1,5 +1,6 @@
 from django.urls import path
 from .apis import (
+    PageContentApi, PageSchemaApi, PageSectionUpdateApi,
     BlogListAPI, BlogDetailAPI, BlogCategoryListAPI,
     BlogCategoryCreateAPI, BlogCategoryDetailAPI,
     BlogCreateAPI, MyBlogListAPI, AllBlogListAPI,
@@ -34,6 +35,9 @@ urlpatterns = [
     path('blogs/<slug:slug>/', BlogDetailAPI.as_view(), name='blog-detail'),
 
     # Hero slides
+    path('pages/<str:page>/', PageContentApi.as_view(), name='page-content'),
+    path('pages/<str:page>/schema/', PageSchemaApi.as_view(), name='page-schema'),
+    path('pages/<str:page>/sections/<str:section_key>/', PageSectionUpdateApi.as_view(), name='page-section-update'),
     path('hero-slides/', HeroSlideListCreateApi.as_view(), name='hero-slide-list'),
     path('hero-slides/<int:pk>/', HeroSlideDetailApi.as_view(), name='hero-slide-detail'),
 

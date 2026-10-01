@@ -1,0 +1,38 @@
+# LiveKit for a deployed server (dev/staging/production).
+#
+# The difference from livekit.dev.yaml is entirely about how a browser reaches
+# the media ports. The dev file pins node_ip to 127.0.0.1 so a browser on the
+# same machine reaches LiveKit through Docker's port mapping. On a server that
+# is actively wrong: LiveKit advertises 127.0.0.1 as its ICE candidate, the
+# remote browser tries to connect to *itself*, no media ever flows, and the
+# call renders as a blank video area even though signalling succeeded.
+port: 7880
+
+rtc:
+  port_range_start: 7882
+  port_range_end: 7900
+  # Discover the machine's real address instead of pinning one, so ICE
+  # candidates point at something a remote browser can actually reach.
+  use_external_ip: true
+  # TCP fallback for networks that block UDP — common on hospital and
+  # corporate wifi, which is exactly where patients will be.
+  tcp_port: 7881
+
+# Keys come from the LIVEKIT_KEYS environment variable in deployed
+# environments, so the production secret is never committed. Format:
+#   LIVEKIT_KEYS="<api-key>: <api-secret>"
+# It must match LIVEKIT_API_KEY / LIVEKIT_API_SECRET in the backend env.
+
+# A TURN server is required whenever a participant is behind a restrictive
+# NAT or firewall and cannot be reached directly. Without it those calls
+# connect and then show nothing.
+turn:
+  enabled: true
+  # Uses the same TLS termination as the rest of the domain.
+  domain: ${LIVEKIT_TURN_DOMAIN}
+  tls_port: 5349
+  udp_port: 3478
+  external_tls: true
+
+logging:
+  level: info

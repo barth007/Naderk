@@ -31,6 +31,9 @@ def _build(name: str):
     if name == 'smtp':
         from .providers.smtp import SMTPProvider
         return SMTPProvider()
+    if name == 'mailtrap':
+        from .providers.mailtrap import MailtrapProvider
+        return MailtrapProvider()
     raise EmailConfigurationError(
-        f"Unknown EMAIL_PROVIDER '{name}'. Valid options: postmark, smtp, resend, ses"
+        f"Unknown EMAIL_PROVIDER '{name}'. Valid options: postmark, smtp, resend, ses, mailtrap"
     )

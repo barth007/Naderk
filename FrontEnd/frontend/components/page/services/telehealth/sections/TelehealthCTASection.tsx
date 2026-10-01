@@ -1,11 +1,10 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui"
 import { TELEHEALTH_CONTENT } from "./telehealth.constants"
 
 export function TelehealthCTASection() {
-  const router = useRouter()
   const { cta } = TELEHEALTH_CONTENT
 
   return (
@@ -19,19 +18,15 @@ export function TelehealthCTASection() {
         </p>
 
         <div className="mt-10 flex flex-wrap justify-center gap-3">
-          <Button
-            variant="destructive"
-            className="rounded-md px-8 font-semibold h-12"
-            onClick={() => router.push(cta.primaryCTA.href)}
-          >
-            {cta.primaryCTA.label}
+          <Button asChild variant="destructive" className="rounded-md px-8 font-semibold h-12">
+            <Link href={cta.primaryCTA.href}>{cta.primaryCTA.label}</Link>
           </Button>
           <Button
+            asChild
             variant="ghost"
             className="rounded-md bg-[var(--destructive)]/5 px-8 font-semibold text-[var(--destructive)] hover:bg-[var(--destructive)]/10 hover:opacity-100 h-12 transition-all"
-            onClick={() => router.push(cta.secondaryCTA.href)}
           >
-            {cta.secondaryCTA.label}
+            <Link href={cta.secondaryCTA.href}>{cta.secondaryCTA.label}</Link>
           </Button>
         </div>
       </div>

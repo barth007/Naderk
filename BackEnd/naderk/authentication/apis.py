@@ -121,7 +121,9 @@ class MeAPI(APIView):
         }
         
         permissions = permission_map.get(user.role, [])
-        
+
+        from naderk.common.permissions import user_areas
+
         data = {
             "id": user.id,
             "first_name": user.first_name,
@@ -130,6 +132,8 @@ class MeAPI(APIView):
             "email": user.email,
             "role": user.role,
             "permissions": permissions,
+            # Capability areas that scope the shared /admin staff experience.
+            "areas": sorted(user_areas(user)),
             "profile_picture": None,
             "cover_photo": None,
             "specialization": None,

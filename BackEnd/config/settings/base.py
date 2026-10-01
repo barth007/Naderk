@@ -104,7 +104,12 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+# Appointment dates/times are entered and displayed as local wall-clock time.
+# With USE_TZ=True, timezone.make_aware() interprets those naive values using
+# this zone, so it MUST be the platform's local zone (WAT/UTC+1) — not UTC —
+# or every naive→aware conversion (telehealth scheduled_start, the join window,
+# missed-appointment marking, availability slots) lands an hour off.
+TIME_ZONE = env('TIME_ZONE', default='Africa/Lagos')
 USE_I18N = True
 USE_TZ = True
 
@@ -139,7 +144,14 @@ LIVEKIT_URL = env('LIVEKIT_URL', default='http://localhost:7880')
 LIVEKIT_API_KEY = env('LIVEKIT_API_KEY', default='devkey')
 LIVEKIT_API_SECRET = env('LIVEKIT_API_SECRET', default='naderk-livekit-dev-secret-key-2024')
 
-# Paystack
+# Payments
+# Key used to encrypt gateway secret keys stored in the DB (PaymentGateway).
+# Generate one with: Fernet.generate_key().decode(). If unset, a key is derived
+# from SECRET_KEY (dev only) — set this explicitly in production.
+PAYMENT_ENCRYPTION_KEY = env('PAYMENT_ENCRYPTION_KEY', default='')
+
+# Paystack (legacy env config — still honored as a fallback when no active
+# PaymentGateway row exists for the provider).
 PAYSTACK_SECRET_KEY = env('PAYSTACK_SECRET_KEY', default='')
 PAYSTACK_PUBLIC_KEY = env('PAYSTACK_PUBLIC_KEY', default='')
 PAYSTACK_WEBHOOK_SECRET = env('PAYSTACK_WEBHOOK_SECRET', default='')
@@ -179,7 +191,7 @@ EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='notification@totalesg360.com')
 
-# Email provider: postmark | smtp | resend | ses
+# Email provider: postmark | smtp | resend | ses | mailtrap
 EMAIL_PROVIDER = env('EMAIL_PROVIDER', default='smtp')
 
 # Postmark
@@ -190,6 +202,11 @@ DEFAULT_REPLY_TO_EMAIL   = env('DEFAULT_REPLY_TO_EMAIL', default='')
 
 # Resend
 EMAIL_RESEND_API_KEY = env('EMAIL_RESEND_API_KEY', default='')
+
+# Mailtrap (Email Sending API)
+EMAIL_MAILTRAP_API_TOKEN = env('EMAIL_MAILTRAP_API_TOKEN', default='')
+EMAIL_MAILTRAP_SANDBOX   = env.bool('EMAIL_MAILTRAP_SANDBOX', default=False)
+EMAIL_MAILTRAP_INBOX_ID  = env('EMAIL_MAILTRAP_INBOX_ID', default='')
 
 # AWS SES
 AWS_SES_ACCESS_KEY_ID     = env('AWS_SES_ACCESS_KEY_ID', default='')

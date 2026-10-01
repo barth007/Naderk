@@ -23,6 +23,7 @@ import {
   AvailabilitySection,
   ProfilePhotoUploadSection,
 } from '@/components/onboarding/OnboardingFormSections';
+import { portalHomeFor } from '@/utils/role-config';
 
 const patientSchema = z.object({
   first_name: z.string().min(1, "First name is required."),
@@ -124,12 +125,7 @@ export default function OnboardingPage() {
     if (!isAuthenticated) {
       router.push('/login');
     } else if (user?.profile_completion_status === 'COMPLETED') {
-      const r = user.role;
-      if (r === 'DOCTOR') router.push('/doctor/dashboard');
-      else if (r === 'OPTICIAN') router.push('/optician/dashboard');
-      else if (r === 'MEDICAL_AGENT') router.push('/agent/dashboard');
-      else if (r === 'ADMIN' || r === 'SUPER_ADMIN') router.push('/admin/dashboard');
-      else router.push('/dashboard');
+      router.push(portalHomeFor(user.role, user.areas));
     }
   }, [isAuthenticated, user, router]);
 

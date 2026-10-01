@@ -12,6 +12,7 @@ export interface User {
     cover_photo?: string;
     specialization?: string;
     permissions?: string[];
+  areas?: string[];
     patient_id?: string;
     phone_number?: string;
     dob?: string;

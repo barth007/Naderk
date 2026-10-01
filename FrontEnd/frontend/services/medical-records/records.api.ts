@@ -51,5 +51,41 @@ export const medicalRecordsApi = {
   getPrescriptionPdfUrl: (id: string) => {
     const baseURL = apiClient.defaults.baseURL || 'http://127.0.0.1:8000/api/v1';
     return `${baseURL}/medical-records/prescriptions/${id}/pdf/`;
-  }
+  },
+
+  // The PDF endpoint requires JWT auth, so a plain <a href> download 401s (the
+  // browser sends no Authorization header). Fetch it through the authenticated
+  // client as a blob and trigger the download client-side.
+  downloadPrescriptionPdf: async (id: string) => {
+    const response = await apiClient.get(
+      `/medical-records/prescriptions/${id}/pdf/`,
+      { responseType: 'blob' },
+    );
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `prescription-${id.slice(0, 8)}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
+
+  /**
+   * Object URL for previewing the prescription PDF in an <iframe>.
+   *
+   * Same auth problem as the download: the endpoint needs a JWT, so the blob
+   * has to come through the API client rather than being linked directly.
+   * Callers must revoke the URL when the preview closes.
+   */
+  prescriptionPdfPreviewUrl: async (id: string) => {
+    const response = await apiClient.get(
+      `/medical-records/prescriptions/${id}/pdf/`,
+      { params: { disposition: 'inline' }, responseType: 'blob' },
+    );
+    return window.URL.createObjectURL(
+      new Blob([response.data], { type: 'application/pdf' }),
+    );
+  },
 };

@@ -15,8 +15,22 @@ import { Button } from '@/components/ui/button';
 import { Avatar } from '@/components/ui/avatar';
 import { useMedicalEncounterDetail } from '@/services/medical-records/records.hooks';
 import { medicalRecordsApi } from '@/services/medical-records/records.api';
+import { toast } from 'sonner';
 import { cn } from '@/lib/cn';
-import Link from 'next/link';
+
+/**
+ * Shown inside a section that has no entries.
+ *
+ * Every section used to be wrapped in `array.length > 0 &&`, so an encounter
+ * with no diagnostics simply had no Diagnostic Results card at all. A patient
+ * could not tell whether no tests were ordered, or the panel had failed to
+ * load — it looked identical to a bug.
+ */
+function NoEntries({ label }: { label: string }) {
+  return (
+    <p className="text-xs text-gray-400 font-medium italic">{label}</p>
+  );
+}
 
 interface MedicalRecordSummaryModalProps {
   isOpen: boolean;
@@ -135,16 +149,19 @@ export function MedicalRecordSummaryModal({
               </div>
 
               {/* Eyewear Prescriptions */}
-              {encounter.eyewear_prescriptions && encounter.eyewear_prescriptions.length > 0 && (
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)] space-y-4">
-                  <div className="flex items-center justify-between border-b border-gray-50 pb-2">
-                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Eyewear Prescription</h3>
+              <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)] space-y-4">
+                <div className="flex items-center justify-between border-b border-gray-50 pb-2">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Eyewear Prescription</h3>
+                  {encounter.eyewear_prescriptions && encounter.eyewear_prescriptions.length > 0 && (
                     <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full font-bold">
                       Active
                     </span>
-                  </div>
+                  )}
+                </div>
 
-                  {encounter.eyewear_prescriptions.map((rx) => (
+                {!encounter.eyewear_prescriptions || encounter.eyewear_prescriptions.length === 0 ? (
+                  <NoEntries label="No eyewear prescription was issued at this consultation." />
+                ) : encounter.eyewear_prescriptions.map((rx) => (
                     <div key={rx.id} className="space-y-3">
                       {/* Grid RX parameters */}
                       <div className="overflow-x-auto border border-gray-100 rounded-xl">
@@ -179,26 +196,32 @@ export function MedicalRecordSummaryModal({
 
                       <div className="flex items-center justify-between text-xs font-semibold text-gray-600 bg-slate-50 p-2.5 rounded-xl border border-gray-100">
                         <span>Pupillary Distance: <span className="text-gray-900 font-bold">{rx.pupillary_distance} mm</span></span>
-                        <a 
-                          href={medicalRecordsApi.getPrescriptionPdfUrl(rx.id)}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await medicalRecordsApi.downloadPrescriptionPdf(rx.id);
+                            } catch {
+                              toast.error('Could not download the prescription PDF.');
+                            }
+                          }}
                           className="flex items-center gap-1 text-[#E03E3E] hover:text-red-700 transition-colors"
                         >
                           <FileDown className="w-4 h-4" /> Download PDF
-                        </a>
+                        </button>
                       </div>
                     </div>
                   ))}
-                </div>
-              )}
+              </div>
 
               {/* Medications List */}
-              {encounter.medications && encounter.medications.length > 0 && (
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1">
-                    <Pill className="w-4 h-4 text-emerald-500" /> Prescribed Medications
-                  </h3>
+              <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1">
+                  <Pill className="w-4 h-4 text-emerald-500" /> Prescribed Medications
+                </h3>
+                {!encounter.medications || encounter.medications.length === 0 ? (
+                  <NoEntries label="No medications were prescribed at this consultation." />
+                ) : (
                   <div className="divide-y divide-gray-50 space-y-2.5">
                     {encounter.medications.map((med) => (
                       <div key={med.id} className="pt-2.5 first:pt-0 flex items-start justify-between">
@@ -217,13 +240,15 @@ export function MedicalRecordSummaryModal({
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Diagnostic Results */}
-              {encounter.diagnostics && encounter.diagnostics.length > 0 && (
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Diagnostic Results</h3>
+              <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Diagnostic Results</h3>
+                {!encounter.diagnostics || encounter.diagnostics.length === 0 ? (
+                  <NoEntries label="No diagnostic results have been recorded for this consultation." />
+                ) : (
                   <div className="space-y-4 divide-y divide-gray-50">
                     {encounter.diagnostics.map((diag) => (
                       <div key={diag.id} className="pt-3 first:pt-0 space-y-2">
@@ -261,15 +286,17 @@ export function MedicalRecordSummaryModal({
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Medical Scans */}
-              {encounter.scans && encounter.scans.length > 0 && (
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1">
-                    <ImageIcon className="w-4 h-4 text-purple-500" /> Uploaded Clinical Scans
-                  </h3>
+              <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1">
+                  <ImageIcon className="w-4 h-4 text-purple-500" /> Uploaded Clinical Scans
+                </h3>
+                {!encounter.scans || encounter.scans.length === 0 ? (
+                  <NoEntries label="No clinical scans were uploaded for this consultation." />
+                ) : (
                   <div className="grid grid-cols-2 gap-3">
                     {encounter.scans.map((scan) => (
                       <div key={scan.id} className="border border-gray-100 rounded-xl overflow-hidden bg-slate-50">
@@ -289,8 +316,8 @@ export function MedicalRecordSummaryModal({
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Follow up Recommendations */}
               {(encounter.recommendations || encounter.follow_up_date) && (
@@ -310,8 +337,9 @@ export function MedicalRecordSummaryModal({
           )}
         </div>
 
-        {/* Footer Actions */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between shrink-0">
+        {/* Footer Actions — this modal already shows the full consultation
+            record, so "Close" is the only action needed. */}
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-end shrink-0">
           <Button
             type="button"
             variant="outline"
@@ -320,20 +348,6 @@ export function MedicalRecordSummaryModal({
           >
             Close
           </Button>
-
-          {encounter && (
-            <Link
-              href={
-                mode === 'PATIENT' 
-                  ? `/dashboard/records?selected_encounter=${encounter.id}` 
-                  : `/doctor/records/${patientId}?selected_encounter=${encounter.id}`
-              }
-              onClick={onClose}
-              className="font-bold text-xs uppercase tracking-wider bg-[#E03E3E] hover:bg-red-700 h-10 px-6 rounded-xl flex items-center justify-center text-white transition-all shadow-sm"
-            >
-              View Full Record
-            </Link>
-          )}
         </div>
 
       </div>

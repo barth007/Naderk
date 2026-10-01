@@ -1,7 +1,9 @@
 'use client';
 
+import { toastApiError } from '@/lib/api-errors';
+import Link from "next/link"
 import React from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from "next/navigation";
 import {
   ArrowLeft, Package, Glasses, MapPin, CreditCard,
   Loader2, CheckCircle2, Clock, Truck, AlertCircle,
@@ -10,10 +12,11 @@ import {
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Breadcrumbs } from '@/components/ui/breadcrumb';
-import { useOrder } from '@/services/marketplace/marketplace.hooks';
+import { useOrder, useConfirmOrderDelivery } from '@/services/marketplace/marketplace.hooks';
 import { Order } from '@/services/marketplace/marketplace.types';
 import { cn } from '@/lib/cn';
 import { format, parseISO } from 'date-fns';
+import { toast } from 'sonner';
 
 // ── Timeline ──────────────────────────────────────────────────────────────────
 
@@ -86,9 +89,18 @@ function OrderItemRow({ item }: { item: Order['items'][0] }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function OrderDetailPage() {
-  const router = useRouter();
   const { id } = useParams<{ id: string }>();
   const { data: order, isLoading, isError } = useOrder(id);
+  const confirmDelivery = useConfirmOrderDelivery(id);
+
+  const handleConfirmDelivery = async () => {
+    try {
+      await confirmDelivery.mutateAsync();
+      toast.success('Delivery confirmed. Thank you!');
+    } catch (err: any) {
+      toastApiError(err, 'Could not confirm delivery. Please try again.');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -104,8 +116,8 @@ export default function OrderDetailPage() {
       <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4 text-center p-8">
         <AlertCircle className="w-10 h-10 text-gray-300" />
         <p className="font-bold text-gray-700">Order not found.</p>
-        <Button onClick={() => router.push('/dashboard/orders')} variant="outline" className="rounded-full">
-          Back to Orders
+        <Button asChild variant="outline" className="rounded-full">
+          <Link href="/dashboard/orders">Back to Orders</Link>
         </Button>
       </div>
     );
@@ -123,9 +135,11 @@ export default function OrderDetailPage() {
 
       {/* Back + header */}
       <div className="flex items-center gap-3 mb-8">
-        <Button variant="outline" size="icon" onClick={() => router.push('/dashboard/orders')}
+        <Button asChild variant="outline" size="icon"
           className="rounded-full w-9 h-9 border-gray-200 shrink-0">
-          <ArrowLeft className="w-4 h-4" />
+          <Link href="/dashboard/orders" aria-label="Back to orders">
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
         </Button>
         <div>
           <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">
@@ -135,7 +149,21 @@ export default function OrderDetailPage() {
             Placed {format(parseISO(order.created_at), 'MMMM d, yyyy · h:mm a')}
           </p>
         </div>
-        <div className="ml-auto"><PaymentBadge status={order.payment_status} /></div>
+        <div className="ml-auto flex items-center gap-3">
+          {order.status === 'SHIPPED' && (
+            <Button
+              onClick={handleConfirmDelivery}
+              disabled={confirmDelivery.isPending}
+              className="rounded-md bg-[#ff052f] hover:bg-[#d90022] text-white font-semibold gap-1.5"
+            >
+              {confirmDelivery.isPending
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <CheckCircle2 className="w-4 h-4" />}
+              Confirm Delivery
+            </Button>
+          )}
+          <PaymentBadge status={order.payment_status} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
@@ -261,10 +289,9 @@ export default function OrderDetailPage() {
             <p className="text-xs font-bold text-gray-900">{order.status_display}</p>
           </Card>
 
-          <Button
-            onClick={() => router.push('/dashboard/marketplace')}
+          <Button asChild
             className="w-full bg-[#ff052f] hover:bg-[#d90022] text-white font-bold rounded-md text-xs">
-            Continue Shopping
+            <Link href="/dashboard/marketplace">Continue Shopping</Link>
           </Button>
         </div>
 

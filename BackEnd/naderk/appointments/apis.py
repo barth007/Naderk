@@ -164,6 +164,24 @@ class ReserveSlotApi(APIView):
             "expires_at": reservation.expires_at
         })
 
+def can_manage_any_appointment(user) -> bool:
+    """
+    True when the user may act on appointments that are not their own.
+
+    This was previously spelled inline as
+    `user.role in ('ADMIN', 'SUPER_ADMIN', 'DOCTOR')`, which left AGENT and
+    MEDICAL_AGENT out — so a support agent cancelling or rescheduling for a
+    patient fell through to the `patient=request.user` lookup and got a 404.
+    Defer to the capability area instead, so an admin editing role permissions
+    in Manage Permissions actually changes who can do this.
+    """
+    role = getattr(user, 'role', None)
+    if role in ('ADMIN', 'SUPER_ADMIN', 'DOCTOR'):
+        return True
+    from naderk.common.permissions import user_has_area
+    return user_has_area(user, 'appointments')
+
+
 class CreateAppointmentApi(APIView):
     permission_classes = [IsAuthenticated]
     
@@ -177,6 +195,27 @@ class CreateAppointmentApi(APIView):
         date = serializer.validated_data['date']
         time = serializer.validated_data['time']
         appointment_type = serializer.validated_data['appointment_type']
+
+        # Staff (support agents, medical agents, admins) can book on a
+        # patient's behalf by naming them. Everyone else books for themselves,
+        # and a patient_id they send is refused rather than quietly ignored.
+        patient = request.user
+        requested_patient_id = serializer.validated_data.get('patient_id')
+        if requested_patient_id and str(requested_patient_id) != str(request.user.id):
+            if not can_manage_any_appointment(request.user):
+                return build_error_response(
+                    "forbidden", "Permission denied", 403,
+                    "You cannot book an appointment on behalf of another patient.",
+                )
+            try:
+                patient = User.objects.get(id=requested_patient_id)
+            except User.DoesNotExist:
+                return build_error_response("not-found", "Resource not found", 404, "Invalid patient ID")
+            if patient.role != 'PATIENT':
+                return build_error_response(
+                    "validation-error", "Invalid patient", 400,
+                    "Appointments can only be booked for patients.",
+                )
 
         try:
             service = MedicalService.objects.get(id=service_id)
@@ -208,7 +247,7 @@ class CreateAppointmentApi(APIView):
         # Idempotency: if the patient already has a PENDING (unpaid) appointment
         # for exactly this service+doctor+date+time, return it so they can retry payment.
         existing_pending = Appointment.objects.filter(
-            patient=request.user,
+            patient=patient,
             doctor=doctor,
             service=service,
             appointment_date=date,
@@ -224,7 +263,7 @@ class CreateAppointmentApi(APIView):
 
         try:
             PatientAppointmentValidationService.validate_booking_request(
-                patient=request.user,
+                patient=patient,
                 doctor=doctor,
                 service=service,
                 date=date,
@@ -255,7 +294,7 @@ class CreateAppointmentApi(APIView):
             if not is_facility:
                 # Verify reservation (optional but good for strict locking)
                 reservation = AppointmentSlotReservation.objects.select_for_update().filter(
-                    patient=request.user,
+                    patient=patient,
                     doctor=doctor,
                     slot_datetime=slot_datetime,
                     status=AppointmentSlotReservation.Status.RESERVED,
@@ -276,7 +315,7 @@ class CreateAppointmentApi(APIView):
                     if active_res.exists():
                         return build_error_response("conflict", "Slot reserved", 409, "This slot is currently reserved by another user")
 
-            fee = ConsultationService.calculate_fee(request.user, service)
+            fee = ConsultationService.calculate_fee(patient, service)
             
             # Mock telehealth link
             appointment_type = serializer.validated_data['appointment_type']
@@ -287,7 +326,7 @@ class CreateAppointmentApi(APIView):
 
                 
             appointment = Appointment.objects.create(
-                patient=request.user,
+                patient=patient,
                 doctor=doctor,
                 service=service,
                 appointment_date=date,
@@ -327,7 +366,7 @@ class AppointmentHistoryApi(APIView):
         
         patient = request.user
         patient_id = request.query_params.get('patient_id')
-        if patient_id and request.user.role in ['AGENT', 'DOCTOR', 'ADMIN']:
+        if patient_id and can_manage_any_appointment(request.user):
             from naderk.core.models import User
             try:
                 patient = User.objects.get(id=patient_id, role=User.Role.PATIENT)
@@ -356,7 +395,7 @@ class CancelAppointmentApi(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        is_admin = request.user.role in ('ADMIN', 'SUPER_ADMIN', 'DOCTOR')
+        is_admin = can_manage_any_appointment(request.user)
         try:
             if is_admin:
                 appointment = Appointment.objects.get(id=pk)
@@ -384,7 +423,7 @@ class RescheduleAppointmentApi(APIView):
         if not serializer.is_valid():
             return build_error_response("validation-error", "Invalid Data", 400, "Validation failed", errors=serializer.errors)
 
-        is_admin = request.user.role in ('ADMIN', 'SUPER_ADMIN', 'DOCTOR')
+        is_admin = can_manage_any_appointment(request.user)
         try:
             if is_admin:
                 appointment = Appointment.objects.get(id=pk)
@@ -393,9 +432,14 @@ class RescheduleAppointmentApi(APIView):
         except Appointment.DoesNotExist:
             return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")
             
-        if appointment.status in [Appointment.Status.CANCELLED, Appointment.Status.COMPLETED, Appointment.Status.NO_SHOW]:
+        # A missed (NO_SHOW) appointment is deliberately reschedulable: the patient
+        # already paid, so we let them pick a new slot instead of forcing a rebook.
+        # Only truly terminal states are blocked.
+        if appointment.status in [Appointment.Status.CANCELLED, Appointment.Status.COMPLETED]:
             return build_error_response("invalid-state", "Cannot reschedule", 400, "Appointment is already completed or cancelled")
-            
+
+        was_missed = appointment.status == Appointment.Status.NO_SHOW
+
         new_date = serializer.validated_data['date']
         new_time = serializer.validated_data['time']
         
@@ -427,8 +471,13 @@ class RescheduleAppointmentApi(APIView):
                  
             appointment.appointment_date = new_date
             appointment.appointment_time = new_time
+            if was_missed:
+                # Bring it back into the active set. Payment carries forward
+                # (payment_status is untouched), so no new charge is required.
+                appointment.status = Appointment.Status.CONFIRMED
+                appointment.missed_at = None
             appointment.save()
-            
+
         return build_success_response("Appointment rescheduled successfully", AppointmentSerializer(appointment).data)
 
 class AppointmentDetailApi(APIView):
@@ -452,23 +501,91 @@ class AppointmentDetailApi(APIView):
         appointment.delete()
         return build_success_response("Appointment deleted successfully", None)
 
+#: How early, and how late, a patient may check themselves in relative to their
+#: slot. Staff are not limited — they can see the person standing there.
+SELF_CHECKIN_EARLY_MINUTES = 60
+SELF_CHECKIN_LATE_MINUTES = 30
+
+
 class CheckInAppointmentApi(APIView):
+    """
+    Mark a patient as arrived.
+
+    Front desk is the authority: staff holding the appointments area may check
+    anyone in at any time, because they can see the patient in front of them.
+    A patient may also check themselves in, but only close to their slot —
+    otherwise "checked in" stops meaning "present" and the waiting queue no
+    longer reflects who is actually in the building.
+    """
     permission_classes = [IsAuthenticated]
-    
+
     def post(self, request, pk):
+        is_staff = can_manage_any_appointment(request.user)
+
         try:
-            appointment = Appointment.objects.get(id=pk, patient=request.user)
+            if is_staff:
+                appointment = Appointment.objects.get(id=pk)
+            else:
+                appointment = Appointment.objects.get(id=pk, patient=request.user)
         except Appointment.DoesNotExist:
             return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")
-            
+
+        if appointment.status == Appointment.Status.CHECKED_IN:
+            # Idempotent: two taps, or the desk repeating what the patient did.
+            return build_success_response("Already checked in", AppointmentSerializer(appointment).data)
+
         if appointment.status != Appointment.Status.CONFIRMED:
-            return build_error_response("invalid-state", "Cannot check-in", 400, "Appointment is not confirmed")
-            
+            return build_error_response(
+                "invalid-state", "Cannot check in", 400,
+                f"Only a confirmed appointment can be checked in (this one is {appointment.get_status_display()}).",
+            )
+
+        if not is_staff:
+            slot = timezone.make_aware(
+                datetime.datetime.combine(appointment.appointment_date, appointment.appointment_time)
+            )
+            now = timezone.now()
+            if now < slot - datetime.timedelta(minutes=SELF_CHECKIN_EARLY_MINUTES):
+                return build_error_response(
+                    "too-early", "Too early to check in", 400,
+                    f"You can check in from {SELF_CHECKIN_EARLY_MINUTES} minutes before your appointment.",
+                )
+            if now > slot + datetime.timedelta(minutes=SELF_CHECKIN_LATE_MINUTES):
+                return build_error_response(
+                    "too-late", "Check-in window has closed", 400,
+                    "Please speak to the front desk to check in.",
+                )
+
         appointment.status = Appointment.Status.CHECKED_IN
         appointment.checked_in_at = timezone.now()
-        appointment.save()
-        
+        appointment.save(update_fields=['status', 'checked_in_at'])
+
         return build_success_response("Checked in successfully", AppointmentSerializer(appointment).data)
+
+    def delete(self, request, pk):
+        """Undo a check-in. Staff only — the desk corrects its own mistakes."""
+        if not can_manage_any_appointment(request.user):
+            return build_error_response(
+                "forbidden", "Permission denied", 403,
+                "Only staff can undo a check-in.",
+            )
+
+        try:
+            appointment = Appointment.objects.get(id=pk)
+        except Appointment.DoesNotExist:
+            return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")
+
+        if appointment.status != Appointment.Status.CHECKED_IN:
+            return build_error_response(
+                "invalid-state", "Not checked in", 400,
+                "This appointment is not checked in.",
+            )
+
+        appointment.status = Appointment.Status.CONFIRMED
+        appointment.checked_in_at = None
+        appointment.save(update_fields=['status', 'checked_in_at'])
+
+        return build_success_response("Check-in undone", AppointmentSerializer(appointment).data)
 
 class StartAppointmentApi(APIView):
     permission_classes = [IsAuthenticated]
@@ -507,5 +624,11 @@ class CompleteAppointmentApi(APIView):
         appointment.status = Appointment.Status.COMPLETED
         appointment.completed_at = timezone.now()
         appointment.save()
-        
+
+        # Draw down the patient's session pack. consume_session existed but was
+        # never called from anywhere, so a SESSION_PACK plan sat at
+        # sessions_used=0 forever — has_active_plan stayed true and every later
+        # booking of that service was priced at zero.
+        ConsultationService.consume_session(appointment.patient, appointment.service)
+
         return build_success_response("Appointment completed", AppointmentSerializer(appointment).data)

@@ -1,5 +1,7 @@
 'use client';
 
+import { toastApiError } from '@/lib/api-errors';
+import Link from "next/link"
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -14,13 +16,15 @@ import { toast } from 'sonner';
 import { useCart } from '@/services/marketplace/marketplace.hooks';
 import {
   useInitializePayment, usePollOrderPayment,
-  usePaystackPopup, useCheckoutIdempotencyKey,
+  usePaymentCheckout, useCheckoutIdempotencyKey,
 } from '@/services/payments/payments.hooks';
+import { usePaymentGateways } from '@/services/payments/admin-payments.hooks';
 import { CartItem } from '@/services/marketplace/marketplace.types';
 import { cn } from '@/lib/cn';
 import { apiClient } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useBrand } from '@/services/cms/admin-cms.hooks';
+import PaymentScripts from '@/components/providers/PaymentScripts';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -148,12 +152,22 @@ export default function CheckoutPage() {
 
   const idempotencyKey    = useCheckoutIdempotencyKey();
   const initializePayment = useInitializePayment(idempotencyKey);
-  const openPaystack      = usePaystackPopup();
+  const payCheckout       = usePaymentCheckout();
+  const { data: gateways = [] } = usePaymentGateways();
 
   const [profileLoading, setProfileLoading]     = useState(true);
   const [showAddressModal, setShowAddressModal]  = useState(false);
   const [paymentPhase, setPaymentPhase]          = useState<PaymentPhase>('idle');
   const [pendingOrderId, setPendingOrderId]      = useState<string | null>(null);
+  const [pendingReference, setPendingReference]  = useState<string | null>(null);
+  const [gateway, setGateway]                    = useState<string>('');
+
+  // Default the gateway to the marked default (or the first active one).
+  useEffect(() => {
+    if (!gateway && gateways.length) {
+      setGateway((gateways.find((g) => g.is_default) ?? gateways[0]).provider);
+    }
+  }, [gateways, gateway]);
 
   // Shipping address fields (pre-populated from profile)
   const [street, setStreet]   = useState('');
@@ -201,9 +215,28 @@ export default function CheckoutPage() {
     } else if (polledOrder.payment_status === 'FAILED') {
       toast.error('Payment failed. Please try again.');
       setPendingOrderId(null);
+      setPendingReference(null);
       setPaymentPhase('idle');
     }
   }, [polledOrder, router]);
+
+  // Actively verify against the provider instead of waiting for a gateway
+  // callback. Monnify's SDK onComplete is unreliable (especially for bank
+  // transfer), so we poll the verify endpoint — it confirms the order the moment
+  // the provider reports it PAID. Idempotent, and a harmless backstop for
+  // Paystack. The order poll above then redirects on PAID.
+  useEffect(() => {
+    if (!pendingReference || !pendingOrderId) return;
+    let attempts = 0;
+    const id = setInterval(async () => {
+      attempts += 1;
+      if (attempts > 45) { clearInterval(id); return; }   // ~3 min at 4s
+      try {
+        await apiClient.post('/payments/verify-order/', { reference: pendingReference });
+      } catch { /* keep trying; the order poll picks up PAID */ }
+    }, 4000);
+    return () => clearInterval(id);
+  }, [pendingReference, pendingOrderId]);
 
   const countryName = country ? Country.getCountryByCode(country)?.name ?? country : '';
   const stateName   = (state && country)
@@ -226,30 +259,50 @@ export default function CheckoutPage() {
         amount_kobo: amtKobo,
         email: user?.email ?? '',
         shipping_address: shippingAddress,
+        provider: gateway || undefined,
       });
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail ?? 'Could not initialize payment. Please try again.');
+      toastApiError(err, 'Could not initialize payment. Please try again.');
       setPaymentPhase('idle');
       return;
     }
 
     setPendingOrderId(creds.order_id);
+    setPendingReference(creds.reference);   // drives the verify-poll below
     setPaymentPhase('popup_open');
 
-    openPaystack({
-      publicKey:  creds.public_key,
-      email:      user?.email ?? '',
-      amount:     amtKobo,
-      reference:  creds.reference,
-      accessCode: creds.access_code,
-      onSuccess: () => {
+    payCheckout({
+      provider:     creds.provider,
+      publicConfig: creds.public_config ?? { public_key: creds.public_key },
+      amountKobo:   amtKobo,
+      email:        user?.email ?? '',
+      reference:    creds.reference,
+      customerName: [user?.first_name, user?.last_name].filter(Boolean).join(' '),
+      paymentDescription: 'Marketplace order',
+      accessCode:   creds.access_code,
+      onSuccess: async () => {
         setPaymentPhase('waiting_webhook');
         toast.info('Payment submitted! Confirming your order…');
+        // Confirm straight away instead of waiting for the Paystack webhook,
+        // which only reaches one environment. This marks the order PAID and
+        // deducts stock; the poll below then advances the UI. The webhook and
+        // poll remain as backstops, and the call is idempotent server-side.
+        try {
+          await apiClient.post('/payments/verify-order/', { reference: creds.reference });
+        } catch {
+          /* non-fatal — poll + webhook still cover confirmation */
+        }
       },
       onClose: () => {
-        setPendingOrderId(null);
+        // The popup may close right after a successful transfer. Keep verifying
+        // for a short grace period (the verify-poll redirects on PAID); if
+        // nothing confirms, stop and let the cart stand.
         setPaymentPhase('idle');
-        toast.info('Payment cancelled. Your cart is still intact.');
+        toast.info('If you completed your payment, we are confirming it…');
+        setTimeout(() => {
+          setPendingReference(null);
+          setPendingOrderId(null);
+        }, 15000);
       },
     });
   };
@@ -270,9 +323,9 @@ export default function CheckoutPage() {
       <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4 text-center p-8">
         <Package className="w-12 h-12 text-gray-200" />
         <p className="font-bold text-gray-700">Your cart is empty.</p>
-        <Button onClick={() => router.push('/dashboard/marketplace')}
+        <Button asChild
           className="rounded-md bg-[#ff052f] hover:bg-[#d90022] text-white">
-          Browse Marketplace
+          <Link href="/dashboard/marketplace">Browse Marketplace</Link>
         </Button>
       </div>
     );
@@ -290,8 +343,10 @@ export default function CheckoutPage() {
     );
   }
 
+  const gatewayName = gateways.find((g) => g.provider === gateway)?.display_name || '';
+
   const payLabel = {
-    idle:         `Pay ₦${Number(total).toLocaleString()} with Paystack`,
+    idle:         `Pay ₦${Number(total).toLocaleString()}${gatewayName ? ` with ${gatewayName}` : ''}`,
     initializing: 'Preparing payment…',
     popup_open:   'Complete payment in popup…',
     waiting_webhook: 'Confirming…',
@@ -299,6 +354,8 @@ export default function CheckoutPage() {
 
   return (
     <>
+      <PaymentScripts />
+
       {showAddressModal && (
         <DeliveryAddressModal
           onSaved={({ street: s, city: c, state: st, country: co }) => {
@@ -314,9 +371,11 @@ export default function CheckoutPage() {
         <div className="bg-white px-6 rounded-xl border border-gray-100 mb-6"><Breadcrumbs /></div>
 
         <div className="flex items-center gap-3 mb-8">
-          <Button variant="outline" size="icon" onClick={() => router.push('/dashboard/cart')}
+          <Button asChild variant="outline" size="icon"
             className="rounded-full w-9 h-9 border-gray-200 shrink-0">
-            <ArrowLeft className="w-4 h-4" />
+            <Link href="/dashboard/cart" aria-label="Back to cart">
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
           </Button>
           <div>
             <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Checkout</h1>
@@ -418,10 +477,35 @@ export default function CheckoutPage() {
                 <CreditCard className="w-4 h-4 text-[#ff052f]" />
                 <h2 className="text-sm font-extrabold text-gray-900">Payment</h2>
               </div>
+
+              {/* Gateway selector — only shown when more than one is active */}
+              {gateways.length > 1 && (
+                <div className="mb-3 grid gap-2">
+                  <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Pay with</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {gateways.map((g) => (
+                      <button
+                        key={g.provider}
+                        type="button"
+                        onClick={() => setGateway(g.provider)}
+                        className={cn(
+                          'border rounded-md px-3 py-2 text-xs font-semibold transition-colors text-left',
+                          gateway === g.provider
+                            ? 'border-[#ff052f] bg-red-50 text-[#ff052f]'
+                            : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                        )}
+                      >
+                        {g.display_name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="bg-green-50 border border-green-100 rounded-md p-3 flex gap-2.5 text-xs text-green-700">
                 <Info className="w-4 h-4 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-bold block">Secure payment via Paystack</span>
+                  <span className="font-bold block">Secure payment{gatewayName ? ` via ${gatewayName}` : ''}</span>
                   <span className="font-medium text-green-600">
                     Pay with card, bank transfer, or USSD. Your order is confirmed only after payment is verified.
                   </span>
@@ -475,7 +559,7 @@ export default function CheckoutPage() {
 
               {paymentPhase === 'popup_open' && (
                 <p className="text-[10px] text-center text-gray-400 font-semibold">
-                  Complete your payment in the Paystack window.
+                  Complete your payment in the {gatewayName || 'payment'} window.
                 </p>
               )}
             </Card>
@@ -483,7 +567,7 @@ export default function CheckoutPage() {
             <div className="bg-gray-50 border border-gray-100 rounded-md p-4 flex gap-2.5">
               <ShieldCheck className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
               <p className="text-[10px] text-gray-500 font-semibold leading-relaxed">
-                Payments processed securely by Paystack. Orders are confirmed only after payment verification. {brand.name} never stores your card details.
+                Payments processed securely{gatewayName ? ` by ${gatewayName}` : ''}. Orders are confirmed only after payment verification. {brand.name} never stores your card details.
               </p>
             </div>
           </div>

@@ -42,7 +42,18 @@ export default function TelehealthDashboard({ sessions }: TelehealthDashboardPro
     const counterPartyLabel = isDoctor ? 'Patient' : 'Specialist';
     
     // Check if joinable: sessions that are scheduled/ready/waiting/in-progress
-    const canJoin = ['READY', 'WAITING', 'IN_PROGRESS', 'SCHEDULED'].includes(session.status);
+    const JOIN_WINDOW_MINUTES = 30;
+    const isJoinableStatus = ['READY', 'WAITING', 'IN_PROGRESS', 'SCHEDULED'].includes(session.status);
+    let withinJoinWindow = true;
+    try {
+      const startMs = parseISO(session.scheduled_start).getTime();
+      withinJoinWindow = Date.now() >= startMs - JOIN_WINDOW_MINUTES * 60_000;
+    } catch {
+      withinJoinWindow = true;
+    }
+    // Doctors may open the room early to prepare; patients wait for the window.
+    const canJoin = isJoinableStatus && (isDoctor || withinJoinWindow);
+    const joinBlockedEarly = isJoinableStatus && !isDoctor && !withinJoinWindow;
 
     return (
       <div
@@ -86,6 +97,15 @@ export default function TelehealthDashboard({ sessions }: TelehealthDashboardPro
             >
               Join Session
             </Link>
+          )}
+
+          {joinBlockedEarly && (
+            <span
+              title={`Available ${JOIN_WINDOW_MINUTES} minutes before the scheduled time`}
+              className="inline-flex items-center justify-center h-9 px-4 bg-gray-100 text-gray-400 text-xs font-semibold rounded-md cursor-not-allowed"
+            >
+              Join Session
+            </span>
           )}
 
           <Link

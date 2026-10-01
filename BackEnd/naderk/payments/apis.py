@@ -11,7 +11,10 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
 
 from naderk.common.responses.builders import build_success_response, build_error_response
-from .services import initialize_payment, verify_and_confirm, get_provider
+from .services import (
+    initialize_payment, verify_and_confirm, get_provider, provider_public_config,
+    confirm_and_fulfill, record_webhook_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +56,13 @@ class InitializePaymentApi(APIView):
             )
             if existing_txn and existing_txn.order:
                 logger.info("Idempotency hit for key %s — returning cached response", idempotency_key)
+                pub = provider_public_config(existing_txn.provider)
                 data = {
                     'reference':         existing_txn.reference,
                     'authorization_url': '',   # popup can reuse access_code
                     'access_code':       existing_txn.raw_response.get('access_code', ''),
-                    'public_key':        getattr(settings, 'PAYSTACK_PUBLIC_KEY', ''),
+                    'public_key':        pub.get('public_key', ''),
+                    'public_config':     pub,
                     'provider':          existing_txn.provider,
                     'order_id':          str(existing_txn.order.id),
                 }
@@ -117,7 +122,8 @@ class InitializePaymentApi(APIView):
             'reference':        result.reference,
             'authorization_url': result.authorization_url,
             'access_code':      result.access_code,
-            'public_key':       getattr(settings, 'PAYSTACK_PUBLIC_KEY', ''),
+            'public_key':       result.public_config.get('public_key', ''),
+            'public_config':    result.public_config,
             'provider':         provider_name,
             'order_id':         str(order.id),   # frontend polls this
         }
@@ -174,11 +180,13 @@ class InitializeAppointmentPaymentApi(APIView):
             )
             if existing_txn:
                 logger.info("Idempotency hit for key %s — returning cached appointment payment response", idempotency_key)
+                pub = provider_public_config(existing_txn.provider)
                 return build_success_response("Payment already initialized", {
                     'reference':         existing_txn.reference,
                     'access_code':       existing_txn.raw_response.get('access_code', ''),
                     'authorization_url': '',
-                    'public_key':        getattr(settings, 'PAYSTACK_PUBLIC_KEY', ''),
+                    'public_key':        pub.get('public_key', ''),
+                    'public_config':     pub,
                     'provider':          existing_txn.provider,
                     'appointment_id':    str(appointment.id),
                 })
@@ -204,7 +212,8 @@ class InitializeAppointmentPaymentApi(APIView):
             'reference':         result.reference,
             'authorization_url': result.authorization_url,
             'access_code':       result.access_code,
-            'public_key':        getattr(settings, 'PAYSTACK_PUBLIC_KEY', ''),
+            'public_key':        result.public_config.get('public_key', ''),
+            'public_config':     result.public_config,
             'provider':          provider_name,
             'appointment_id':    str(appointment.id),
         })
@@ -261,27 +270,94 @@ class VerifyAppointmentPaymentApi(APIView):
             })
 
         try:
-            result = verify_and_confirm(reference=reference, provider_name='PAYSTACK')
+            result = confirm_and_fulfill(reference=reference)
         except Exception as e:
             logger.exception("Verify failed for %s: %s", reference, e)
             return build_error_response("provider-error", "Could not verify payment", 502,
                                         "We could not reach the payment provider. "
                                         "If you were charged, your booking will be confirmed shortly.")
 
-        if result.status != 'success':
+        appointment.refresh_from_db()
+        if appointment.payment_status != Appointment.PaymentStatus.PAID:
             return build_success_response("Payment not successful", {
                 'payment_status': appointment.payment_status,
-                'provider_status': result.status,
+                'provider_status': getattr(result, 'status', None),
                 'appointment_id': str(appointment.id),
             })
 
-        confirm_appointment_payment(appointment=appointment, reference=reference)
-        appointment.refresh_from_db()
         logger.info("Verify: appointment %s marked PAID via client verification.", appointment.id)
-
         return build_success_response("Payment confirmed", {
             'payment_status': appointment.payment_status,
             'appointment_id': str(appointment.id),
+        })
+
+
+class VerifyOrderPaymentApi(APIView):
+    """
+    POST /api/v1/payments/verify-order/  { "reference": "NDK-..." }
+
+    Marketplace counterpart of VerifyAppointmentPaymentApi. Confirms an order
+    payment straight from the browser after Paystack's popup reports success,
+    so stock is deducted and the order leaves PENDING without depending on the
+    single Paystack webhook URL reaching this environment. The webhook remains
+    the backstop; both paths are idempotent (order_process_payment early-returns
+    once the order is PAID).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        reference = (request.data.get('reference') or '').strip()
+        if not reference:
+            return build_error_response("validation-error", "reference is required", 400,
+                                        "Provide the Paystack transaction reference.")
+
+        from .models import PaymentTransaction
+        from naderk.ecommerce.models import Order
+        from naderk.ecommerce.services import order_process_payment
+
+        try:
+            txn = PaymentTransaction.objects.select_related('order').get(
+                reference=reference, user=request.user,
+            )
+        except PaymentTransaction.DoesNotExist:
+            return build_error_response("not-found", "Transaction not found", 404,
+                                        "No payment found for that reference.")
+
+        if not txn.order:
+            return build_error_response("bad-request", "Not an order payment", 400,
+                                        "That reference is not linked to an order.")
+
+        order = txn.order
+
+        # Already settled (webhook may have won the race) — report success.
+        if order.payment_status == Order.PaymentStatus.PAID:
+            return build_success_response("Payment already confirmed", {
+                'payment_status': order.payment_status,
+                'status': order.status,
+                'order_id': str(order.id),
+            })
+
+        try:
+            result = confirm_and_fulfill(reference=reference)
+        except Exception as e:
+            logger.exception("Verify failed for order ref %s: %s", reference, e)
+            return build_error_response("provider-error", "Could not verify payment", 502,
+                                        "We could not reach the payment provider. "
+                                        "If you were charged, your order will be confirmed shortly.")
+
+        order.refresh_from_db()
+        if order.payment_status != Order.PaymentStatus.PAID:
+            return build_success_response("Payment not successful", {
+                'payment_status': order.payment_status,
+                'provider_status': getattr(result, 'status', None),
+                'order_id': str(order.id),
+            })
+
+        logger.info("Verify: order %s marked PAID via client verification.", order.id)
+        return build_success_response("Payment confirmed", {
+            'payment_status': order.payment_status,
+            'status': order.status,
+            'order_id': str(order.id),
         })
 
 
@@ -301,77 +377,41 @@ class PaystackWebhookApi(APIView):
         raw_body  = request.body
         signature = request.headers.get('x-paystack-signature', '')
 
-        # Verify webhook signature
+        # Verify webhook signature before recording anything.
         provider = get_provider('PAYSTACK')
         if not provider.verify_webhook(payload=raw_body, signature=signature):
             logger.warning("Paystack webhook: invalid signature")
             return build_error_response("forbidden", "Invalid signature", 400, "Webhook signature mismatch.")
 
-        try:
-            payload = json.loads(raw_body)
-        except json.JSONDecodeError:
-            return build_error_response("bad-request", "Invalid JSON", 400, "Could not parse webhook body.")
+        # Record (dedup-enforced) and process asynchronously — acknowledge fast.
+        # The task re-verifies against the Paystack API before fulfilling; the
+        # payload is never trusted on its own.
+        record_webhook_event(provider_name='PAYSTACK', raw_body=raw_body, signature_valid=True)
+        return build_success_response("Webhook received", {})
 
-        event = payload.get('event')
-        logger.info("Paystack webhook event received: %s", event)
 
-        if event != 'charge.success':
-            return build_success_response("Event acknowledged", {})
+@method_decorator(csrf_exempt, name='dispatch')
+class MonnifyWebhookApi(APIView):
+    """
+    POST /api/v1/payments/webhook/monnify/
 
-        reference = payload.get('data', {}).get('reference')
-        if not reference:
-            return build_error_response("bad-request", "Missing reference", 400, "No reference in webhook payload.")
+    Monnify calls this on transaction completion. Verify the `monnify-signature`
+    (absent in sandbox — tolerated in TEST mode), record the event, and process
+    asynchronously; the task re-verifies against the Monnify API before fulfilling.
+    """
+    permission_classes = [AllowAny]
 
-        # Verify with Paystack API (double-check, don't trust payload alone)
-        try:
-            result = verify_and_confirm(reference=reference, provider_name='PAYSTACK')
-        except Exception as e:
-            logger.exception("Webhook verify failed for %s: %s", reference, e)
-            return build_success_response("Received (verification error — see logs)", {})
+    def post(self, request):
+        raw_body = request.body
+        signature = request.headers.get('monnify-signature', '')
 
-        if result.status != 'success':
-            logger.warning("Webhook: payment %s status is %s, not processing order.", reference, result.status)
-            return build_success_response("Payment not successful", {})
+        provider = get_provider('MONNIFY')
+        if not provider.verify_webhook(payload=raw_body, signature=signature):
+            logger.warning("Monnify webhook: invalid signature")
+            return build_error_response("forbidden", "Invalid signature", 400, "Webhook signature mismatch.")
 
-        # Process the linked order
-        from .models import PaymentTransaction
-        from naderk.ecommerce.services import order_process_payment
-        try:
-            txn = PaymentTransaction.objects.select_related('order', 'user').get(reference=reference)
-        except PaymentTransaction.DoesNotExist:
-            logger.warning("Webhook: no PaymentTransaction for reference %s", reference)
-            return build_success_response("Transaction not found", {})
-
-        if txn.appointment:
-            from django.db import transaction as db_transaction
-            from naderk.appointments.models import Appointment
-            from naderk.appointments.services import ConsultationService
-            appt = txn.appointment
-            if appt.payment_status == 'PAID':
-                logger.info("Webhook: appointment %s already paid, skipping.", appt.id)
-                return build_success_response("Already processed", {})
-            try:
-                from .services import confirm_appointment_payment
-                confirm_appointment_payment(appointment=appt, reference=reference)
-                logger.info("Webhook: appointment %s marked PAID, awaiting doctor acceptance.", appt.id)
-            except Exception as e:
-                logger.exception("Webhook: appointment processing failed for %s: %s", reference, e)
-        elif txn.order:
-            if txn.order.payment_status == 'PAID':
-                logger.info("Webhook: order %s already paid, skipping.", txn.order.id)
-                return build_success_response("Already processed", {})
-            try:
-                order_process_payment(
-                    order=txn.order,
-                    actor=txn.user,
-                    payment_reference=reference,
-                    skip_verify=True,
-                )
-                logger.info("Webhook: order %s successfully marked PAID.", txn.order.id)
-            except Exception as e:
-                logger.exception("Webhook: order processing failed for %s: %s", reference, e)
-        else:
-            logger.warning("Webhook: transaction %s has no linked order or appointment", reference)
+        record_webhook_event(provider_name='MONNIFY', raw_body=raw_body, signature_valid=bool(signature))
+        return build_success_response("Webhook received", {})
 
         return build_success_response("Webhook processed", {})
 
@@ -515,3 +555,125 @@ class AdminTransactionListApi(APIView):
             'total_pages': (total + page_size - 1) // page_size,
             'results':    results,
         })
+
+
+# ─── Payment Gateways (admin config + public list) ────────────────────────────
+
+from naderk.common.permissions import area_forbidden, AREA_SETTINGS
+from .models import PaymentGateway, PaymentProviderChoices
+
+
+def _serialize_gateway_admin(gw: PaymentGateway) -> dict:
+    secret = gw.get_secret_key() if gw.has_secret_key else ''
+    return {
+        'id':             str(gw.id),
+        'provider':       gw.provider,
+        'mode':           gw.mode,
+        'display_name':   gw.display_name,
+        'is_active':      gw.is_active,
+        'is_default':     gw.is_default,
+        'client_key':     gw.client_key,          # public-ish (Paystack public / Monnify API key)
+        'contract_code':  gw.contract_code,
+        'has_secret_key': gw.has_secret_key,
+        'secret_key_hint': ('••••' + secret[-4:]) if secret else '',
+        'config':         gw.config or {},
+        'updated_at':     gw.updated_at.isoformat(),
+    }
+
+
+def _gateway_public_config(gw: PaymentGateway) -> dict:
+    """Client-safe config for the checkout SDK — never the secret key."""
+    if gw.provider == PaymentProviderChoices.MONNIFY:
+        return {'apiKey': gw.client_key, 'contractCode': gw.contract_code, 'isTestMode': gw.mode == PaymentGateway.Mode.TEST}
+    return {'public_key': gw.client_key}
+
+
+class AdminGatewayListApi(APIView):
+    """GET list / POST create payment gateways. Admin-only (settings area)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if (resp := area_forbidden(request, AREA_SETTINGS)):
+            return resp
+        gateways = PaymentGateway.objects.all()
+        return build_success_response("Gateways retrieved", [_serialize_gateway_admin(g) for g in gateways])
+
+    def post(self, request):
+        if (resp := area_forbidden(request, AREA_SETTINGS)):
+            return resp
+        data = request.data
+        provider = (data.get('provider') or '').upper()
+        mode = (data.get('mode') or 'TEST').upper()
+        if provider not in PaymentProviderChoices.values:
+            return build_error_response("validation-error", "Invalid provider", 400, "Unknown payment provider.")
+        if mode not in PaymentGateway.Mode.values:
+            return build_error_response("validation-error", "Invalid mode", 400, "mode must be TEST or LIVE.")
+        if PaymentGateway.objects.filter(provider=provider, mode=mode).exists():
+            return build_error_response("conflict", "Gateway exists", 409,
+                                        f"A {provider} ({mode}) gateway already exists — edit it instead.")
+        gw = PaymentGateway(
+            provider=provider,
+            mode=mode,
+            display_name=(data.get('display_name') or provider.title()).strip(),
+            client_key=(data.get('client_key') or '').strip(),
+            contract_code=(data.get('contract_code') or '').strip(),
+            is_active=bool(data.get('is_active', False)),
+            is_default=bool(data.get('is_default', False)),
+            config=data.get('config') or {},
+        )
+        if data.get('secret_key'):
+            gw.set_secret_key(str(data['secret_key']).strip())
+        gw.save()
+        return build_success_response("Gateway created", _serialize_gateway_admin(gw), status_code=201)
+
+
+class AdminGatewayDetailApi(APIView):
+    """PATCH update / DELETE a payment gateway. Admin-only (settings area)."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        if (resp := area_forbidden(request, AREA_SETTINGS)):
+            return resp
+        try:
+            gw = PaymentGateway.objects.get(pk=pk)
+        except PaymentGateway.DoesNotExist:
+            return build_error_response("not-found", "Gateway not found", 404, "Invalid gateway id.")
+        data = request.data
+        for field in ('display_name', 'client_key', 'contract_code'):
+            if field in data:
+                setattr(gw, field, (data.get(field) or '').strip())
+        if 'is_active' in data:
+            gw.is_active = bool(data['is_active'])
+        if 'is_default' in data:
+            gw.is_default = bool(data['is_default'])
+        if 'config' in data and isinstance(data['config'], dict):
+            gw.config = data['config']
+        # Write-only secret: only replace when a non-empty value is supplied.
+        if data.get('secret_key'):
+            gw.set_secret_key(str(data['secret_key']).strip())
+        gw.save()
+        return build_success_response("Gateway updated", _serialize_gateway_admin(gw))
+
+    def delete(self, request, pk):
+        if (resp := area_forbidden(request, AREA_SETTINGS)):
+            return resp
+        deleted, _ = PaymentGateway.objects.filter(pk=pk).delete()
+        if not deleted:
+            return build_error_response("not-found", "Gateway not found", 404, "Invalid gateway id.")
+        return build_success_response("Gateway deleted", {})
+
+
+class GatewayListApi(APIView):
+    """GET active gateways with client-safe config only (for checkout)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        gateways = PaymentGateway.objects.filter(is_active=True)
+        data = [{
+            'provider':      g.provider,
+            'display_name':  g.display_name,
+            'mode':          g.mode,
+            'is_default':    g.is_default,
+            'public_config': _gateway_public_config(g),
+        } for g in gateways]
+        return build_success_response("Active gateways", data)

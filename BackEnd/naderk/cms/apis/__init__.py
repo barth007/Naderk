@@ -12,9 +12,11 @@ from .cms import (
     TrustMetricListCreateApi, TrustMetricDetailApi,
     TrustedClientListCreateApi, TrustedClientDetailApi,
     SiteSettingsApi,
+    PageContentApi, PageSchemaApi, PageSectionUpdateApi,
 )
 
 __all__ = [
+    'PageContentApi', 'PageSchemaApi', 'PageSectionUpdateApi',
     'BlogListAPI', 'BlogDetailAPI', 'BlogCategoryListAPI',
     'BlogCategoryCreateAPI', 'BlogCategoryDetailAPI',
     'BlogCreateAPI', 'MyBlogListAPI', 'AllBlogListAPI',

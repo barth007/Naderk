@@ -38,6 +38,7 @@ class User(AbstractUser):
         DOCTOR = 'DOCTOR', _('Doctor')
         OPTICIAN = 'OPTICIAN', _('Optician')
         MEDICAL_AGENT = 'MEDICAL_AGENT', _('Medical Agent')
+        OPERATIONS_MANAGER = 'OPERATIONS_MANAGER', _('Operations Manager')
         ADMIN = 'ADMIN', _('Admin')
         SUPER_ADMIN = 'SUPER_ADMIN', _('Super Admin')
         VOLUNTEER = 'VOLUNTEER', _('Volunteer')

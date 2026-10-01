@@ -40,9 +40,13 @@ class VerifyAppointmentPaymentTests(TestCase):
         )
         self.url = reverse('payment-verify-appointment')
 
-    def _ok(self, status='success'):
-        return patch('naderk.payments.apis.verify_and_confirm',
-                     return_value=type('R', (), {'status': status, 'metadata': {}})())
+    def _ok(self, status='success', amount_kobo=850000):
+        # confirm_and_fulfill verifies via services.verify_and_confirm, then checks
+        # currency + amount before fulfilling.
+        return patch('naderk.payments.services.verify_and_confirm',
+                     return_value=type('R', (), {'status': status, 'metadata': {},
+                                                 'amount_kobo': amount_kobo, 'currency': 'NGN',
+                                                 'provider_txn_ref': ''})())
 
     def test_successful_verification_marks_appointment_paid(self):
         with self._ok():
@@ -90,7 +94,7 @@ class VerifyAppointmentPaymentTests(TestCase):
         self.assertEqual(res.status_code, 400)
 
     def test_provider_outage_returns_502_not_a_false_success(self):
-        with patch('naderk.payments.apis.verify_and_confirm', side_effect=RuntimeError('boom')):
+        with patch('naderk.payments.services.verify_and_confirm', side_effect=RuntimeError('boom')):
             res = self.client.post(self.url, {'reference': 'NDK-ABC123'}, format='json')
         self.assertEqual(res.status_code, 502)
         self.appt.refresh_from_db()
@@ -142,7 +146,8 @@ class ReconcilePendingTransactionsTests(TestCase):
             PaymentTransaction.objects.filter(reference=reference).update(
                 status=(PaymentTransaction.Status.SUCCESS if status == 'success'
                         else PaymentTransaction.Status.FAILED))
-            return type('R', (), {'status': status, 'metadata': {}})()
+            return type('R', (), {'status': status, 'metadata': {},
+                                  'amount_kobo': 850000, 'currency': 'NGN', 'provider_txn_ref': ''})()
         return patch('naderk.payments.services.verify_and_confirm', side_effect=_fake)
 
     def test_stale_successful_payment_is_confirmed(self):
@@ -194,7 +199,8 @@ class ReconcilePendingTransactionsTests(TestCase):
                 raise RuntimeError('provider down')
             PaymentTransaction.objects.filter(reference=reference).update(
                 status=PaymentTransaction.Status.SUCCESS)
-            return type('R', (), {'status': 'success', 'metadata': {}})()
+            return type('R', (), {'status': 'success', 'metadata': {},
+                                  'amount_kobo': 850000, 'currency': 'NGN', 'provider_txn_ref': ''})()
 
         with patch('naderk.payments.services.verify_and_confirm', side_effect=_flaky):
             reconcile_pending_transactions()
@@ -210,3 +216,253 @@ class ReconcilePendingTransactionsTests(TestCase):
         with self._verify() as m:
             reconcile_pending_transactions()
         m.assert_not_called()
+
+
+class PaymentGatewayConfigTests(TestCase):
+    """Runtime, admin-managed, encrypted gateway config."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_user(email='adm@x.com', password='pw12345!', role=User.Role.ADMIN)
+        self.patient = User.objects.create_user(email='pt@x.com', password='pw12345!')
+
+    def _gw(self, provider='PAYSTACK', mode='TEST', secret='sk_test_XYZ', active=True, **over):
+        from .models import PaymentGateway
+        gw = PaymentGateway(provider=provider, mode=mode, display_name=f'{provider} {mode}',
+                            client_key=over.pop('client_key', 'pk_test_ABC'), is_active=active, **over)
+        gw.set_secret_key(secret)
+        gw.save()
+        return gw
+
+    def test_secret_key_encrypts_and_roundtrips(self):
+        gw = self._gw()
+        self.assertNotIn('sk_test_XYZ', gw.secret_key_encrypted)
+        self.assertTrue(gw.has_secret_key)
+        gw.refresh_from_db()
+        self.assertEqual(gw.get_secret_key(), 'sk_test_XYZ')
+
+    def test_config_resolves_from_active_db_gateway(self):
+        from .config import gateway_config
+        self._gw(client_key='pk_test_ABC', secret='sk_test_XYZ')
+        cfg = gateway_config('PAYSTACK')
+        self.assertEqual(cfg['secret_key'], 'sk_test_XYZ')
+        self.assertEqual(cfg['client_key'], 'pk_test_ABC')
+
+    def test_unconfigured_provider_raises(self):
+        from .config import gateway_config, ProviderNotConfigured
+        self._gw(provider='MONNIFY', contract_code='123', active=False)  # inactive
+        with self.assertRaises(ProviderNotConfigured):
+            gateway_config('MONNIFY')
+
+    def test_public_config_never_exposes_secret(self):
+        from .services import provider_public_config
+        self._gw(client_key='pk_test_ABC', secret='sk_test_XYZ')
+        pub = provider_public_config('PAYSTACK')
+        self.assertEqual(pub.get('public_key'), 'pk_test_ABC')
+        self.assertNotIn('sk_test_XYZ', str(pub))
+
+    def test_admin_creates_gateway_secret_write_only(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.post(reverse('payment-admin-gateways'), {
+            'provider': 'PAYSTACK', 'mode': 'TEST', 'display_name': 'Paystack',
+            'client_key': 'pk_test_ABC', 'secret_key': 'sk_test_XYZ', 'is_active': True,
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertTrue(res.json()['data']['has_secret_key'])
+        self.assertNotIn('sk_test_XYZ', res.content.decode())
+
+    def test_update_without_secret_keeps_existing(self):
+        gw = self._gw(secret='sk_test_XYZ')
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.patch(reverse('payment-admin-gateway-detail', args=[gw.id]),
+                                {'display_name': 'Renamed'}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        gw.refresh_from_db()
+        self.assertEqual(gw.display_name, 'Renamed')
+        self.assertEqual(gw.get_secret_key(), 'sk_test_XYZ')
+
+    def test_non_admin_cannot_manage_gateways(self):
+        self.client.force_authenticate(user=self.patient)
+        self.assertEqual(self.client.get(reverse('payment-admin-gateways')).status_code, 403)
+
+    def test_public_gateways_lists_active_without_secrets(self):
+        self._gw(client_key='pk_test_ABC', secret='sk_test_XYZ', active=True)
+        self._gw(provider='MONNIFY', contract_code='123', active=False)
+        self.client.force_authenticate(user=self.patient)
+        res = self.client.get(reverse('payment-gateways'))
+        self.assertEqual(res.status_code, 200)
+        data = res.json()['data']
+        providers = [g['provider'] for g in data]
+        self.assertIn('PAYSTACK', providers)
+        self.assertNotIn('MONNIFY', providers)
+        self.assertNotIn('sk_test_XYZ', res.content.decode())
+        self.assertEqual(data[0]['public_config']['public_key'], 'pk_test_ABC')
+
+
+class _FakeProvider:
+    def __init__(self, valid=True):
+        self._valid = valid
+    def verify_webhook(self, *, payload, signature):
+        return self._valid
+    def parse_webhook(self, payload):
+        return {'event_type': payload.get('event', ''),
+                'reference': (payload.get('data') or {}).get('reference', '')}
+
+
+class PaymentLifecycleTests(TestCase):
+    """confirm_and_fulfill (verify → currency/amount → confirm/fulfill) + webhook events."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.patient = User.objects.create_user(email='lp@x.com', password='pw12345!')
+        self.doctor = User.objects.create_user(email='ld@x.com', password='pw12345!', role=User.Role.DOCTOR)
+        DoctorProfile.objects.filter(user=self.doctor).update(specialization='GENERAL_PRACTITIONER')
+        self.service = MedicalService.objects.create(
+            name='Life Consult', slug='life-gp', requires_doctor=True,
+            required_specialization='GENERAL_PRACTITIONER', fee=8500)
+        self.appt = Appointment.objects.create(
+            patient=self.patient, doctor=self.doctor, service=self.service,
+            appointment_date=timezone.now().date() + datetime.timedelta(days=1),
+            appointment_time=datetime.time(11, 0), status=Appointment.Status.PENDING,
+            payment_status=Appointment.PaymentStatus.PENDING, consultation_fee=8500)
+        self.txn = PaymentTransaction.objects.create(
+            user=self.patient, provider='PAYSTACK', reference='NDK-LIFE1',
+            amount_kobo=850000, currency='NGN', appointment=self.appt,
+            status=PaymentTransaction.Status.INITIATED, raw_response={})
+
+    def _result(self, status='success', amount_kobo=850000, currency='NGN'):
+        return type('R', (), {'status': status, 'metadata': {}, 'amount_kobo': amount_kobo,
+                              'currency': currency, 'provider_txn_ref': 'MNFY|1'})()
+
+    def test_amount_mismatch_does_not_fulfill(self):
+        from naderk.payments.services import confirm_and_fulfill
+        with patch('naderk.payments.services.verify_and_confirm', return_value=self._result(amount_kobo=800000)):
+            confirm_and_fulfill(reference='NDK-LIFE1')
+        self.appt.refresh_from_db()
+        self.assertEqual(self.appt.payment_status, Appointment.PaymentStatus.PENDING)
+
+    def test_currency_mismatch_does_not_fulfill(self):
+        from naderk.payments.services import confirm_and_fulfill
+        with patch('naderk.payments.services.verify_and_confirm', return_value=self._result(currency='USD')):
+            confirm_and_fulfill(reference='NDK-LIFE1')
+        self.appt.refresh_from_db()
+        self.assertEqual(self.appt.payment_status, Appointment.PaymentStatus.PENDING)
+
+    def test_exact_amount_confirms_and_persists_provider_txn_ref(self):
+        from naderk.payments.services import confirm_and_fulfill
+        # real verify_and_confirm persists provider_txn_ref; here we mock verify only
+        with patch('naderk.payments.services.verify_and_confirm', return_value=self._result()):
+            confirm_and_fulfill(reference='NDK-LIFE1')
+        self.appt.refresh_from_db()
+        self.txn.refresh_from_db()
+        self.assertEqual(self.appt.payment_status, Appointment.PaymentStatus.PAID)
+        self.assertEqual(self.txn.status, PaymentTransaction.Status.SUCCESS)
+
+    def test_record_webhook_event_dedupes(self):
+        from naderk.payments.services import record_webhook_event
+        from naderk.payments.models import PaymentWebhookEvent
+        body = b'{"event":"charge.success","data":{"reference":"NDK-LIFE1"}}'
+        with patch('naderk.payments.tasks.process_payment_webhook.delay') as delay:
+            first = record_webhook_event(provider_name='PAYSTACK', raw_body=body, signature_valid=True)
+            second = record_webhook_event(provider_name='PAYSTACK', raw_body=body, signature_valid=True)
+        self.assertIsNotNone(first)
+        self.assertIsNone(second)  # duplicate delivery ignored
+        self.assertEqual(PaymentWebhookEvent.objects.filter(provider='PAYSTACK').count(), 1)
+        delay.assert_called_once()
+
+    def test_process_payment_webhook_confirms(self):
+        from naderk.payments.models import PaymentWebhookEvent
+        from naderk.payments.tasks import process_payment_webhook
+        ev = PaymentWebhookEvent.objects.create(
+            provider='PAYSTACK', event_type='charge.success', event_hash='hash1',
+            payment_reference='NDK-LIFE1', payload={}, signature_valid=True)
+        with patch('naderk.payments.services.verify_and_confirm', return_value=self._result()):
+            process_payment_webhook(str(ev.id))
+        ev.refresh_from_db()
+        self.appt.refresh_from_db()
+        self.assertEqual(ev.processing_status, PaymentWebhookEvent.ProcessingStatus.PROCESSED)
+        self.assertEqual(self.appt.payment_status, Appointment.PaymentStatus.PAID)
+
+    def test_webhook_endpoint_rejects_bad_signature(self):
+        from naderk.payments.models import PaymentWebhookEvent
+        body = {'event': 'charge.success', 'data': {'reference': 'NDK-LIFE1'}}
+        with patch('naderk.payments.apis.get_provider', return_value=_FakeProvider(valid=False)):
+            res = self.client.post(reverse('webhook-paystack'), body, format='json')
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(PaymentWebhookEvent.objects.count(), 0)
+
+    def test_webhook_endpoint_records_on_valid_signature(self):
+        from naderk.payments.models import PaymentWebhookEvent
+        body = {'event': 'charge.success', 'data': {'reference': 'NDK-LIFE1'}}
+        with patch('naderk.payments.apis.get_provider', return_value=_FakeProvider(valid=True)), \
+             patch('naderk.payments.tasks.process_payment_webhook.delay') as delay:
+            res = self.client.post(reverse('webhook-paystack'), body, format='json')
+        self.assertEqual(res.status_code, 200)
+        ev = PaymentWebhookEvent.objects.get(provider='PAYSTACK')
+        self.assertEqual(ev.payment_reference, 'NDK-LIFE1')
+        delay.assert_called_once()
+
+
+class MonnifyProviderTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def _provider(self, mode='TEST'):
+        from naderk.payments.providers.monnify import MonnifyProvider
+        return MonnifyProvider({'client_key': 'MK_TEST', 'secret_key': 'sk_test',
+                                'contract_code': '123', 'mode': mode, 'gateway_id': 'g1'})
+
+    def _resp(self, body):
+        return type('Resp', (), {'raise_for_status': lambda self: None,
+                                 'json': lambda self: body})()
+
+    def test_verify_maps_paid_and_converts_naira_to_kobo(self):
+        p = self._provider()
+        body = {'responseBody': {'paymentStatus': 'PAID', 'amountPaid': '5000.00',
+                                 'currencyCode': 'NGN', 'transactionReference': 'MNFY|77'}}
+        with patch.object(type(p), '_access_token', return_value='tok'), \
+             patch('naderk.payments.providers.monnify.requests.get', return_value=self._resp(body)):
+            res = p.verify(reference='NDK-M1')
+        self.assertEqual(res.status, 'success')
+        self.assertEqual(res.amount_kobo, 500000)
+        self.assertEqual(res.provider_txn_ref, 'MNFY|77')
+
+    def test_verify_pending_is_not_success(self):
+        p = self._provider()
+        body = {'responseBody': {'paymentStatus': 'PENDING', 'amountPaid': '0'}}
+        with patch.object(type(p), '_access_token', return_value='tok'), \
+             patch('naderk.payments.providers.monnify.requests.get', return_value=self._resp(body)):
+            res = p.verify(reference='NDK-M1')
+        self.assertNotEqual(res.status, 'success')
+
+    def test_webhook_signature_tolerated_in_sandbox_only(self):
+        self.assertTrue(self._provider('TEST').verify_webhook(payload=b'{}', signature=''))
+        self.assertFalse(self._provider('LIVE').verify_webhook(payload=b'{}', signature=''))
+
+    def test_webhook_valid_hmac_signature_accepted(self):
+        import hmac as _h, hashlib as _hh
+        p = self._provider(mode='LIVE')
+        body = b'{"eventType":"SUCCESSFUL_TRANSACTION"}'
+        sig = _h.new(b'sk_test', body, _hh.sha512).hexdigest()
+        self.assertTrue(p.verify_webhook(payload=body, signature=sig))
+        self.assertFalse(p.verify_webhook(payload=body, signature='deadbeef'))
+
+    def test_parse_webhook_extracts_reference(self):
+        parsed = self._provider().parse_webhook(
+            {'eventType': 'SUCCESSFUL_TRANSACTION', 'eventData': {'paymentReference': 'NDK-M1'}})
+        self.assertEqual(parsed['reference'], 'NDK-M1')
+
+    def test_public_config_has_no_secret(self):
+        pub = self._provider().public_config()
+        self.assertEqual(pub['apiKey'], 'MK_TEST')
+        self.assertEqual(pub['contractCode'], '123')
+        self.assertNotIn('sk_test', str(pub))
+
+    def test_monnify_webhook_records_in_sandbox(self):
+        from naderk.payments.models import PaymentWebhookEvent
+        body = {'eventType': 'SUCCESSFUL_TRANSACTION', 'eventData': {'paymentReference': 'NDK-M1'}}
+        with patch('naderk.payments.tasks.process_payment_webhook.delay') as delay:
+            res = self.client.post(reverse('webhook-monnify'), body, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertTrue(PaymentWebhookEvent.objects.filter(provider='MONNIFY').exists())
+        delay.assert_called_once()

@@ -78,9 +78,14 @@ class AppointmentSerializer(serializers.ModelSerializer):
         if obj.status not in [Appointment.Status.CONFIRMED, Appointment.Status.CHECKED_IN, Appointment.Status.IN_PROGRESS]:
             return False
         try:
-            return obj.telehealth_session is not None
+            session = obj.telehealth_session
         except Exception:
             return False
+        if session is None:
+            return False
+        # Don't advertise the join action before the join window opens (~30 min
+        # before the scheduled start). The join endpoint enforces this too.
+        return session.is_within_join_window()
 
 class AssignSpecialistRequestSerializer(serializers.Serializer):
     service_id = serializers.UUIDField()
@@ -109,6 +114,9 @@ class ReserveSlotRequestSerializer(serializers.Serializer):
     time = serializers.TimeField()
 
 class CreateAppointmentRequestSerializer(serializers.Serializer):
+    # Staff booking on a patient's behalf name them here. Ignored (and rejected)
+    # for anyone without the appointments capability area.
+    patient_id = serializers.UUIDField(required=False, allow_null=True)
     service_id = serializers.UUIDField()
     doctor_id = serializers.UUIDField(required=False, allow_null=True)
     date = serializers.DateField()

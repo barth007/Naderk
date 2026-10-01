@@ -9,7 +9,8 @@ import { apiClient } from '@/lib/api';
 import { useBrand } from '@/services/cms/admin-cms.hooks';
 import BrandLogo from '@/components/layout/BrandLogo';
 import { Sidebar, SidebarContent, SidebarItem, SidebarFooter, SidebarSection } from '@/components/ui/sidebar';
-import { ROLE_CONFIGS } from '@/utils/role-config';
+import { LinkPendingDot } from '@/components/ui/link-pending';
+import { ROLE_CONFIGS, filterNavByAreas } from '@/utils/role-config';
 import { useSidebar } from '@/context/SidebarContext';
 
 export default function DashboardSidebar() {
@@ -21,7 +22,9 @@ export default function DashboardSidebar() {
   const activeRole = user?.role || 'PATIENT';
   const roleConfig = ROLE_CONFIGS[activeRole] || ROLE_CONFIGS.PATIENT;
   const brand = useBrand();
-  const navItems = roleConfig.sidebarItems;
+  // Filter the (admin) nav by the user's capability areas. Non-admin portals
+  // have untagged items, so their nav is returned unchanged.
+  const navItems = filterNavByAreas(roleConfig.sidebarItems, user?.areas);
 
   useEffect(() => {
     const fetchPatientId = async () => {
@@ -89,8 +92,8 @@ export default function DashboardSidebar() {
         <Sidebar className="h-full rounded-none bg-white border-r border-gray-100 w-full" width="100%">
 
           {/* Mobile close button */}
-          <div className="md:hidden flex items-center justify-between px-4 pt-4 pb-2">
-            <BrandLogo size="md" />
+          <div className="md:hidden flex items-center justify-between gap-2 px-4 pt-4 pb-2">
+            <BrandLogo size="md" showName />
             <button
               onClick={close}
               className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
@@ -112,6 +115,7 @@ export default function DashboardSidebar() {
                     active={pathname === item.href}
                     onClick={close}
                     as={Link}
+                    badge={<LinkPendingDot />}
                     className={pathname === item.href ? "bg-[#E03E3E] text-white hover:bg-[#E03E3E] hover:text-white" : "text-gray-600 hover:bg-gray-50"}
                   >
                     {item.name}

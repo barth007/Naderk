@@ -76,6 +76,8 @@ export interface Frame {
   transparent_overlay_png?: string;
   is_active: boolean;
   variants: FrameVariant[];
+  /** Lens types this frame may be built with; add-to-cart rejects anything else. */
+  compatible_lens_type_ids?: string[];
   created_at: string;
   updated_at: string;
 }

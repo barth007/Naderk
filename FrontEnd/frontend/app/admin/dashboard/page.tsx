@@ -1,11 +1,14 @@
 'use client';
 
-import React from 'react';
+import NewPatientModal from '@/components/admin/NewPatientModal';
+import { adminReportsApi } from '@/services/admin/admin-appointments.hooks';
+import { toastApiError } from '@/lib/api-errors';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   Calendar, Video, FileText, TrendingUp, TrendingDown,
-  MessageSquare, FileBarChart, UserPlus,
+  FileBarChart, UserPlus,
   Download, Plus, AlertTriangle, Activity,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -319,6 +322,21 @@ export default function AdminDashboardPage() {
   const { data, isLoading, isError, refetch } = useAdminDashboard();
   const stats = data?.stats;
 
+  const [newPatientOpen, setNewPatientOpen] = useState(false);
+  const [reportBusy, setReportBusy] = useState(false);
+
+  const downloadReport = async () => {
+    setReportBusy(true);
+    try {
+      await adminReportsApi.downloadDailyReport();
+      toast.success("Today's report downloaded.");
+    } catch (e) {
+      toastApiError(e, 'Could not generate the report.');
+    } finally {
+      setReportBusy(false);
+    }
+  };
+
   // percentage badge — top right of card
   function pctBadge(change: number) {
     const positive = change >= 0;
@@ -348,10 +366,11 @@ export default function AdminDashboardPage() {
             variant="outline"
             size="sm"
             className="h-9 gap-1.5 text-xs font-semibold shadow-none border-gray-200"
-            onClick={() => toast.info('Export feature coming soon.')}
+            onClick={downloadReport}
+            disabled={reportBusy}
           >
             <Download className="w-3.5 h-3.5" />
-            Export Data
+            {reportBusy ? 'Preparing…' : 'Export Report'}
           </Button>
           <Link href="/admin/appointments">
             <Button
@@ -435,46 +454,41 @@ export default function AdminDashboardPage() {
         <h2 className="text-base font-bold text-gray-900">Quick Actions</h2>
         <p className="text-sm text-gray-500 mb-3">Real-time status of clinical flow</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {/* Send Clinic Wide Message */}
-          <button
-            onClick={() => toast.info('Clinic-wide messaging coming soon.')}
-            className="flex items-start gap-3 p-4 rounded-xl border border-gray-100 bg-white hover:bg-gray-50 transition-colors text-left w-full"
-          >
-            <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
-              <MessageSquare className="w-4.5 h-4.5 text-[#E03E3E]" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-gray-900">Send Clinic Wide Message</p>
-              <p className="text-xs text-gray-400 mt-0.5">Alert all staff members instantly</p>
-            </div>
-          </button>
+          {/* "Send Clinic Wide Message" lived here and only raised a "coming
+              soon" toast. Broadcast needs an audience model and fan-out that do
+              not exist, so the button is gone rather than lying. */}
 
           {/* Generate Daily Report */}
           <button
-            onClick={() => toast.info('Report generation coming soon.')}
-            className="flex items-start gap-3 p-4 rounded-xl border border-gray-100 bg-white hover:bg-gray-50 transition-colors text-left w-full"
+            onClick={downloadReport}
+            disabled={reportBusy}
+            className="flex items-start gap-3 p-4 rounded-xl border border-gray-100 bg-white hover:bg-gray-50 transition-colors text-left w-full disabled:opacity-60"
           >
             <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
               <FileBarChart className="w-4.5 h-4.5 text-[#E03E3E]" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900">Generate Daily Report</p>
-              <p className="text-xs text-gray-400 mt-0.5">PDF Summary of today's stats</p>
+              <p className="text-sm font-semibold text-gray-900">
+                {reportBusy ? 'Preparing report…' : 'Generate Daily Report'}
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5">PDF summary of today&rsquo;s stats</p>
             </div>
           </button>
 
-          {/* New Patient Record */}
-          <Link href="/admin/records/new" className="w-full">
+          {/* Linked at /admin/records/new, which is not a route — it matched
+              /admin/records/[id] and tried to load a patient called "new",
+              reporting "unable to access medical records". */}
+          <button onClick={() => setNewPatientOpen(true)} className="w-full text-left">
             <div className="flex items-start gap-3 p-4 rounded-xl border border-gray-100 bg-white hover:bg-gray-50 transition-colors cursor-pointer w-full h-full">
               <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
                 <Plus className="w-4.5 h-4.5 text-gray-600" />
               </div>
               <div>
                 <p className="text-sm font-semibold text-gray-900">New Patient Record</p>
-                <p className="text-xs text-gray-400 mt-0.5">Onboard a new visitor to clinical system</p>
+                <p className="text-xs text-gray-400 mt-0.5">Register a walk-in at the desk</p>
               </div>
             </div>
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -546,6 +560,8 @@ export default function AdminDashboardPage() {
           </div>
         )}
       </Card>
+
+      <NewPatientModal isOpen={newPatientOpen} onClose={() => setNewPatientOpen(false)} />
     </div>
   );
 }

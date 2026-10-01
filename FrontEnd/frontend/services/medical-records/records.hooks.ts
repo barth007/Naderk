@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import { medicalRecordsApi } from './records.api';
+import type { DiagnosticResult, DiagnosticResultCreatePayload } from './records.types';
 
 // ─── Medication Types ────────────────────────────────────────────────────────
 export interface Medication {
@@ -52,6 +53,25 @@ export const useCreateMedication = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['medications'] });
       qc.invalidateQueries({ queryKey: ['medical-records-overview'] });
+    },
+  });
+};
+
+export const useCreateDiagnostic = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: DiagnosticResultCreatePayload) => {
+      const res = await apiClient.post('/medical-records/diagnostics/', payload);
+      return res.data.data as DiagnosticResult;
+    },
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['medical-diagnostics'] });
+      qc.invalidateQueries({ queryKey: ['medical-records-overview'] });
+      // The patient reads results through the consultation record, so that
+      // detail query has to drop too or the new row will not appear there.
+      if (result?.encounter) {
+        qc.invalidateQueries({ queryKey: ['medical-encounter-detail', result.encounter] });
+      }
     },
   });
 };

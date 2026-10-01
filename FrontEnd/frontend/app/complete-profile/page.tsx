@@ -1,5 +1,6 @@
 "use client";
 
+import { portalHomeFor } from '@/utils/role-config';
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -66,7 +67,9 @@ export default function CompleteProfilePage() {
     if (!isAuthenticated) {
       router.push('/login');
     } else if (user?.profile_completion_status === 'COMPLETED') {
-      router.push('/dashboard');
+      // Was hardcoded to /dashboard — the patient portal — so staff and
+      // doctors finishing here were bounced through another redirect.
+      router.push(portalHomeFor(user.role, user.areas));
     }
   }, [isAuthenticated, user, router]);
 

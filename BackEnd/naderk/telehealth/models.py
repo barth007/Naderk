@@ -64,6 +64,25 @@ class TelehealthSession(models.Model):
                 self.doctor = self.appointment.doctor
         super().save(*args, **kwargs)
 
+    # Patients and doctors may join starting this many minutes before the
+    # scheduled start — not earlier.
+    JOIN_WINDOW_MINUTES = 30
+
+    def is_within_join_window(self, now=None):
+        """
+        True once we are within JOIN_WINDOW_MINUTES of the scheduled start.
+
+        Only the early bound is enforced — we block joining before the window
+        opens, but impose no late cut-off, so reconnecting to a call that has
+        already started (or run long) always works.
+        """
+        from django.utils import timezone
+        from datetime import timedelta
+        if not self.scheduled_start:
+            return True
+        now = now or timezone.now()
+        return now >= self.scheduled_start - timedelta(minutes=self.JOIN_WINDOW_MINUTES)
+
     def __str__(self):
         return f"Session for Appointment {self.appointment_id} ({self.status})"
 

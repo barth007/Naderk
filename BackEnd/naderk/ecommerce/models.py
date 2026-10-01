@@ -392,6 +392,35 @@ class WishlistItem(models.Model):
         return f"WishlistItem {self.id}"
 
 
+class OrderQuerySet(models.QuerySet):
+    """Mirrors AppointmentQuerySet — see naderk/appointments/models.py."""
+
+    def _unpaid_checkout_q(self):
+        # Resolved from self.model so the choice classes stay the single source
+        # of truth for these values.
+        model = self.model
+        return models.Q(
+            status=model.Status.PENDING,
+            payment_status__in=[
+                model.PaymentStatus.UNPAID,
+                model.PaymentStatus.PENDING_PAYMENT,
+            ],
+            total_price__gt=0,
+        )
+
+    def unpaid_checkouts(self):
+        """Rows that exist only because a checkout was started and not finished."""
+        return self.filter(self._unpaid_checkout_q())
+
+    def exclude_unpaid_checkouts(self):
+        """Everything except abandoned checkouts — i.e. real orders.
+
+        A zero-total order never goes through payment at all, so it is always
+        real regardless of its payment_status.
+        """
+        return self.exclude(self._unpaid_checkout_q())
+
+
 class Order(models.Model):
     class Status(models.TextChoices):
         PENDING = 'PENDING', _('Pending')
@@ -438,6 +467,8 @@ class Order(models.Model):
     internal_notes = models.TextField(blank=True, null=True)    # Staff only
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = OrderQuerySet.as_manager()
 
     def __str__(self):
         return f"Order {self.id} ({self.get_status_display()})"

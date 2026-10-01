@@ -84,7 +84,9 @@ export const useReserveSlot = () => {
 export const useCreateAppointment = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { service_id: string; doctor_id?: string | null; date: string; time: string; appointment_type: string; notes?: string }) => {
+    mutationFn: async (data: { service_id: string; doctor_id?: string | null; date: string; time: string; appointment_type: string; notes?: string;
+      /** Staff only: book on this patient's behalf. Omitted, the caller books for themselves. */
+      patient_id?: string }) => {
       const response = await api.post('/appointments/create/', data);
       return response.data.data as Appointment;
     },
@@ -92,6 +94,9 @@ export const useCreateAppointment = () => {
       queryClient.invalidateQueries({ queryKey: ['appointment-history'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       queryClient.invalidateQueries({ queryKey: ['doctor-appointments'] });
+      // Staff-booked appointments must land in the admin views too.
+      queryClient.invalidateQueries({ queryKey: ['admin-appointment-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-appointment-calendar'] });
     }
   });
 };
@@ -104,6 +109,26 @@ export const useAppointmentHistory = (patientId?: string) => {
       const response = await api.get(url);
       return response.data.data as AppointmentHistoryResponse;
     }
+  });
+};
+
+/**
+ * Patient self check-in.
+ *
+ * The API only accepts this close to the slot — outside the window it returns a
+ * message telling the patient to see the front desk, which is the authority.
+ */
+export const useCheckInAppointment = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (appointmentId: string) => {
+      const response = await api.post(`/appointments/${appointmentId}/check-in/`);
+      return response.data.data as Appointment;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['appointment-history'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    },
   });
 };
 

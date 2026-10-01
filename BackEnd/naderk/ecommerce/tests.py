@@ -1,3 +1,5 @@
+from unittest.mock import patch, Mock
+
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -196,37 +198,37 @@ class EcommerceTestCase(TestCase):
         self.assertIn('non_field_errors', serializer.errors)
         self.assertTrue(any("is incompatible" in str(err) for err in serializer.errors['non_field_errors']))
 
-    def test_add_to_cart_requires_approved_prescription(self):
+    def test_add_to_cart_requires_prescription_but_not_approval(self):
         """
-        Verify that adding eyewear with a prescription lens requires an APPROVED, non-expired prescription.
+        Adding prescription eyewear requires a prescription to be attached (and
+        unexpired), but it need NOT be APPROVED at cart-add time — clinical
+        review deliberately happens after payment, when the order enters
+        PRESCRIPTION_REVIEW. See AddToCartSerializer.validate().
         """
-        # 1. Create a pending prescription
+        data = {
+            'frame_variant_id': str(self.frame_variant.id),
+            'lens_type_id': str(self.lens_type_prescription.id),
+            'quantity': 1,
+        }
+
+        # 1. Omitting the prescription entirely fails validation.
+        serializer = AddToCartSerializer(data=data)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('non_field_errors', serializer.errors)
+        self.assertTrue(any("prescription is required" in str(err).lower()
+                            for err in serializer.errors['non_field_errors']))
+
+        # 2. A pending (not-yet-approved) prescription is accepted — approval is
+        #    enforced later, during post-payment review.
         pres = prescription_create(
             patient=self.patient,
             pupillary_distance=Decimal('64.0')
         )
-        
-        # Attempt to add to cart: should FAIL because prescription is not APPROVED
-        data = {
-            'frame_variant_id': str(self.frame_variant.id),
-            'lens_type_id': str(self.lens_type_prescription.id),
-            'prescription_id': str(pres.id),
-            'quantity': 1
-        }
-        serializer = AddToCartSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('non_field_errors', serializer.errors)
-        self.assertTrue(any("must be APPROVED" in str(err) for err in serializer.errors['non_field_errors']))
-        
-        # 2. Approve prescription
-        prescription_assign_for_review(prescription=pres, optician=self.optician)
-        prescription_review_complete(prescription=pres, optician=self.optician, status=Prescription.Status.APPROVED)
-        
-        # Re-attempt: should succeed
-        serializer2 = AddToCartSerializer(data=data)
-        self.assertTrue(serializer2.is_valid())
-        
-        # Actually add to cart via service
+        serializer2 = AddToCartSerializer(data={**data, 'prescription_id': str(pres.id)})
+        self.assertTrue(serializer2.is_valid(), serializer2.errors)
+
+        # 3. Adding via the service produces the correctly priced item:
+        #    base frame 120.00 + lens type 40.00 + lens option 15.00 = 175.00
         cart_item = cart_add_item(
             user=self.patient,
             frame_variant_id=self.frame_variant.id,
@@ -236,8 +238,6 @@ class EcommerceTestCase(TestCase):
             quantity=1
         )
         self.assertIsNotNone(cart_item)
-        # Verify calculated price: base frame price + lens type + lens option modifier
-        # 120.00 + 40.00 + 15.00 = 175.00
         self.assertEqual(cart_item.price, Decimal('175.00'))
 
     def test_checkout_prescription_expiration_and_snapshot(self):
@@ -320,10 +320,13 @@ class EcommerceTestCase(TestCase):
         )
         
         order = order_create_from_cart(user=self.patient, shipping_address="123 Test Street")
-        
-        # Process payment
-        order_process_payment(order=order, actor=self.patient, payment_reference="PAY-1234")
-        
+
+        # Process payment. Stub the provider verification so the test exercises
+        # stock allocation without making a live Paystack API call.
+        with patch('naderk.payments.services.verify_and_confirm',
+                   return_value=Mock(status='success')):
+            order_process_payment(order=order, actor=self.patient, payment_reference="PAY-1234")
+
         # Refresh from db
         self.variant.refresh_from_db()
         self.frame_variant.refresh_from_db()
@@ -473,3 +476,310 @@ class ProductPaginationTests(TestCase):
         )
         data = self.client.get(self.url, {'limit': 50, 'category_slug': 'paged'}).json()['data']
         self.assertEqual(data['total'], 15)
+
+
+class AbandonedOrderCleanupTests(TestCase):
+    """
+    Stock is deducted only when payment succeeds, so an abandoned checkout
+    holds no stock — but it used to sit on the patient's Orders page as an
+    ordinary pending order forever, which reads as a purchase that failed to
+    reduce inventory.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='abandon@test.com', password='pw12345!', role='PATIENT'
+        )
+        self.category = StoreCategory.objects.create(name='Drops', slug='drops')
+        self.product = Product.objects.create(
+            name='Test Drops', slug='test-drops', category=self.category,
+            price=Decimal('1000.00'), quantity_available=30, low_stock_threshold=5,
+        )
+
+    def _order(self, *, status, payment_status, total=Decimal('1000.00'), age_minutes=120):
+        order = Order.objects.create(
+            user=self.user, status=status, payment_status=payment_status,
+            total_price=total, shipping_address='somewhere',
+        )
+        OrderItem.objects.create(order=order, product=self.product, quantity=4, price=self.product.price)
+        # created_at is auto_now_add, so age it explicitly.
+        Order.objects.filter(pk=order.pk).update(
+            created_at=timezone.now() - timedelta(minutes=age_minutes)
+        )
+        return order
+
+    def test_cancels_stale_unpaid_order_without_touching_stock(self):
+        from .tasks import cancel_abandoned_unpaid_orders
+
+        order = self._order(status=Order.Status.PENDING, payment_status=Order.PaymentStatus.UNPAID)
+
+        cancel_abandoned_unpaid_orders()
+
+        order.refresh_from_db()
+        self.product.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.CANCELLED)
+        self.assertEqual(order.payment_status, Order.PaymentStatus.FAILED)
+        # The order never paid, so it never held stock — cancelling must not
+        # restore units that were never deducted.
+        self.assertEqual(self.product.quantity_available, 30)
+        self.assertTrue(order.activities.filter(action='CANCELLED').exists())
+
+    def test_leaves_recent_unpaid_order_alone(self):
+        from .tasks import cancel_abandoned_unpaid_orders
+
+        order = self._order(
+            status=Order.Status.PENDING, payment_status=Order.PaymentStatus.UNPAID,
+            age_minutes=5,
+        )
+        cancel_abandoned_unpaid_orders()
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PENDING)
+
+    def test_leaves_paid_order_alone(self):
+        from .tasks import cancel_abandoned_unpaid_orders
+
+        order = self._order(status=Order.Status.PENDING, payment_status=Order.PaymentStatus.PAID)
+        cancel_abandoned_unpaid_orders()
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PENDING)
+
+    def test_free_order_is_never_an_abandoned_checkout(self):
+        order = self._order(
+            status=Order.Status.PENDING, payment_status=Order.PaymentStatus.UNPAID,
+            total=Decimal('0.00'),
+        )
+        self.assertNotIn(order, Order.objects.unpaid_checkouts())
+        self.assertIn(order, Order.objects.exclude_unpaid_checkouts())
+
+    def test_payment_deducts_stock(self):
+        """The behaviour the cleanup depends on: stock moves on payment, not placement."""
+        order = self._order(status=Order.Status.PENDING, payment_status=Order.PaymentStatus.UNPAID)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.quantity_available, 30)
+
+        order_process_payment(
+            order=order, actor=self.user, payment_reference='TEST-REF', skip_verify=True
+        )
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.quantity_available, 26)
+
+
+class ProductVariantStockSyncTests(TestCase):
+    """
+    Product.quantity_available is the total across a product's variants, and is
+    what the admin inventory page, its summary totals and the product
+    serializers all read.
+
+    A sale used to decrement only the variant and a restock used to increment
+    only the product, so the two drifted apart: six units could sell while the
+    displayed stock never moved.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='stocksync@test.com', password='pw12345!', role='PATIENT'
+        )
+        self.category = StoreCategory.objects.create(name='Optics', slug='optics')
+        self.product = Product.objects.create(
+            name='Frogskins', slug='frogskins', category=self.category,
+            price=Decimal('1000.00'), quantity_available=30, low_stock_threshold=5,
+        )
+        self.variant = ProductVariant.objects.create(
+            product=self.product, variant_name='Standard', sku='FROG-STD',
+            quantity_available=30, low_stock_threshold=5,
+        )
+
+    def test_selling_a_variant_reduces_the_product_total(self):
+        order = Order.objects.create(
+            user=self.user, status=Order.Status.PENDING,
+            payment_status=Order.PaymentStatus.UNPAID,
+            total_price=Decimal('4000.00'), shipping_address='somewhere',
+        )
+        # Checkout sets both product and product_variant on the item, and the
+        # deduction branches on product_variant first.
+        OrderItem.objects.create(
+            order=order, product=self.product, product_variant=self.variant,
+            quantity=4, price=self.product.price,
+        )
+
+        order_process_payment(
+            order=order, actor=self.user, payment_reference='REF-1', skip_verify=True
+        )
+
+        self.variant.refresh_from_db()
+        self.product.refresh_from_db()
+        self.assertEqual(self.variant.quantity_available, 26)
+        self.assertEqual(self.product.quantity_available, 26)
+
+    def test_product_without_variants_still_deducts(self):
+        plain = Product.objects.create(
+            name='Eye Drops', slug='eye-drops', category=self.category,
+            price=Decimal('500.00'), quantity_available=30, low_stock_threshold=5,
+        )
+        order = Order.objects.create(
+            user=self.user, status=Order.Status.PENDING,
+            payment_status=Order.PaymentStatus.UNPAID,
+            total_price=Decimal('2000.00'), shipping_address='somewhere',
+        )
+        OrderItem.objects.create(order=order, product=plain, quantity=4, price=plain.price)
+
+        order_process_payment(
+            order=order, actor=self.user, payment_reference='REF-2', skip_verify=True
+        )
+
+        plain.refresh_from_db()
+        self.assertEqual(plain.quantity_available, 26)
+
+    def test_reconcile_command_realigns_drift(self):
+        from django.core.management import call_command
+        from io import StringIO
+
+        # Simulate the pre-fix state: variant sold down, product left behind.
+        ProductVariant.objects.filter(pk=self.variant.pk).update(quantity_available=26)
+        Product.objects.filter(pk=self.product.pk).update(quantity_available=30)
+
+        call_command('reconcile_product_stock', '--apply', stdout=StringIO())
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.quantity_available, 26)
+
+
+class AdminRestockTests(TestCase):
+    """Restocking must reach the counter a sale deducts from."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        self.admin = User.objects.create_user(
+            email='restock-admin@test.com', password='pw12345!', role='ADMIN'
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+
+        self.category = StoreCategory.objects.create(name='Optics', slug='optics-restock')
+        self.product = Product.objects.create(
+            name='Frogskins R', slug='frogskins-r', category=self.category,
+            price=Decimal('1000.00'), quantity_available=46, low_stock_threshold=5,
+        )
+        self.variant = ProductVariant.objects.create(
+            product=self.product, variant_name='Standard', sku='FROG-R-STD',
+            quantity_available=46, low_stock_threshold=5,
+        )
+
+    def _url(self, pk):
+        return f'/api/v1/dashboard/admin/products/{pk}/restock/'
+
+    def test_restock_updates_variant_and_product_together(self):
+        res = self.client.post(self._url(self.product.id), {'quantity': 10}, format='json')
+        self.assertEqual(res.status_code, 200)
+
+        self.product.refresh_from_db()
+        self.variant.refresh_from_db()
+        # Previously only the product moved, so restocked units never became
+        # sellable and the two counters drifted apart.
+        self.assertEqual(self.variant.quantity_available, 56)
+        self.assertEqual(self.product.quantity_available, 56)
+
+    def test_restock_requires_variant_id_when_ambiguous(self):
+        ProductVariant.objects.create(
+            product=self.product, variant_name='Large', sku='FROG-R-LG',
+            quantity_available=5, low_stock_threshold=1,
+        )
+        res = self.client.post(self._url(self.product.id), {'quantity': 10}, format='json')
+        self.assertEqual(res.status_code, 400)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.quantity_available, 46)
+
+    def test_restock_named_variant(self):
+        large = ProductVariant.objects.create(
+            product=self.product, variant_name='Large', sku='FROG-R-LG2',
+            quantity_available=5, low_stock_threshold=1,
+        )
+        res = self.client.post(
+            self._url(self.product.id),
+            {'quantity': 10, 'variant_id': str(large.id)},
+            format='json',
+        )
+        self.assertEqual(res.status_code, 200)
+
+        large.refresh_from_db()
+        self.variant.refresh_from_db()
+        self.product.refresh_from_db()
+        self.assertEqual(large.quantity_available, 15)
+        self.assertEqual(self.variant.quantity_available, 46)
+        self.assertEqual(self.product.quantity_available, 56)
+
+    def test_product_without_variants_restocks_normally(self):
+        plain = Product.objects.create(
+            name='Plain Drops', slug='plain-drops', category=self.category,
+            price=Decimal('100.00'), quantity_available=30, low_stock_threshold=5,
+        )
+        res = self.client.post(self._url(plain.id), {'quantity': 5}, format='json')
+        self.assertEqual(res.status_code, 200)
+        plain.refresh_from_db()
+        self.assertEqual(plain.quantity_available, 35)
+
+
+class PrescriptionValidateEndpointTests(TestCase):
+    """
+    The builder is a staged wizard, but the dioptre ranges were only enforced by
+    the create call at checkout — a patient finished every stage before learning
+    a value several steps back was out of range.
+    """
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        self.client = APIClient()
+        self.patient = User.objects.create_user(
+            email='rxvalidate@test.com', password='pw12345!', role='PATIENT'
+        )
+        self.client.force_authenticate(user=self.patient)
+
+    def test_rejects_out_of_range_without_saving(self):
+        before = Prescription.objects.count()
+
+        res = self.client.post('/api/v1/marketplace/prescriptions/validate/', {
+            'right_sph': '-25.00', 'right_cyl': '-12.00',
+            'left_sph': '25.00', 'left_cyl': '11.00',
+            'pupillary_distance': '63.00',
+        }, format='json')
+
+        self.assertEqual(res.status_code, 400)
+        errors = res.json()['errors']
+        self.assertIn('right_sph', errors)
+        self.assertIn('right_cyl', errors)
+        self.assertIn('left_sph', errors)
+        self.assertIn('left_cyl', errors)
+        # A dry run must never persist.
+        self.assertEqual(Prescription.objects.count(), before)
+
+    def test_accepts_valid_values_without_saving(self):
+        before = Prescription.objects.count()
+
+        res = self.client.post('/api/v1/marketplace/prescriptions/validate/', {
+            'right_sph': '-2.00', 'right_cyl': '-0.50',
+            'left_sph': '-1.75', 'left_cyl': '-0.25',
+            'pupillary_distance': '63.00',
+        }, format='json')
+
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()['data']['valid'])
+        self.assertEqual(Prescription.objects.count(), before)
+
+    def test_agrees_with_the_create_endpoint(self):
+        """Both run the same serializer, so a value one rejects the other must too."""
+        payload = {
+            'right_sph': '-25.00', 'pupillary_distance': '63.00',
+        }
+        dry = self.client.post('/api/v1/marketplace/prescriptions/validate/', payload, format='json')
+        real = self.client.post('/api/v1/marketplace/prescriptions/', payload, format='json')
+        self.assertEqual(dry.status_code, 400)
+        self.assertEqual(real.status_code, 400)
+        self.assertEqual(dry.json()['errors'].keys(), real.json()['errors'].keys())
+
+    def test_requires_authentication(self):
+        from rest_framework.test import APIClient
+        res = APIClient().post('/api/v1/marketplace/prescriptions/validate/', {}, format='json')
+        self.assertIn(res.status_code, (401, 403))

@@ -76,3 +76,6 @@ export type {
 export { Avatar } from "./avatar"
 export type { AvatarProps } from "./avatar"
 
+
+export { Skeleton } from "./skeleton"
+export { LinkPendingDot } from "./link-pending"

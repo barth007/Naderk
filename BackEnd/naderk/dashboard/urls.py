@@ -15,8 +15,12 @@ urlpatterns = [
     path('admin/summary/', apis.AdminDashboardSummaryAPI.as_view(), name='admin-summary'),
     path('admin/appointments/requests/', apis.AdminAppointmentRequestsAPI.as_view(), name='admin-appt-requests'),
     path('admin/appointments/calendar/', apis.AdminAppointmentCalendarAPI.as_view(), name='admin-appt-calendar'),
+    path('admin/appointments/today/', apis.AdminTodayArrivalsAPI.as_view(), name='admin-appt-today'),
     path('admin/appointments/<uuid:pk>/schedule/', apis.AdminScheduleAppointmentAPI.as_view(), name='admin-appt-schedule'),
     path('admin/doctors/', apis.AdminDoctorListAPI.as_view(), name='admin-doctors'),
+    path('admin/patients/', apis.AdminPatientLookupAPI.as_view(), name='admin-patients'),
+    path('admin/patients/create/', apis.AdminPatientCreateAPI.as_view(), name='admin-patient-create'),
+    path('admin/reports/daily/', apis.AdminDailyReportPdfAPI.as_view(), name='admin-daily-report'),
     path('admin/inventory/summary/', apis.AdminInventorySummaryAPI.as_view(), name='admin-inventory-summary'),
     path('admin/products/create/', apis.AdminProductCreateAPI.as_view(), name='admin-product-create'),
     path('admin/products/', apis.AdminProductsAPI.as_view(), name='admin-products'),
@@ -26,6 +30,10 @@ urlpatterns = [
     path('admin/products/<uuid:pk>/history/', apis.AdminProductHistoryAPI.as_view(), name='admin-product-history'),
     path('admin/orders/', apis.AdminAllOrdersAPI.as_view(), name='admin-orders'),
     # Categories
+    path('admin/lens-types/', apis.AdminLensTypeListAPI.as_view(), name='admin-lens-types'),
+    path('admin/lens-types/<uuid:pk>/', apis.AdminLensTypeDetailAPI.as_view(), name='admin-lens-type-detail'),
+    path('admin/lens-options/', apis.AdminLensOptionListAPI.as_view(), name='admin-lens-options'),
+    path('admin/lens-options/<uuid:pk>/', apis.AdminLensOptionDetailAPI.as_view(), name='admin-lens-option-detail'),
     path('admin/categories/', apis.AdminCategoryListAPI.as_view(), name='admin-categories'),
     path('admin/categories/<uuid:pk>/', apis.AdminCategoryDetailAPI.as_view(), name='admin-category-detail'),
     # Flash Sales
@@ -49,6 +57,7 @@ urlpatterns = [
     path('admin/frames/', apis.AdminFrameListAPI.as_view(), name='admin-frames'),
     path('admin/frames/<uuid:pk>/', apis.AdminFrameDetailAPI.as_view(), name='admin-frame-detail'),
     path('admin/frames/<uuid:pk>/toggle/', apis.AdminFrameToggleAPI.as_view(), name='admin-frame-toggle'),
+    path('admin/frames/<uuid:pk>/lens-types/', apis.AdminFrameLensCompatibilityAPI.as_view(), name='admin-frame-lens-types'),
     # Medical Services
     path('admin/services/', apis.AdminServiceListAPI.as_view(), name='admin-services'),
     path('admin/services/<uuid:pk>/', apis.AdminServiceDetailAPI.as_view(), name='admin-service-detail'),

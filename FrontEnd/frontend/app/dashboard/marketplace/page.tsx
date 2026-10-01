@@ -8,6 +8,7 @@ import {
   ShoppingBag,
   Sparkles,
   ShoppingBagIcon,
+  Package,
   RefreshCw,
   FlaskConical,
   HeartPulse,
@@ -318,6 +319,14 @@ export default function MarketplacePage() {
           >
             <Sparkles className="w-4 h-4" />
             Glasses Builder
+          </Link>
+          <Link
+            href="/dashboard/orders"
+            aria-label="My Orders"
+            title="My Orders"
+            className="inline-flex items-center justify-center w-10 h-10 bg-white text-gray-600 hover:text-[#ff052f] transition-colors border border-gray-200 rounded-md hover:border-[#ffccd3]"
+          >
+            <Package className="w-4 h-4" />
           </Link>
           <Link
             href="/dashboard/cart"

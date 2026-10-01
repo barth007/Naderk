@@ -1,5 +1,6 @@
 'use client';
 
+import TodayArrivalsPanel from '@/components/admin/TodayArrivalsPanel';
 import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -8,11 +9,12 @@ import {
 } from 'date-fns';
 import { toast } from 'sonner';
 import {
-  ChevronLeft, ChevronRight, Lock, Clock, X, AlertTriangle, Calendar,
+  ChevronLeft, ChevronRight, Lock, Clock, X, AlertTriangle, Calendar, CalendarPlus,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
+import BookAppointmentModal from '@/components/admin/BookAppointmentModal';
 import {
   useAdminAppointmentRequests,
   useAdminAppointmentCalendar,
@@ -507,6 +509,7 @@ export default function AdminAppointmentsPage() {
   const [cancelTarget, setCancelTarget] = useState<AdminAppointmentRequest | null>(null);
   const [rescheduleId, setRescheduleId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [bookOpen, setBookOpen] = useState(false);
 
   async function handleCancelConfirm() {
     if (!cancelTarget) return;
@@ -523,7 +526,8 @@ export default function AdminAppointmentsPage() {
   return (
     <div className="p-6 h-[calc(100vh-64px)] flex flex-col">
       {/* Page title */}
-      <div className="mb-4">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
         <h1 className="text-xl font-bold text-gray-900">Appointments</h1>
         <p className="text-sm text-gray-500 mt-0.5">Manage clinic scheduling and appointment requests</p>
         {query && (
@@ -531,13 +535,28 @@ export default function AdminAppointmentsPage() {
             Showing {matchCount} result{matchCount === 1 ? '' : 's'} for &ldquo;{query}&rdquo; — clear the search box to see everything.
           </p>
         )}
+        </div>
+        {/* Staff booking on a patient's behalf. Previously the desk could only
+            schedule requests patients had already submitted themselves. */}
+        <Button
+          onClick={() => setBookOpen(true)}
+          className="bg-[#E03E3E] text-white h-10 text-xs font-bold rounded-lg shrink-0"
+        >
+          <CalendarPlus className="w-4 h-4 mr-1.5" /> Book Appointment
+        </Button>
       </div>
 
       {/* Two-column layout */}
       <div className="flex gap-5 flex-1 min-h-0">
-        {/* ── Left: Requested panel ── */}
-        <div className="w-[320px] flex-shrink-0 flex flex-col">
-          <Card className="flex-1 rounded-xl border border-gray-100 shadow-none flex flex-col overflow-hidden">
+        {/* ── Left: desk work queues ── */}
+        <div className="w-[320px] flex-shrink-0 flex flex-col gap-5 min-h-0">
+          {/* Who is here now. Check-in had an endpoint but no interface, so no
+              appointment had ever reached CHECKED_IN. */}
+          <Card className="rounded-xl border border-gray-100 shadow-none flex flex-col overflow-hidden max-h-[45%]">
+            <TodayArrivalsPanel />
+          </Card>
+
+          <Card className="flex-1 rounded-xl border border-gray-100 shadow-none flex flex-col overflow-hidden min-h-0">
             <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex-shrink-0">
               <h2 className="font-bold text-gray-900 text-sm">Requested</h2>
               <p className="text-xs text-gray-400 mt-0.5">External requests from web portal awaiting verification</p>
@@ -634,6 +653,9 @@ export default function AdminAppointmentsPage() {
         appointmentId={rescheduleId}
         onClose={() => setRescheduleId(null)}
       />
+
+      {/* Book on a patient's behalf */}
+      <BookAppointmentModal isOpen={bookOpen} onClose={() => setBookOpen(false)} />
     </div>
   );
 }

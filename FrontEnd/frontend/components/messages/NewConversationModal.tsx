@@ -1,3 +1,4 @@
+import { toastApiError } from '@/lib/api-errors';
 import React, { useState } from 'react';
 import { 
   X, 
@@ -78,7 +79,7 @@ export function NewConversationModal({ isOpen, onClose, onSuccess }: NewConversa
         onClose();
       },
       onError: (err: any) => {
-        toast.error(err.response?.data?.detail || 'Failed to start conversation. Please try again.');
+        toastApiError(err, 'Failed to start conversation. Please try again.');
       }
     });
   };

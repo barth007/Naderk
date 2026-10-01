@@ -1,12 +1,11 @@
 "use client"
 
+import Link from "next/link"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
 import { Badge, Button } from "@/components/ui"
 import { LABORATORY_CONTENT } from "./laboratory.constants"
 
 export function LaboratoryHeroSection() {
-  const router = useRouter()
   const { hero } = LABORATORY_CONTENT
 
   return (
@@ -34,19 +33,15 @@ export function LaboratoryHeroSection() {
             </p>
 
             <div className="mt-8 flex flex-wrap gap-3">
-              <Button
-                variant="destructive"
-                className="rounded-md px-8 font-semibold h-11"
-                onClick={() => router.push(hero.primaryCTA.href)}
-              >
-                {hero.primaryCTA.label}
+              <Button asChild variant="destructive" className="rounded-md px-8 font-semibold h-11">
+                <Link href={hero.primaryCTA.href}>{hero.primaryCTA.label}</Link>
               </Button>
               <Button
+                asChild
                 variant="ghost"
                 className="rounded-md bg-[var(--destructive)]/10 px-8 font-semibold text-[var(--destructive)] hover:bg-[var(--destructive)]/20 hover:text-[var(--destructive)] hover:opacity-100 h-11"
-                onClick={() => router.push(hero.secondaryCTA.href)}
               >
-                {hero.secondaryCTA.label}
+                <Link href={hero.secondaryCTA.href}>{hero.secondaryCTA.label}</Link>
               </Button>
             </div>
           </div>

@@ -6,6 +6,8 @@ import { AppointmentTypeBadge } from './AppointmentTypeBadge';
 
 interface AppointmentHistoryTableProps {
   history: Appointment[];
+  /** When provided, missed (NO_SHOW) rows get a Reschedule action. */
+  onReschedule?: (apt: Appointment) => void;
 }
 
 function DoctorCell({ apt }: { apt: Appointment }) {
@@ -32,8 +34,10 @@ function DoctorCell({ apt }: { apt: Appointment }) {
   );
 }
 
-export default function AppointmentHistoryTable({ history }: AppointmentHistoryTableProps) {
+export default function AppointmentHistoryTable({ history, onReschedule }: AppointmentHistoryTableProps) {
   const rows = history.slice(0, 5);
+  const canReschedule = (apt: Appointment) => apt.status === 'NO_SHOW' && !!onReschedule;
+  const showActions = !!onReschedule && rows.some((apt) => apt.status === 'NO_SHOW');
 
   if (rows.length === 0) {
     return (
@@ -59,6 +63,14 @@ export default function AppointmentHistoryTable({ history }: AppointmentHistoryT
             </div>
             <DoctorCell apt={apt} />
             <p className="text-xs text-gray-500 truncate">{apt.service?.name}</p>
+            {canReschedule(apt) && (
+              <button
+                onClick={() => onReschedule!(apt)}
+                className="mt-1 text-[11px] font-bold text-[#E03E3E] hover:underline"
+              >
+                Reschedule Visit
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -72,6 +84,7 @@ export default function AppointmentHistoryTable({ history }: AppointmentHistoryT
               <th className="px-4 py-3 font-bold text-xs">Doctor</th>
               <th className="px-4 py-3 font-bold text-xs">Service</th>
               <th className="px-4 py-3 font-bold text-xs whitespace-nowrap">Date</th>
+              {showActions && <th className="px-4 py-3 font-bold text-xs whitespace-nowrap">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -90,6 +103,20 @@ export default function AppointmentHistoryTable({ history }: AppointmentHistoryT
                 <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
                   {format(parseISO(apt.appointment_date), 'MMM dd, yyyy')}
                 </td>
+                {showActions && (
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {canReschedule(apt) ? (
+                      <button
+                        onClick={() => onReschedule!(apt)}
+                        className="text-[11px] font-bold text-[#E03E3E] hover:underline"
+                      >
+                        Reschedule Visit
+                      </button>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

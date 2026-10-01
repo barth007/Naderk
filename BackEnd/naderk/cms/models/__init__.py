@@ -6,6 +6,7 @@ from .team_member import TeamMember
 from .faq import FAQ
 from .trust import TrustMetric, TrustedClient
 from .site_settings import SiteSettings
+from .page_section import PageSection
 
 __all__ = [
     'BlogCategory',
@@ -17,4 +18,5 @@ __all__ = [
     'TrustMetric',
     'TrustedClient',
     'SiteSettings',
+    'PageSection',
 ]

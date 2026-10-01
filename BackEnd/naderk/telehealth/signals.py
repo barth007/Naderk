@@ -27,6 +27,28 @@ def handle_appointment_telehealth_sync(sender, instance, created, **kwargs):
                 }
             )
 
+            # Keep the session's denormalized schedule in sync when the
+            # appointment is rescheduled. get_or_create only applies `defaults`
+            # on creation, so without this an existing session keeps the
+            # original date/time — which is why the Telehealth page and doctor
+            # views kept showing the pre-reschedule date.
+            if not session_created:
+                update_fields = []
+                if session.scheduled_start != start_dt or session.scheduled_end != end_dt:
+                    session.scheduled_start = start_dt
+                    session.scheduled_end = end_dt
+                    update_fields += ['scheduled_start', 'scheduled_end']
+                # Rescheduling a missed/cancelled appointment re-confirms it, so a
+                # previously MISSED/CANCELLED session should return to SCHEDULED.
+                if session.status in (
+                    TelehealthSession.Status.MISSED,
+                    TelehealthSession.Status.CANCELLED,
+                ):
+                    session.status = TelehealthSession.Status.SCHEDULED
+                    update_fields.append('status')
+                if update_fields:
+                    session.save(update_fields=update_fields)
+
             # Update meeting_link to point to the local frontend path
             local_link = f"/dashboard/telehealth/{session.id}"
             if instance.meeting_link != local_link:
@@ -40,9 +62,11 @@ def handle_appointment_telehealth_sync(sender, instance, created, **kwargs):
                     try:
                         conv = create_conversation(
                             patient=instance.patient,
+                            doctor=instance.doctor,
                             category=MessagingCategory.TELEHEALTH,
                             subject=f"Telehealth Session: {instance.service.name}",
-                            initial_message=f"This thread is created for your upcoming telehealth consultation with Dr. {instance.doctor.last_name} on {instance.appointment_date} at {instance.appointment_time}."
+                            initial_message=f"This thread is created for your upcoming telehealth consultation with Dr. {instance.doctor.last_name} on {instance.appointment_date} at {instance.appointment_time}.",
+                            announce_as_system=True,
                         )
                         # Link conversation to appointment
                         conv.related_appointment = instance

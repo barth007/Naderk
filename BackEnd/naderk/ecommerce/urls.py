@@ -1,11 +1,13 @@
 from django.urls import path
 from .apis import (
     CategoryListApi, ProductListApi, ProductDetailApi, FrameListApi, FrameDetailApi,
-    LensTypeListApi, LensOptionListApi, PrescriptionListCreateApi, PrescriptionReusableListApi,
+    LensTypeListApi, LensOptionListApi, PrescriptionListCreateApi, PrescriptionValidateApi,
+    PrescriptionReusableListApi,
     PrescriptionDetailApi, PrescriptionReviewQueueApi, PrescriptionReviewActionApi,
     CartDetailApi, CartAddItemApi, CartUpdateQuantityApi, CartRemoveItemApi, CartClearApi,
     WishlistDetailApi, WishlistToggleItemApi, CheckoutApi, OrderListApi, OrderDetailApi,
     OrderPaymentApi, OrderReviewQueueApi, OrderPrescriptionReviewApi,
+    OrderStatusUpdateApi, OrderConfirmDeliveryApi,
     BuilderFieldConfigApi, BuilderFieldDeleteApi, LensRuleListApi, LensRuleDetailApi, LensRecommendationApi,
 )
 
@@ -25,6 +27,7 @@ urlpatterns = [
 
     # Prescriptions & Approval Workflow
     path('prescriptions/', PrescriptionListCreateApi.as_view(), name='prescription-list-create'),
+    path('prescriptions/validate/', PrescriptionValidateApi.as_view(), name='prescription-validate'),
     path('prescriptions/reusable/', PrescriptionReusableListApi.as_view(), name='prescription-reusable-list'),
     path('prescriptions/<uuid:pk>/', PrescriptionDetailApi.as_view(), name='prescription-detail'),
     path('prescriptions/review-queue/', PrescriptionReviewQueueApi.as_view(), name='prescription-review-queue'),
@@ -47,6 +50,8 @@ urlpatterns = [
     path('orders/<uuid:pk>/', OrderDetailApi.as_view(), name='order-detail'),
     path('orders/<uuid:pk>/pay/', OrderPaymentApi.as_view(), name='order-pay'),
     path('orders/<uuid:pk>/review/', OrderPrescriptionReviewApi.as_view(), name='order-prescription-review'),
+    path('orders/<uuid:pk>/status/', OrderStatusUpdateApi.as_view(), name='order-status-update'),
+    path('orders/<uuid:pk>/confirm-delivery/', OrderConfirmDeliveryApi.as_view(), name='order-confirm-delivery'),
 
     # Glasses Builder configuration
     path('builder/config/', BuilderFieldConfigApi.as_view(), name='builder-config'),

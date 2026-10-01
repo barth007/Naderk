@@ -1,7 +1,8 @@
 'use client';
 
+import Link from "next/link"
 import React, { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
   Search,
   ArrowLeft,
@@ -24,10 +25,11 @@ import {
   useMedicalDiagnostics,
   useMedicalScans
 } from '@/services/medical-records/records.hooks';
-import { medicalRecordsApi } from '@/services/medical-records/records.api';
 import { MedicalRecordSummaryModal } from './MedicalRecordSummaryModal';
+import { PrescriptionDetailModal } from './PrescriptionDetailModal';
 import { ScanPreviewModal } from './ScanPreviewModal';
-import { MedicalScan } from '@/services/medical-records/records.types';
+import { MedicalScan, EyewearPrescription } from '@/services/medical-records/records.types';
+import type { Medication } from '@/services/medical-records/records.hooks';
 import { cn } from '@/lib/cn';
 
 interface MedicalRecordsDashboardProps {
@@ -38,6 +40,10 @@ interface MedicalRecordsDashboardProps {
 export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashboardProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  // Staff reach this profile from their portal's patient list — go back there,
+  // not a hardcoded /doctor route an admin can't access.
+  const recordsListHref = pathname?.startsWith('/admin') ? '/admin/records' : '/doctor/records';
   const preSelectedEncounter = searchParams.get('selected_encounter');
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -49,6 +55,9 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
 
   const [selectedEncounterId, setSelectedEncounterId] = useState<string | null>(null);
   const [selectedScan, setSelectedScan] = useState<MedicalScan | null>(null);
+  const [selectedPrescription, setSelectedPrescription] = useState<
+    { kind: 'EYEWEAR'; rx: EyewearPrescription } | { kind: 'MEDICATION'; med: Medication } | null
+  >(null);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -85,8 +94,8 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
           You may not have authorization to view this patient's history, or they have no records assigned.
         </p>
         {mode === 'DOCTOR' && (
-          <Button onClick={() => router.push('/doctor/dashboard')} variant="outline" className="mt-4 rounded-md">
-            Back to Dashboard
+          <Button asChild variant="outline" className="mt-4 rounded-md">
+            <Link href={recordsListHref}>Back to Records</Link>
           </Button>
         )}
       </div>
@@ -109,12 +118,14 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
       <div className="flex items-center gap-3">
         {mode === 'DOCTOR' && (
           <Button
+            asChild
             variant="outline"
             size="icon"
-            onClick={() => router.push('/doctor/dashboard')}
             className="rounded-full w-9 h-9 border-gray-200 shrink-0"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <Link href={recordsListHref} aria-label="Back to records">
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
           </Button>
         )}
         <div>
@@ -183,17 +194,13 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
                           </p>
                         </div>
 
-                        {/* Download */}
-                        <a
-                          href={medicalRecordsApi.getPrescriptionPdfUrl(enc.id)}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={e => e.stopPropagation()}
-                          className="flex items-center gap-1.5 text-[#E03E3E] text-xs font-bold hover:underline shrink-0"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          Download PDF
-                        </a>
+                        {/* The row opens the encounter detail, where each linked
+                            prescription has its own (authenticated) PDF download —
+                            an encounter id is not a prescription id, so a download
+                            here 404'd. */}
+                        <span className="text-[#E03E3E] text-xs font-bold shrink-0 group-hover:underline">
+                          View
+                        </span>
                       </div>
                     ))}
 
@@ -294,17 +301,44 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
                           <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Active Eyewear</span>
                         </div>
                         {prescriptionsResponse.results.map((rx, idx) => (
-                          <div key={rx.id} className={cn("px-5 py-3.5 flex items-start justify-between", idx < prescriptionsResponse.results.length - 1 && "border-b border-gray-100")}>
-                            <div className="space-y-0.5">
-                              <h4 className="text-sm font-extrabold text-gray-900">Distance Vision</h4>
-                              <p className="text-xs text-gray-400 font-semibold">
+                          <button
+                            type="button"
+                            key={rx.id}
+                            onClick={() => setSelectedPrescription({ kind: 'EYEWEAR', rx })}
+                            className={cn(
+                              "w-full text-left px-5 py-3.5 flex items-start justify-between gap-2 hover:bg-gray-50/60 transition-colors group",
+                              idx < prescriptionsResponse.results.length - 1 && "border-b border-gray-100"
+                            )}
+                          >
+                            <div className="space-y-0.5 min-w-0">
+                              {/* Titled by what it is, not "Distance Vision" — that
+                                  was hardcoded on every row regardless of whether the
+                                  Rx carried an ADD (i.e. a near correction). */}
+                              <h4 className="text-sm font-extrabold text-gray-900 group-hover:text-[#E03E3E] transition-colors">
+                                Eyewear Prescription
+                              </h4>
+                              <p className="text-xs text-gray-400 font-semibold truncate">
                                 OD:{rx.right_sph || '—'} &nbsp;OS:{rx.left_sph || '—'}
                               </p>
+                              <p className="text-[10px] font-bold text-gray-400">
+                                {new Date(rx.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </p>
                             </div>
-                            <span className="text-[10px] font-bold text-gray-400 whitespace-nowrap ml-2 mt-0.5">
-                              {new Date(rx.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </span>
-                          </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              {/* The review status was dropped entirely, so a
+                                  PENDING_REVIEW or REJECTED Rx looked identical to an
+                                  approved one under an "Active Eyewear" heading. */}
+                              <span className={cn(
+                                "text-[10px] font-bold px-2 py-0.5 rounded-sm whitespace-nowrap",
+                                rx.status === 'APPROVED' ? 'text-green-600 bg-green-50'
+                                  : rx.status === 'REJECTED' ? 'text-red-600 bg-red-50'
+                                  : 'text-yellow-700 bg-yellow-50'
+                              )}>
+                                {rx.status.replace(/_/g, ' ')}
+                              </span>
+                              <span className="text-[10px] font-bold text-[#E03E3E] group-hover:underline">View</span>
+                            </div>
+                          </button>
                         ))}
                       </div>
                     )}
@@ -316,15 +350,26 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
                           <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Medications</span>
                         </div>
                         {overview.active_medications.map((med, idx) => (
-                          <div key={med.id} className={cn("px-5 py-3.5 flex items-start justify-between", idx < overview.active_medications.length - 1 && "border-b border-gray-100")}>
-                            <div className="space-y-0.5">
-                              <h4 className="text-sm font-extrabold text-gray-900">{med.name}</h4>
-                              <p className="text-xs text-gray-400 font-semibold">{med.dosage} — {med.frequency}</p>
+                          <button
+                            type="button"
+                            key={med.id}
+                            onClick={() => setSelectedPrescription({ kind: 'MEDICATION', med })}
+                            className={cn(
+                              "w-full text-left px-5 py-3.5 flex items-start justify-between gap-2 hover:bg-gray-50/60 transition-colors group",
+                              idx < overview.active_medications.length - 1 && "border-b border-gray-100"
+                            )}
+                          >
+                            <div className="space-y-0.5 min-w-0">
+                              <h4 className="text-sm font-extrabold text-gray-900 group-hover:text-[#E03E3E] transition-colors truncate">{med.name}</h4>
+                              <p className="text-xs text-gray-400 font-semibold truncate">{med.dosage} — {med.frequency}</p>
                             </div>
-                            <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-sm whitespace-nowrap ml-2 mt-0.5">
-                              ACTIVE
-                            </span>
-                          </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-sm whitespace-nowrap">
+                                {med.status}
+                              </span>
+                              <span className="text-[10px] font-bold text-[#E03E3E] group-hover:underline">View</span>
+                            </div>
+                          </button>
                         ))}
                       </div>
                     )}
@@ -423,6 +468,12 @@ export function MedicalRecordsDashboard({ mode, patientId }: MedicalRecordsDashb
           scan={selectedScan}
         />
       )}
+
+      {/* Prescription / Medication Detail Modal */}
+      <PrescriptionDetailModal
+        selection={selectedPrescription}
+        onClose={() => setSelectedPrescription(null)}
+      />
     </div>
   );
 }

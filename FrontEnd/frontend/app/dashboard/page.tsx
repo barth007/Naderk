@@ -1,5 +1,6 @@
 "use client";
 
+import { PrescriptionPdfModal } from '@/components/medical-records/PrescriptionPdfModal';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
@@ -23,6 +24,7 @@ import { useBrand } from '@/services/cms/admin-cms.hooks';
 
 export default function DashboardPage() {
   const brand = useBrand();
+  const [pdfPrescriptionId, setPdfPrescriptionId] = useState<string | null>(null);
   const { user } = useAuth();
   
   // Queries
@@ -88,10 +90,24 @@ export default function DashboardPage() {
     ? format(parseISO(pastAppointments[0].appointment_date), 'MMM dd, yyyy')
     : 'None yet';
 
-  const activePrescriptions = prescriptions?.filter(p => p.status === 'APPROVED') || [];
-  const nextPrescriptionText = activePrescriptions.length > 0 && activePrescriptions[0].expires_at
-    ? `Expires ${format(parseISO(activePrescriptions[0].expires_at), 'MMM dd, yyyy')}`
-    : 'None';
+  // Show the patient's prescriptions (most recent first), excluding only rejected
+  // ones — a prescription that's still under review exists and must not read as
+  // "no prescription". Each card reflects its real status.
+  const activePrescriptions = (prescriptions || [])
+    .filter(p => p.status !== 'REJECTED')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const approvedPrescription = activePrescriptions.find(p => p.status === 'APPROVED');
+  const nextPrescriptionText = approvedPrescription?.expires_at
+    ? `Expires ${format(parseISO(approvedPrescription.expires_at), 'MMM dd, yyyy')}`
+    : activePrescriptions.length > 0
+      ? 'Under Review'
+      : 'None';
+
+  const rxBadgeClass = (status: string) =>
+    status === 'APPROVED' ? 'bg-green-50 text-green-650'
+    : status === 'REQUIRES_CORRECTION' ? 'bg-orange-50 text-orange-700'
+    : status === 'REJECTED' ? 'bg-red-50 text-red-600'
+    : 'bg-yellow-50 text-yellow-700';   // PENDING_REVIEW / UNDER_REVIEW
 
   const getWelcomeMessage = (appt: any) => {
     if (!appt) {
@@ -342,7 +358,7 @@ export default function DashboardPage() {
                         <div className="w-8 h-8 rounded-md bg-[#faeaea] text-[#E03E3E] flex items-center justify-center">
                           <Link2 className="w-4 h-4 rotate-45" />
                         </div>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-green-50 text-green-650">Active</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${rxBadgeClass(p.status)}`}>{p.status_display || p.status}</span>
                       </div>
                       <h4 className="font-extrabold text-gray-955 text-xs">Daily Distance Wear</h4>
                       <p className="text-[9px] text-gray-400 font-bold mt-0.5">Ref: #RX-{p.id.slice(0, 8).toUpperCase()}</p>
@@ -355,17 +371,17 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     </div>
-                    {p.prescription_file && (
-                      <a
-                        href={p.prescription_file}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-1.5 text-xs font-bold text-[#E03E3E] hover:underline mt-4 pt-3 border-t border-gray-50 cursor-pointer"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Download PDF
-                      </a>
-                    )}
+                    {/* Was a direct link to prescription_file — the Cloudinary
+                        upload, which is no longer used and 404s. Opens the
+                        generated, branded PDF instead. */}
+                    <button
+                      type="button"
+                      onClick={() => setPdfPrescriptionId(p.id)}
+                      className="flex items-center justify-center gap-1.5 w-full text-xs font-bold text-[#E03E3E] hover:underline mt-4 pt-3 border-t border-gray-50 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      View / Download PDF
+                    </button>
                   </Card>
                 ))}
               </div>
@@ -390,6 +406,11 @@ export default function DashboardPage() {
           <BlogWidget />
         </div>
       </div>
+
+      <PrescriptionPdfModal
+        prescriptionId={pdfPrescriptionId}
+        onClose={() => setPdfPrescriptionId(null)}
+      />
     </div>
   );
 }

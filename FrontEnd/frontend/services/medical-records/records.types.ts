@@ -78,6 +78,15 @@ export interface DiagnosticResult {
   created_at: string;
 }
 
+export interface DiagnosticResultCreatePayload {
+  patient_id: string;
+  encounter_id?: string | null;
+  test_name: string;
+  category: string;
+  status: DiagnosticResult['status'];
+  result_summary?: string | null;
+}
+
 export interface MedicalScan {
   id: string;
   patient: string;

@@ -35,7 +35,7 @@ def reconcile_pending_transactions():
     so a missed webhook self-heals instead of leaving the books wrong.
     """
     from .models import PaymentTransaction
-    from .services import verify_and_confirm, confirm_appointment_payment
+    from .services import confirm_and_fulfill
 
     now = timezone.now()
     stale = PaymentTransaction.objects.filter(
@@ -50,33 +50,45 @@ def reconcile_pending_transactions():
     for txn in stale:
         checked += 1
         try:
-            # Updates PaymentTransaction.status as a side effect.
-            result = verify_and_confirm(reference=txn.reference, provider_name=txn.provider)
+            # Verifies against the provider, then confirms + fulfills (idempotent).
+            result = confirm_and_fulfill(reference=txn.reference, provider_name=txn.provider)
         except Exception as e:
             # A provider hiccup on one reference must not abandon the batch.
             logger.warning("Reconcile: verify failed for %s: %s", txn.reference, e)
             continue
-
-        if result.status != 'success':
-            continue
-
-        try:
-            if txn.appointment:
-                if confirm_appointment_payment(appointment=txn.appointment, reference=txn.reference):
-                    confirmed += 1
-                    logger.info("Reconcile: appointment %s marked PAID from %s",
-                                txn.appointment_id, txn.reference)
-            elif txn.order:
-                from naderk.ecommerce.services import order_process_payment
-                if txn.order.payment_status != 'PAID':
-                    order_process_payment(
-                        order=txn.order, actor=txn.user,
-                        payment_reference=txn.reference, skip_verify=True,
-                    )
-                    confirmed += 1
-                    logger.info("Reconcile: order %s marked PAID from %s",
-                                txn.order_id, txn.reference)
-        except Exception as e:
-            logger.exception("Reconcile: could not apply payment for %s: %s", txn.reference, e)
+        if result and result.status == 'success':
+            confirmed += 1
 
     return f"Reconciled {checked} pending transactions, confirmed {confirmed}."
+
+
+@shared_task
+def process_payment_webhook(event_id):
+    """
+    Process a recorded PaymentWebhookEvent: verify against the provider API and
+    confirm + fulfill. Idempotent — safe to retry; already-processed events and
+    duplicate confirmations are no-ops.
+    """
+    from .models import PaymentWebhookEvent
+    from .services import confirm_and_fulfill
+
+    ev = PaymentWebhookEvent.objects.filter(pk=event_id).first()
+    if ev is None or ev.processing_status == PaymentWebhookEvent.ProcessingStatus.PROCESSED:
+        return
+
+    if not ev.payment_reference:
+        ev.processing_status = PaymentWebhookEvent.ProcessingStatus.IGNORED
+        ev.processed_at = timezone.now()
+        ev.save(update_fields=['processing_status', 'processed_at'])
+        return
+
+    try:
+        confirm_and_fulfill(reference=ev.payment_reference, provider_name=ev.provider)
+        ev.processing_status = PaymentWebhookEvent.ProcessingStatus.PROCESSED
+        ev.error_message = ''
+    except Exception as e:
+        logger.exception("Webhook %s processing failed: %s", event_id, e)
+        ev.processing_status = PaymentWebhookEvent.ProcessingStatus.FAILED
+        ev.error_message = str(e)
+    ev.processed_at = timezone.now()
+    ev.save(update_fields=['processing_status', 'processed_at', 'error_message'])

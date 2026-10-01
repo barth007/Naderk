@@ -50,6 +50,8 @@ const ROLE_OPTIONS = [
   { value: 'DOCTOR', label: 'Doctor' },
   { value: 'OPTICIAN', label: 'Optician' },
   { value: 'MEDICAL_AGENT', label: 'Medical Agent' },
+  { value: 'OPERATIONS_MANAGER', label: 'Operations Manager' },
+  { value: 'AGENT', label: 'Support Agent' },
   { value: 'ADMIN', label: 'Admin' },
 ];
 
@@ -57,6 +59,8 @@ const ROLE_LABELS: Record<string, string> = {
   DOCTOR: 'Doctor',
   OPTICIAN: 'Optician',
   MEDICAL_AGENT: 'Medical Agent',
+  OPERATIONS_MANAGER: 'Operations Manager',
+  AGENT: 'Support Agent',
   ADMIN: 'Admin',
 };
 
@@ -535,12 +539,12 @@ function ManageDepartmentsModal({ onClose, showToast }: { onClose: () => void; s
 function ManagePermissionsModal({ onClose, showToast }: { onClose: () => void; showToast: (msg: string, type: ToastType) => void }) {
   const { data: permsData, isLoading } = useAdminPermissions();
   const { mutate: updatePerms, isPending } = useAdminUpdatePermissions();
-  const [selectedRole, setSelectedRole] = useState('DOCTOR');
+  const [selectedRole, setSelectedRole] = useState('');
 
   // Local mutable state for current role's permissions
   const [localPerms, setLocalPerms] = useState<Record<string, string[]>>({});
 
-  // Initialise localPerms when data arrives
+  // Initialise localPerms when data arrives, and keep the selected role valid.
   React.useEffect(() => {
     if (permsData) {
       const map: Record<string, string[]> = {};
@@ -548,6 +552,9 @@ function ManagePermissionsModal({ onClose, showToast }: { onClose: () => void; s
         map[rp.role] = [...rp.permissions];
       }
       setLocalPerms(map);
+      setSelectedRole((cur) =>
+        permsData.manageable_roles.includes(cur) ? cur : permsData.manageable_roles[0] ?? ''
+      );
     }
   }, [permsData]);
 

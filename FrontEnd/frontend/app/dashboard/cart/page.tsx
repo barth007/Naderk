@@ -2,7 +2,6 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   ShoppingCart, Trash2, Plus, Minus, ArrowLeft,
   Package, Glasses, Loader2, ShoppingBag, Tag,
@@ -45,7 +44,6 @@ function ItemIcon({ item }: { item: CartItem }) {
 }
 
 export default function CartPage() {
-  const router = useRouter();
   const { data: cart, isLoading } = useCart();
   const updateQtyMutation = useUpdateCartQuantity();
   const removeMutation = useRemoveFromCart();
@@ -102,12 +100,14 @@ export default function CartPage() {
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-3">
           <Button
+            asChild
             variant="outline"
             size="icon"
-            onClick={() => router.push('/dashboard/marketplace')}
             className="rounded-full w-9 h-9 border-gray-200 shrink-0"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <Link href="/dashboard/marketplace" aria-label="Back to marketplace">
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
           </Button>
           <div>
             <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Your Cart</h1>
@@ -259,10 +259,10 @@ export default function CartPage() {
               </div>
 
               <Button
+                asChild
                 className="w-full bg-[#ff052f] hover:bg-[#d90022] text-white font-bold rounded-md"
-                onClick={() => router.push('/dashboard/checkout')}
               >
-                Proceed to Checkout
+                <Link href="/dashboard/checkout">Proceed to Checkout</Link>
               </Button>
 
               <Link

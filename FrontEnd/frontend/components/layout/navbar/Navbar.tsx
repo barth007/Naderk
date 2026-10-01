@@ -1,9 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
+import { LinkPendingDot } from "@/components/ui/link-pending"
 import { cn } from "@/lib/cn"
 import {
   DEFAULT_NAV_ITEMS,
@@ -30,7 +31,11 @@ function isActivePath(href: string, pathname: string): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────
-// CTA Button — uses the shared Button component, no Link
+// CTA Button — a real <a> via Button's asChild slot.
+//
+// This was a <button> calling router.push(). Next cannot prefetch a button
+// (there is no href to see), and a button is inert until hydration finishes,
+// so the first click on a cold page did nothing at all.
 // ─────────────────────────────────────────────────────────────
 
 function NavCTAButton({
@@ -39,22 +44,21 @@ function NavCTAButton({
   variant,
   onNavigate,
 }: CTAButton & { onNavigate?: () => void }) {
-  const router = useRouter()
   return (
     <Button
+      asChild
       variant={variant === "solid" ? "destructive" : "ghost"}
       size="md"
-      onClick={() => {
-        onNavigate?.()
-        router.push(href)
-      }}
       className={cn(
         "rounded-md px-5 font-semibold",
         variant === "soft" &&
           "bg-[#fde8ec] text-[var(--destructive)] hover:bg-[#fbd1d9] border-0 hover:opacity-100"
       )}
     >
-      {label}
+      <Link href={href} onClick={onNavigate}>
+        {label}
+        <LinkPendingDot />
+      </Link>
     </Button>
   )
 }
@@ -197,6 +201,7 @@ function DesktopNavLink({ item, isActive }: NavLinkProps) {
       )}
     >
       {item.label}
+      <LinkPendingDot />
       {/* Animated active underline */}
       <span
         aria-hidden
@@ -255,8 +260,8 @@ function MobileNav({ id, items, ctas, activePath, isOpen, onClose, logoSrc = '/n
       >
         {/* Drawer header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
-          <Link href="/" onClick={onClose} className="flex items-center gap-2">
-            <BrandLogo size="md" />
+          <Link href="/" onClick={onClose} className="flex items-center gap-2 min-w-0">
+            <BrandLogo size="md" showName />
           </Link>
           <button
             type="button"
@@ -468,7 +473,7 @@ export function Navbar({
                 "transition-opacity duration-150 hover:opacity-80"
               )}
             >
-              <BrandLogo size="lg" />
+              <BrandLogo size="lg" showName nameClassName="hidden sm:inline" />
             </Link>
           </div>
 

@@ -138,6 +138,24 @@ export const usePrescriptions = (patientId?: string) => {
   });
 };
 
+/**
+ * Dry-run the prescription rules without saving.
+ *
+ * The builder is a staged wizard, but the dioptre ranges were only enforced by
+ * the create call at checkout — so a patient finished every stage before being
+ * told a value several steps back was out of range. The prescription stage now
+ * runs this before letting them continue, against the same serializer the
+ * create endpoint uses.
+ */
+export const useValidatePrescription = () => {
+  return useMutation({
+    mutationFn: async (payload: PrescriptionPayload) => {
+      const res = await apiClient.post('/marketplace/prescriptions/validate/', payload);
+      return res.data.data as { valid: boolean };
+    },
+  });
+};
+
 export const useReusablePrescriptions = () => {
   return useQuery({
     queryKey: ['marketplace-prescriptions-reusable'],
@@ -391,6 +409,40 @@ export const usePayOrder = (id: string) => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['marketplace-orders'] });
       queryClient.invalidateQueries({ queryKey: ['marketplace-order', id] });
+    }
+  });
+};
+
+export const useConfirmOrderDelivery = (id: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.post(`/marketplace/orders/${id}/confirm-delivery/`, {});
+      return response.data.data as Order;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketplace-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace-order', id] });
+    }
+  });
+};
+
+export interface UpdateOrderStatusPayload {
+  status: string;
+  notes?: string;
+}
+
+export const useUpdateOrderStatus = (id: string) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: UpdateOrderStatusPayload) => {
+      const response = await apiClient.patch(`/marketplace/orders/${id}/status/`, payload);
+      return response.data.data as Order;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketplace-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace-order', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
     }
   });
 };

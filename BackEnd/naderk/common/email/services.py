@@ -72,8 +72,20 @@ class EmailService:
             sent_by=sent_by,
         )
 
-    def _dispatch(self, log, message: EmailMessage) -> None:
-        """Serialise the message and enqueue the Celery task."""
+    def _dispatch(self, log, message: EmailMessage, *, sync: bool = False) -> None:
+        """
+        Deliver the message.
+
+        By default this enqueues a Celery task so the request thread is never
+        blocked. Pass ``sync=True`` for emails that must be delivered before the
+        request returns (e.g. password reset), so delivery does not silently
+        depend on a running Celery worker/broker. Synchronous sends still update
+        the EmailLog and re-raise EmailError so the caller can react.
+        """
+        if sync:
+            self._send_now(log, message)
+            return
+
         from .tasks import send_email_task
 
         payload = dataclasses.asdict(message)
@@ -87,6 +99,27 @@ class EmailService:
             provider_name=self._get_provider_name(),
             message_payload=payload,
         )
+
+    def _send_now(self, log, message: EmailMessage) -> None:
+        """
+        Send synchronously and update the EmailLog, mirroring send_email_task's
+        success/failure bookkeeping. Re-raises EmailError on failure.
+        """
+        from .constants import EmailStatus
+
+        try:
+            provider = get_provider(self._get_provider_name())
+            provider_message_id = provider.send(message)
+            log.status = EmailStatus.SENT
+            log.provider_message_id = provider_message_id or ''
+            log.sent_at = timezone.now()
+            log.save(update_fields=['status', 'provider_message_id', 'sent_at'])
+        except EmailError as exc:
+            log.status = EmailStatus.FAILED
+            log.error_message = str(exc)
+            log.save(update_fields=['status', 'error_message'])
+            logger.warning("Synchronous email send failed (log=%s): %s", log.id, exc)
+            raise
 
     def _render(self, template: str, context: dict) -> tuple[str, str]:
         """Returns (html_body, text_body)."""
@@ -154,7 +187,7 @@ class EmailService:
         ))
 
     def send_password_reset(self, *, user, reset_url: str,
-                            expires_minutes: int = 30) -> None:
+                            expires_minutes: int = 30, sync: bool = False) -> None:
         subject = f"Reset your {_brand()} password"
         template = 'email/authentication/password_reset.html'
         ctx = {
@@ -169,7 +202,7 @@ class EmailService:
         self._dispatch(log, EmailMessage(
             to=[user.email], subject=subject, html_body=html, text_body=text,
             tags=['password-reset'],
-        ))
+        ), sync=sync)
 
     # ── Appointments ──────────────────────────────────────────────────────────
 

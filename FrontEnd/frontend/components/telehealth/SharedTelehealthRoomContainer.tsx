@@ -8,7 +8,8 @@ import {
   useEndTelehealthSession 
 } from '@/services/telehealth/telehealth.hooks';
 import { useSubmitPrescription } from '@/services/marketplace/marketplace.hooks';
-import { useCreateMedication } from '@/services/medical-records/records.hooks';
+import { useCreateMedication, useCreateDiagnostic } from '@/services/medical-records/records.hooks';
+import { useQueryClient } from '@tanstack/react-query';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { useAuth } from '@/hooks/useAuth';
 import TelehealthChat from './TelehealthChat';
@@ -25,7 +26,7 @@ import { ConnectionState, Track } from 'livekit-client';
 import { 
   Loader2, AlertCircle, PhoneOff, Mic, MicOff, Camera, CameraOff, 
   Monitor, MessageSquare, ArrowLeft, Video, LayoutGrid, CheckCircle2,
-  FileText, Clipboard, HeartPulse, Pill, CalendarPlus, FileCheck, Plus
+  FileText, Clipboard, HeartPulse, Pill, CalendarPlus, FileCheck, Plus, Activity
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,8 @@ export function SharedTelehealthRoomContainer({ sessionId }: SharedTelehealthRoo
   // two simultaneous calls leave isPending permanently true after the first resolves.
   const [loading, setLoading] = useState(true);
   const [credentials, setCredentials] = useState<{ room_name: string; token: string; server_url: string } | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [connected, setConnected] = useState(false);
   const [showPostWorkflow, setShowPostWorkflow] = useState(false);
 
   const audioEnabled = searchParams.get('audio') !== 'false';
@@ -99,12 +102,12 @@ export function SharedTelehealthRoomContainer({ sessionId }: SharedTelehealthRoo
         <p className="text-gray-500 text-sm mb-6 leading-relaxed">
           The telehealth session is invalid or you do not have permission to access this consultation.
         </p>
-        <button
-          onClick={() => router.push(isDoctor ? '/doctor/telehealth' : '/dashboard/telehealth')}
+        <Link
+          href={isDoctor ? '/doctor/telehealth' : '/dashboard/telehealth'}
           className="px-4 py-2.5 bg-[#E03E3E] text-white text-xs font-bold rounded-xl transition-all inline-flex items-center gap-1.5 mx-auto"
         >
           <ArrowLeft className="w-4 h-4" /> Back to Consultations
-        </button>
+        </Link>
       </div>
     );
   }
@@ -147,12 +150,39 @@ export function SharedTelehealthRoomContainer({ sessionId }: SharedTelehealthRoo
 
   return (
     <div className="h-[calc(100vh-160px)] flex flex-col overflow-hidden bg-white rounded-3xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.015)]">
+      {connectionError && (
+        <div className="shrink-0 bg-red-50 border-b border-red-100 px-5 py-3 flex items-start gap-2.5">
+          <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-red-800">Video connection problem</p>
+            <p className="text-xs text-red-700 mt-0.5 leading-relaxed">{connectionError}</p>
+          </div>
+        </div>
+      )}
+      {!connected && !connectionError && (
+        <div className="shrink-0 bg-blue-50 border-b border-blue-100 px-5 py-2.5 flex items-center gap-2">
+          <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin shrink-0" />
+          <p className="text-xs font-semibold text-blue-800">Connecting to the video room…</p>
+        </div>
+      )}
       <LiveKitRoom
         token={credentials.token}
         serverUrl={credentials.server_url}
         connect={true}
         audio={audioEnabled}
         video={videoEnabled}
+        // Without this a failed connection renders an empty box and the call
+        // just looks broken — no error, nothing to act on.
+        onError={(err) => {
+          console.error('LiveKit connection error:', err);
+          setConnectionError(
+            err?.message?.includes('permission') || err?.name === 'NotAllowedError'
+              ? 'Camera and microphone access was blocked. Allow them in your browser, then rejoin.'
+              : 'Could not connect to the video service. Check your connection and try rejoining.',
+          );
+        }}
+        onDisconnected={() => setConnected(false)}
+        onConnected={() => { setConnected(true); setConnectionError(null); }}
         className="flex-grow flex flex-col h-full overflow-hidden"
       >
         <RoomWorkspace 
@@ -376,6 +406,17 @@ function PostConsultationWorkflow({
   const endSessionCall = useEndTelehealthSession();
   const submitPrescription = useSubmitPrescription();
 
+  // The encounter is created when the session ends, so the session object we
+  // were handed (fetched while the call was live) still has encounter_id null.
+  // Refetch once on entry so diagnostics can be attached to the consultation.
+  const queryClient = useQueryClient();
+  const { data: freshSession } = useTelehealthSessionDetail(sessionId);
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ['telehealth-session', sessionId] });
+  }, [queryClient, sessionId]);
+
+  const encounterId: string | null = freshSession?.encounter_id ?? session?.encounter_id ?? null;
+
   // Consultation Encounter states
   const [notes, setNotes] = useState('');
   const [diagnosis, setDiagnosis] = useState('');
@@ -412,6 +453,42 @@ function PostConsultationWorkflow({
       toast.success(`${medName} added to prescription.`);
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to add medication.");
+    }
+  };
+
+  // Diagnostic result states
+  //
+  // Diagnostics had no write path anywhere in the system before this, so the
+  // patient's Diagnostic Results panel could never show anything.
+  const createDiagnostic = useCreateDiagnostic();
+  const [diagTestName, setDiagTestName] = useState('');
+  const [diagCategory, setDiagCategory] = useState('Ophthalmic');
+  const [diagStatus, setDiagStatus] = useState<'READY' | 'PENDING' | 'REVIEW_REQUIRED'>('READY');
+  const [diagSummary, setDiagSummary] = useState('');
+  const [recordedDiagnostics, setRecordedDiagnostics] = useState<string[]>([]);
+
+  const handleAddDiagnostic = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!diagTestName.trim() || !diagCategory.trim()) {
+      toast.error('Test name and category are required.');
+      return;
+    }
+    try {
+      await createDiagnostic.mutateAsync({
+        patient_id: session.patient.id,
+        encounter_id: encounterId,
+        test_name: diagTestName.trim(),
+        category: diagCategory.trim(),
+        status: diagStatus,
+        result_summary: diagSummary.trim() || null,
+      });
+      setRecordedDiagnostics(prev => [...prev, diagTestName.trim()]);
+      setDiagTestName(''); setDiagSummary(''); setDiagStatus('READY');
+      toast.success('Diagnostic result recorded.');
+    } catch (err) {
+      const message =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(message || 'Failed to record diagnostic result.');
     }
   };
 
@@ -504,13 +581,14 @@ function PostConsultationWorkflow({
               </p>
             </div>
           </div>
-          <Button 
-            id="btn_back_consultations"
-            variant="outline" 
-            onClick={() => router.push('/doctor/telehealth')}
+          <Button
+            asChild
+            variant="outline"
             className="text-xs h-10 px-5 rounded-xl font-bold border-gray-200 hover:bg-gray-50 cursor-pointer shadow-none shrink-0"
           >
-            <ArrowLeft className="w-4 h-4 mr-1.5" /> Back to Workspace
+            <Link id="btn_back_consultations" href="/doctor/telehealth">
+              <ArrowLeft className="w-4 h-4 mr-1.5" /> Back to Workspace
+            </Link>
           </Button>
         </Card>
 
@@ -591,13 +669,12 @@ function PostConsultationWorkflow({
                 <h2 className="font-bold text-gray-900 text-sm">Issue Medication Prescription</h2>
               </div>
               {issuedMeds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => router.push(`/doctor/prescriptions?patient=${session.patient.id}`)}
+                <Link
+                  href={`/doctor/prescriptions?patient=${session.patient.id}`}
                   className="text-[10px] font-bold text-[#E03E3E] hover:underline"
                 >
                   View Full Rx →
-                </button>
+                </Link>
               )}
             </div>
 
@@ -641,6 +718,73 @@ function PostConsultationWorkflow({
               <Button id="btn_add_medication" type="submit" isLoading={createMedication.isPending}
                 className="w-full h-9 text-xs font-bold rounded-lg bg-[#E03E3E] text-white border-none shadow-none">
                 <Plus className="w-4 h-4 mr-1.5" /> Add Medication
+              </Button>
+            </form>
+          </Card>
+
+          {/* Diagnostic Results */}
+          <Card className="p-6 bg-white border border-gray-100 space-y-4 shadow-sm">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-50">
+              <div className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-[#E03E3E]" />
+                <h2 className="font-bold text-gray-900 text-sm">Record Diagnostic Result</h2>
+              </div>
+              {!encounterId && (
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                  Not linked to consultation
+                </span>
+              )}
+            </div>
+
+            {recordedDiagnostics.length > 0 && (
+              <div className="space-y-1 pb-3 border-b border-gray-50">
+                <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">Recorded this session</p>
+                {recordedDiagnostics.map((d, i) => (
+                  <div key={i} className="flex items-center gap-1.5 text-xs font-semibold text-green-700">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {d}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <form onSubmit={handleAddDiagnostic} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Test Name</label>
+                <input value={diagTestName} onChange={e => setDiagTestName(e.target.value)} placeholder="e.g. Intraocular Pressure (Tonometry)"
+                  className="w-full bg-gray-50/50 border border-gray-200 focus:border-[#E03E3E] rounded-lg p-2.5 text-xs font-semibold text-gray-700 outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Category</label>
+                  <select value={diagCategory} onChange={e => setDiagCategory(e.target.value)}
+                    className="w-full bg-gray-50/50 border border-gray-200 focus:border-[#E03E3E] rounded-lg p-2.5 text-xs font-semibold text-gray-700 outline-none">
+                    <option value="Ophthalmic">Ophthalmic</option>
+                    <option value="Imaging">Imaging</option>
+                    <option value="Laboratory">Laboratory</option>
+                    <option value="Visual Field">Visual Field</option>
+                    <option value="Refraction">Refraction</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Status</label>
+                  <select value={diagStatus} onChange={e => setDiagStatus(e.target.value as typeof diagStatus)}
+                    className="w-full bg-gray-50/50 border border-gray-200 focus:border-[#E03E3E] rounded-lg p-2.5 text-xs font-semibold text-gray-700 outline-none">
+                    <option value="READY">Ready</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="REVIEW_REQUIRED">Review Required</option>
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Result Summary</label>
+                <textarea value={diagSummary} onChange={e => setDiagSummary(e.target.value)} rows={3}
+                  placeholder="e.g. OD 15 mmHg, OS 16 mmHg. Within normal limits."
+                  className="w-full bg-gray-50/50 border border-gray-200 focus:border-[#E03E3E] rounded-lg p-2.5 text-xs font-semibold text-gray-700 outline-none resize-none" />
+              </div>
+              <Button id="btn_add_diagnostic" type="submit" isLoading={createDiagnostic.isPending}
+                className="w-full h-9 text-xs font-bold rounded-lg bg-[#E03E3E] text-white border-none shadow-none">
+                <Plus className="w-4 h-4 mr-1.5" /> Record Result
               </Button>
             </form>
           </Card>
