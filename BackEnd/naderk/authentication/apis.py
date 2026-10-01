@@ -25,9 +25,17 @@ class RegisterAPI(APIView):
         
         user = services.register_patient(**serializer.validated_data)
         
+        # otp_required tells the client whether to show the verification step;
+        # it is False only while DISABLE_OTP_VERIFICATION is on.
+        otp_required = not user.otp_verified
+
         return build_success_response(
-            message="Registration successful. OTP sent to email.",
-            data={"email": user.email},
+            message=(
+                "Registration successful. OTP sent to email."
+                if otp_required else
+                "Registration successful. You can now log in."
+            ),
+            data={"email": user.email, "otp_required": otp_required},
             status_code=201
         )
 

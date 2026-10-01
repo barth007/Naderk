@@ -182,6 +182,10 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
+# TEMPORARY — load testing only. When True, registration sends no OTP email and
+# patients can log in without verifying one. Must stay False in production.
+DISABLE_OTP_VERIFICATION = env.bool('DISABLE_OTP_VERIFICATION', default=False)
+
 # Email Settings
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = env('EMAIL_HOST', default='mail.privateemail.com')
