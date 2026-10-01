@@ -1,11 +1,10 @@
 import datetime
 from django.test import TestCase
 from django.utils import timezone
-
 from naderk.core.models import User
 from naderk.users.models import DoctorProfile
-from .models import MedicalService, Appointment
-from .tasks import mark_missed_appointments, cancel_abandoned_unpaid_appointments
+from naderk.appointments.models import MedicalService, Appointment
+from naderk.appointments.tasks import mark_missed_appointments, cancel_abandoned_unpaid_appointments
 
 
 class AppointmentLifecycleSweepTests(TestCase):

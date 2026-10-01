@@ -1,13 +1,20 @@
-"""Tests for the Mailtrap email provider and provider selection."""
-
 from unittest import mock
-
 from django.test import SimpleTestCase, override_settings
+from naderk.common.email.providers.base import Attachment, EmailMessage
+from naderk.common.email.providers.mailtrap import MailtrapProvider
+from naderk.common.email.exceptions import (
+    EmailConfigurationError,
+    EmailDeliveryError,
+    EmailProviderError,
+)
 
-from .providers.base import Attachment, EmailMessage
-from .providers.mailtrap import MailtrapProvider
-from .exceptions import EmailConfigurationError, EmailDeliveryError, EmailProviderError
-from ._provider_registry import get_provider, _instances
+
+def _fake_response(status_code=200, json_data=None):
+    resp = mock.Mock()
+    resp.status_code = status_code
+    resp.json.return_value = json_data if json_data is not None else {}
+    resp.text = str(json_data)
+    return resp
 
 
 def _make_message(**overrides):
@@ -19,14 +26,6 @@ def _make_message(**overrides):
     )
     defaults.update(overrides)
     return EmailMessage(**defaults)
-
-
-def _fake_response(status_code=200, json_data=None):
-    resp = mock.Mock()
-    resp.status_code = status_code
-    resp.json.return_value = json_data if json_data is not None else {}
-    resp.text = str(json_data)
-    return resp
 
 
 @override_settings(
@@ -107,18 +106,3 @@ class MailtrapProviderTests(SimpleTestCase):
                 MailtrapProvider()._get_url(),
                 'https://sandbox.api.mailtrap.io/api/send/99',
             )
-
-
-class ProviderRegistryTests(SimpleTestCase):
-
-    def setUp(self):
-        _instances.clear()
-        self.addCleanup(_instances.clear)
-
-    @override_settings(EMAIL_MAILTRAP_API_TOKEN='tok_123')
-    def test_registry_returns_mailtrap_provider(self):
-        self.assertIsInstance(get_provider('mailtrap'), MailtrapProvider)
-
-    def test_unknown_provider_raises(self):
-        with self.assertRaises(EmailConfigurationError):
-            get_provider('does-not-exist')

@@ -49,3 +49,6 @@ Thumbs.db
 
 # ── Vercel (legacy, was referenced in codebase) ────────────────────────────────
 .vercel/
+
+# ── Tests ──────────────────────────────────────────────────────────────────────
+.pytest_cache/

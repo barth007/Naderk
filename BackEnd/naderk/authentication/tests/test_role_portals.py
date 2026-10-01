@@ -7,6 +7,7 @@ from naderk.appointments.models import Appointment, MedicalService
 
 User = get_user_model()
 
+
 class RoleAwarePortalTestCase(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -206,4 +207,3 @@ class RoleAwarePortalTestCase(TestCase):
         
         # Verify user state is completed
         self.assertEqual(self.doctor.profile_completion_status, 'COMPLETED')
-

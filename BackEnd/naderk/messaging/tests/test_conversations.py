@@ -1,24 +1,17 @@
 from django.test import TestCase
-from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from naderk.messaging.models import (
-    Conversation, 
-    ConversationStatus, 
-    ConversationPriority, 
-    Message, 
-    ConversationAssignmentHistory
+    ConversationStatus,
+    ConversationPriority,
+    ConversationAssignmentHistory,
 )
-from naderk.messaging.services import (
-    create_conversation, 
-    send_message, 
-    assign_conversation
-)
+from naderk.messaging.services import create_conversation, send_message, assign_conversation
 from naderk.users.models import DoctorProfile
-from naderk.appointments.models import Appointment, MedicalService
-from naderk.telehealth.models import TelehealthSession
+from naderk.appointments.models import MedicalService
 
 User = get_user_model()
+
 
 class MessagingTestCase(TestCase):
     def setUp(self):

@@ -1,11 +1,7 @@
-import datetime
 from decimal import Decimal
-
 from django.test import TestCase
 from django.urls import reverse
-from django.utils import timezone
 from rest_framework.test import APIClient
-
 from naderk.core.models import User
 from naderk.ecommerce.models import Product, StoreCategory
 
