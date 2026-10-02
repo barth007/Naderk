@@ -9,6 +9,10 @@ from .models import Appointment
 #: Appointments page as an ordinary pending booking forever.
 ABANDONED_UNPAID_MINUTES = 30
 
+#: Cancellation reason recorded on a checkout that was never paid for. A late
+#: payment may bring such an appointment back (see confirm_appointment_payment).
+ABANDONED_CHECKOUT_REASON = 'Payment was not completed.'
+
 
 @shared_task
 def mark_missed_appointments():
@@ -70,6 +74,6 @@ def cancel_abandoned_unpaid_appointments():
     cancelled = stale.update(
         status=Appointment.Status.CANCELLED,
         cancelled_at=timezone.now(),
-        cancellation_reason='Payment was not completed.',
+        cancellation_reason=ABANDONED_CHECKOUT_REASON,
     )
     return f"Cancelled {cancelled} abandoned unpaid appointments."

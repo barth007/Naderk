@@ -5,14 +5,14 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from typing import Optional, List
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import timedelta
 
 from .models import (
     StoreCategory, Product, ProductVariant, Frame, FrameVariant,
     LensType, FrameLensCompatibility, LensOption, Prescription,
     PrescriptionReview, PrescriptionActivity, Cart, CartItem,
-    Wishlist, WishlistItem, Order, OrderItem, OrderActivity
+    Wishlist, WishlistItem, Order, OrderItem, OrderActivity, FlashSale
 )
 
 logger = logging.getLogger(__name__)
@@ -85,6 +85,53 @@ def prescription_review_complete(*, prescription: Prescription, optician: User, 
     )
     return prescription
 
+# --- Pricing ------------------------------------------------------------------
+
+def active_flash_sale(product: Product) -> Optional[FlashSale]:
+    """The flash sale currently running for this product, if any."""
+    now = timezone.now()
+    return (
+        FlashSale.objects
+        .filter(is_active=True, starts_at__lte=now, ends_at__gte=now, products=product)
+        .order_by('-discount_percent')
+        .first()
+    )
+
+
+def product_sale_price(product: Product) -> Optional[Decimal]:
+    """The discounted base price while a flash sale is running, else None."""
+    sale = active_flash_sale(product)
+    if sale is None:
+        return None
+    discounted = product.price * (Decimal('100') - sale.discount_percent) / Decimal('100')
+    return discounted.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+def product_unit_price(product: Product, variant: Optional[ProductVariant] = None) -> Decimal:
+    """
+    What one unit costs right now. The single source for the price shown on the
+    product (ProductSerializer.sale_price), put in the cart, and charged at
+    checkout — a flash sale used to be exposed by the API but never charged.
+    The discount applies to the base price; a variant's modifier is added after.
+    """
+    price = product_sale_price(product)
+    if price is None:
+        price = product.price
+    if variant is not None:
+        price += variant.price_modifier
+    return price
+
+
+def cart_item_unit_price(item: CartItem) -> Decimal:
+    """Current unit price of a cart line, whichever kind of line it is."""
+    if item.product_id:
+        return product_unit_price(item.product, item.product_variant)
+    price = item.frame_variant.frame.base_price
+    if item.lens_type_id:
+        price += item.lens_type.price_modifier
+    return price + sum((opt.price_modifier for opt in item.lens_options.all()), Decimal('0'))
+
+
 def cart_add_item(*, user: User, product_id: Optional[str] = None, product_variant_id: Optional[str] = None,
                   frame_variant_id: Optional[str] = None, lens_type_id: Optional[str] = None,
                   lens_option_ids: Optional[List[str]] = None, prescription_id: Optional[str] = None,
@@ -95,12 +142,10 @@ def cart_add_item(*, user: User, product_id: Optional[str] = None, product_varia
     if product_id:
         product = Product.objects.get(id=product_id)
         product_variant = None
-        price = product.price
-        
         if product_variant_id:
             product_variant = ProductVariant.objects.get(id=product_variant_id, product=product)
-            price += product_variant.price_modifier
-            
+        price = product_unit_price(product, product_variant)
+
         cart_item, created = CartItem.objects.get_or_create(
             cart=cart,
             product=product,
@@ -112,6 +157,7 @@ def cart_add_item(*, user: User, product_id: Optional[str] = None, product_varia
         )
         if not created:
             cart_item.quantity += quantity
+            cart_item.price = price  # update to latest calculated price
             cart_item.save()
             
     elif frame_variant_id:
@@ -222,8 +268,104 @@ def wishlist_toggle_item(*, user: User, product_id: Optional[str] = None, frame_
             return None, False
         return item, True
 
+# --- Stock ---------------------------------------------------------------------
+#
+# Stock is taken when the order is created and given back if the order is
+# abandoned or cancelled. It used to be taken only once payment was confirmed,
+# which meant the last unit could be sold to two people: the second one paid,
+# the deduction failed, and they were left with a charge and a cancelled order.
+
+def _stock_rows(order: Order):
+    """
+    (row, quantity, label) for every stock row the order draws on, each row
+    locked for the rest of the transaction. Locked in a stable order so two
+    checkouts over the same items cannot deadlock.
+    """
+    wanted = []
+    for item in order.items.all():
+        if item.product_variant_id:
+            wanted.append((ProductVariant, item.product_variant_id, item.quantity))
+        elif item.product_id:
+            wanted.append((Product, item.product_id, item.quantity))
+        elif item.frame_variant_id:
+            wanted.append((FrameVariant, item.frame_variant_id, item.quantity))
+
+    rows = []
+    for model, pk, quantity in sorted(wanted, key=lambda w: (w[0].__name__, str(w[1]))):
+        row = model.objects.select_for_update().get(pk=pk)
+        if model is ProductVariant:
+            label = f"{row.product.name} ({row.variant_name})"
+        elif model is Product:
+            label = row.name
+        else:
+            label = f"frame {row.frame.name} ({row.color}/{row.size})"
+        rows.append((row, quantity, label))
+    return rows
+
+
+def _move_stock(row, delta: int) -> None:
+    row.quantity_available += delta
+    row.save(update_fields=['quantity_available'])
+    if isinstance(row, ProductVariant):
+        # Product.quantity_available is the total across a product's variants,
+        # and is what the admin inventory page, its summary totals and the
+        # product serializers read. F() so concurrent sales can't lose an update.
+        Product.objects.filter(pk=row.product_id).update(
+            quantity_available=F('quantity_available') + delta
+        )
+
+
+def order_reserve_stock(order: Order) -> None:
+    """Take the order's items out of stock. Raises ValidationError if any is short."""
+    if order.stock_reserved:
+        return
+    rows = _stock_rows(order)
+    for row, quantity, label in rows:
+        if row.quantity_available < quantity:
+            raise ValidationError(f"Insufficient stock for {label}. Available: {row.quantity_available}")
+    for row, quantity, _ in rows:
+        _move_stock(row, -quantity)
+    order.stock_reserved = True
+    order.save(update_fields=['stock_reserved'])
+
+
+def order_release_stock(order: Order) -> None:
+    """Give the order's items back to stock. Safe to call more than once."""
+    if not order.stock_reserved:
+        return
+    for row, quantity, _ in _stock_rows(order):
+        _move_stock(row, quantity)
+    order.stock_reserved = False
+    order.save(update_fields=['stock_reserved'])
+
+
+def _low_stock_warnings(order: Order) -> list:
+    warnings = []
+    for item in order.items.all():
+        if item.product_variant_id:
+            row, kind = item.product_variant, 'product_variant'
+            name = f"{row.product.name} ({row.variant_name})"
+        elif item.product_id:
+            row, kind, name = item.product, 'product', item.product.name
+        elif item.frame_variant_id:
+            row, kind = item.frame_variant, 'frame_variant'
+            name = f"{row.frame.name} ({row.color}/{row.size})"
+        else:
+            continue
+        if row.quantity_available <= row.low_stock_threshold:
+            warnings.append({'type': kind, 'id': str(row.id), 'name': name, 'remaining': row.quantity_available})
+            logger.warning("Low stock warning: %s is at %s units.", name, row.quantity_available)
+    return warnings
+
+
 @transaction.atomic
-def order_create_from_cart(*, user: User, shipping_address: str, payment_reference: Optional[str] = None) -> Order:
+def order_create_from_cart(*, user: User, shipping_address: str) -> Order:
+    """
+    Turn the cart into an unpaid order with its stock reserved.
+
+    Atomic: if anything fails (expired prescription, short stock) no order is
+    left behind and the cart is untouched.
+    """
     cart, _ = Cart.objects.get_or_create(user=user)
     cart_items = cart.items.all()
     if not cart_items.exists():
@@ -239,8 +381,10 @@ def order_create_from_cart(*, user: User, shipping_address: str, payment_referen
             if item.prescription.created_at < timezone.now() - timedelta(days=365):
                 raise ValidationError("Prescription is older than 12 months and is expired.")
                 
-    # Calculate totals
-    total_price = sum(item.price * item.quantity for item in cart_items)
+    # Price each line as of now, not as of when it went into the cart: a flash
+    # sale may have started or ended, or the catalogue price changed, since.
+    priced = [(item, cart_item_unit_price(item)) for item in cart_items]
+    total_price = sum(price * item.quantity for item, price in priced)
     
     order = Order.objects.create(
         user=user,
@@ -248,11 +392,10 @@ def order_create_from_cart(*, user: User, shipping_address: str, payment_referen
         payment_status=Order.PaymentStatus.UNPAID,
         total_price=total_price,
         shipping_address=shipping_address,
-        payment_reference=payment_reference
     )
     
     # Create OrderItems & Snapshots
-    for item in cart_items:
+    for item, price in priced:
         order_item = OrderItem.objects.create(
             order=order,
             product=item.product,
@@ -260,7 +403,7 @@ def order_create_from_cart(*, user: User, shipping_address: str, payment_referen
             frame_variant=item.frame_variant,
             lens_type=item.lens_type,
             prescription=item.prescription,
-            price=item.price,
+            price=price,
             quantity=item.quantity
         )
         if item.lens_options.exists():
@@ -285,104 +428,54 @@ def order_create_from_cart(*, user: User, shipping_address: str, payment_referen
                 'patient_email': item.prescription.patient.email,
             }
             order_item.save()
-            
+
+    order_reserve_stock(order)
+
     OrderActivity.objects.create(
         order=order,
         actor=user,
         action='CREATED'
     )
-    
-    # If payment_reference was provided at checkout, trigger payment logic
-    if payment_reference:
-        order_process_payment(order=order, actor=user, payment_reference=payment_reference)
-        
+
     # Clear cart
     cart_items.delete()
     return order
 
 @transaction.atomic
-def order_process_payment(*, order: Order, actor: User, payment_reference: str, skip_verify: bool = False) -> Order:
+def order_process_payment(*, order: Order, actor: User, payment_reference: str) -> Order:
+    """
+    Apply a confirmed payment to an order. Idempotent.
+
+    The caller must already have verified the payment with the provider and
+    checked its amount — see payments.services.confirm_and_fulfill, the only
+    place this should be reached from outside tests.
+    """
     # Lock the row so concurrent webhook retries can't both pass the PAID check
     order = Order.objects.select_for_update().get(pk=order.pk)
     if order.payment_status == Order.PaymentStatus.PAID:
         return order
 
-    # Verify payment with provider unless the caller already verified (e.g. webhook path)
-    if not skip_verify:
-        from naderk.payments.services import verify_and_confirm
-        try:
-            result = verify_and_confirm(reference=payment_reference)
-        except Exception as e:
-            raise ValidationError(f"Payment verification failed: {e}")
-        if result.status != 'success':
-            raise ValidationError(f"Payment not confirmed by provider (status: {result.status}). Please complete payment before proceeding.")
-
-    # Deduct stock and check compatibility
-    low_stock_warnings = []
-    
-    for item in order.items.all():
-        if item.product_variant:
-            pv = item.product_variant
-            if pv.quantity_available < item.quantity:
-                raise ValidationError(f"Insufficient stock for {pv.product.name} ({pv.variant_name}). Available: {pv.quantity_available}")
-            pv.quantity_available -= item.quantity
-            pv.save()
-
-            # Product.quantity_available is the total across a product's
-            # variants. Only the variant used to be decremented here, so the
-            # product-level figure never moved — and that is the number the
-            # admin inventory page, its summary totals and the product
-            # serializers all read. Selling six units left stock showing
-            # unchanged. F() so concurrent sales can't lose an update.
-            Product.objects.filter(pk=pv.product_id).update(
-                quantity_available=F('quantity_available') - item.quantity
-            )
-            
-            if pv.quantity_available <= pv.low_stock_threshold:
-                low_stock_warnings.append({
-                    'type': 'product_variant',
-                    'id': str(pv.id),
-                    'name': f"{pv.product.name} ({pv.variant_name})",
-                    'remaining': pv.quantity_available
-                })
-                logger.warning(f"Low stock warning: {pv.product.name} ({pv.variant_name}) is at {pv.quantity_available} units.")
-                
-        elif item.product:
-            p = item.product
-            if p.quantity_available < item.quantity:
-                raise ValidationError(f"Insufficient stock for {p.name}. Available: {p.quantity_available}")
-            p.quantity_available -= item.quantity
-            p.save()
-            
-            if p.quantity_available <= p.low_stock_threshold:
-                low_stock_warnings.append({
-                    'type': 'product',
-                    'id': str(p.id),
-                    'name': p.name,
-                    'remaining': p.quantity_available
-                })
-                logger.warning(f"Low stock warning: {p.name} is at {p.quantity_available} units.")
-                
-        elif item.frame_variant:
-            fv = item.frame_variant
-            if fv.quantity_available < item.quantity:
-                raise ValidationError(f"Insufficient stock for frame {fv.frame.name} ({fv.color}/{fv.size}). Available: {fv.quantity_available}")
-            fv.quantity_available -= item.quantity
-            fv.save()
-            
-            if fv.quantity_available <= fv.low_stock_threshold:
-                low_stock_warnings.append({
-                    'type': 'frame_variant',
-                    'id': str(fv.id),
-                    'name': f"{fv.frame.name} ({fv.color}/{fv.size})",
-                    'remaining': fv.quantity_available
-                })
-                logger.warning(f"Low stock warning: Frame {fv.frame.name} ({fv.color}/{fv.size}) is at {fv.quantity_available} units.")
-                
     order.payment_status = Order.PaymentStatus.PAID
     order.payment_reference = payment_reference
-    order.status = Order.Status.PAID
-    order.save()
+
+    # Normally the stock was reserved at checkout. It is not when the order was
+    # created before reservation existed, or when the abandoned-order sweeper
+    # already released it and the payment arrived afterwards.
+    if not order.stock_reserved:
+        try:
+            with transaction.atomic():
+                order_reserve_stock(order)
+        except ValidationError as e:
+            # The money has moved, so record that rather than pretending the
+            # payment failed, and leave the order for staff to refund.
+            order.save(update_fields=['payment_status', 'payment_reference', 'updated_at'])
+            OrderActivity.objects.create(
+                order=order, actor=actor, action='PAYMENT_NEEDS_REFUND',
+                metadata={'payment_reference': payment_reference, 'reason': '; '.join(e.messages)},
+            )
+            logger.error("Order %s was paid (%s) but its stock is gone: %s",
+                         order.id, payment_reference, '; '.join(e.messages))
+            return order
 
     has_prescription = order.items.filter(prescription__isnull=False).exists()
     if has_prescription:
@@ -404,7 +497,7 @@ def order_process_payment(*, order: Order, actor: User, payment_reference: str, 
         order=order,
         actor=actor,
         action=activity_action,
-        metadata={'low_stock_warnings': low_stock_warnings}
+        metadata={'low_stock_warnings': _low_stock_warnings(order)}
     )
 
     return order
@@ -464,6 +557,9 @@ def order_update_status(*, order: Order, actor: User, new_status: str, notes: st
     if notes:
         order.production_notes = notes
     order.save(update_fields=['status', 'production_notes', 'updated_at'])
+
+    if new_status == Order.Status.CANCELLED:
+        order_release_stock(order)
 
     OrderActivity.objects.create(
         order=order,

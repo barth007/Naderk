@@ -77,7 +77,16 @@ pytest naderk/payments              # one app
 pytest naderk/payments/tests/test_lifecycle.py -k amount
 ```
 
-`config/settings/test.py` is used automatically (see `pyproject.toml`).
+`config/settings/test.py` is used automatically (see `pyproject.toml`). The tests need
+only Postgres, reached through `DATABASE_URL`; no Redis and no provider keys.
+
+If port 5432 is already taken on your machine, start Postgres on another port and
+point `DATABASE_URL` in `BackEnd/.env` at it:
+
+```bash
+DB_HOST_PORT=5433 docker compose up -d db
+# DATABASE_URL=postgres://naderk_user:naderk_password@localhost:5433/naderk_db
+```
 
 Frontend checks:
 

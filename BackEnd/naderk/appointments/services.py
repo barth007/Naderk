@@ -2,7 +2,7 @@ import datetime
 import calendar
 from decimal import Decimal
 from django.utils import timezone
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from naderk.users.models import DoctorProfile
 from .models import Appointment, DoctorAvailability, AppointmentSlotReservation, MedicalService, PatientServicePlan
 
@@ -14,27 +14,49 @@ class ConsultationService:
         return service.fee
 
     @staticmethod
-    def has_active_plan(patient, service: MedicalService) -> bool:
-        today = timezone.now().date()
-        plan = PatientServicePlan.objects.filter(
+    def _usable_plans(patient, service: MedicalService):
+        """
+        The patient's plans for this service that still have something left on
+        them, oldest first. Every lookup goes through here: the old code took
+        `.first()` of an unordered queryset, so with more than one plan on file
+        it could pick an expired or exhausted one and miss the one that counted.
+        """
+        plans = PatientServicePlan.objects.filter(
             patient=patient, service=service, is_active=True
-        ).first()
-        if not plan:
-            return False
+        ).order_by('created_at')
         if service.billing_type == MedicalService.BillingType.MONTHLY:
-            return plan.valid_until is not None and plan.valid_until >= today
+            return plans.filter(valid_until__gte=timezone.localdate())
         if service.billing_type == MedicalService.BillingType.SESSION_PACK:
-            return plan.sessions_used < plan.sessions_purchased
-        return False  # PER_VISIT — never free
+            return plans.filter(sessions_used__lt=F('sessions_purchased'))
+        return plans.none()  # PER_VISIT — never free
+
+    @staticmethod
+    def has_active_plan(patient, service: MedicalService) -> bool:
+        plans = ConsultationService._usable_plans(patient, service)
+        if service.billing_type != MedicalService.BillingType.SESSION_PACK:
+            return plans.exists()
+
+        # A pack is only drawn down when a session is completed, so sessions
+        # that are booked but not yet held have to count too — otherwise one
+        # remaining session could be booked any number of times for free.
+        remaining = sum(p.sessions_purchased - p.sessions_used for p in plans)
+        booked = (
+            Appointment.objects
+            .filter(patient=patient, service=service, status__in=[
+                Appointment.Status.PENDING, Appointment.Status.CONFIRMED,
+                Appointment.Status.CHECKED_IN, Appointment.Status.IN_PROGRESS,
+            ])
+            .exclude_unpaid_checkouts()
+            .count()
+        )
+        return remaining - booked > 0
 
     @staticmethod
     def consume_session(patient, service: MedicalService) -> None:
         """Decrements SESSION_PACK uses when an appointment is completed."""
         if service.billing_type != MedicalService.BillingType.SESSION_PACK:
             return
-        plan = PatientServicePlan.objects.filter(
-            patient=patient, service=service, is_active=True
-        ).first()
+        plan = ConsultationService._usable_plans(patient, service).first()
         if plan:
             plan.sessions_used += 1
             if plan.sessions_used >= plan.sessions_purchased:

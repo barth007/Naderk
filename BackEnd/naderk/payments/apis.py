@@ -28,18 +28,26 @@ class InitializePaymentApi(APIView):
     needs to open the payment popup, plus the order_id to poll for completion.
 
     Flow:
-      1. Frontend sends { shipping_address, amount_kobo, email? }
-      2. Backend creates Order (PENDING / UNPAID) from cart
-      3. Backend calls Paystack to get reference + access_code
-      4. Frontend opens Paystack popup using those credentials
-      5. Paystack calls our webhook on success → order is confirmed
+      1. Frontend sends { shipping_address, provider? }
+      2. Backend creates Order (PENDING / UNPAID) from cart and reserves its stock
+      3. Backend initialises the payment for the order's total
+      4. Frontend opens the payment popup using the returned credentials + amount
+      5. Payment is confirmed (verify-order, webhook or reconcile)
       6. Frontend polls GET /marketplace/orders/{order_id}/ until payment_status=PAID
+
+    The amount is always the order's own total. It used to be read from the
+    request body and was never compared with the order, and the later "exact
+    amount" check compared the provider's figure against that same client
+    number — so any cart could be bought for whatever the browser chose to send.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from django.db import transaction as db_transaction
+        from .services import order_amount_kobo
+
         shipping_address  = request.data.get('shipping_address', '').strip()
-        amount_kobo       = request.data.get('amount_kobo')
         email             = request.data.get('email') or request.user.email
         provider_name     = request.data.get('provider', 'PAYSTACK').upper()
         idempotency_key   = request.headers.get('Idempotency-Key', '').strip()
@@ -65,22 +73,14 @@ class InitializePaymentApi(APIView):
                     'public_config':     pub,
                     'provider':          existing_txn.provider,
                     'order_id':          str(existing_txn.order.id),
+                    'amount_kobo':       existing_txn.amount_kobo,
                 }
                 return build_success_response("Payment already initialized", data)
 
         if not shipping_address:
             return build_error_response("validation-error", "shipping_address is required", 400,
                                         "Provide a delivery address before proceeding to payment.")
-        if not amount_kobo:
-            return build_error_response("validation-error", "amount_kobo is required", 400,
-                                        "Provide amount in kobo (e.g. 50000 = ₦500).")
-        try:
-            amount_kobo = int(amount_kobo)
-        except (TypeError, ValueError):
-            return build_error_response("validation-error", "Invalid amount", 400,
-                                        "amount_kobo must be an integer.")
 
-        # Step 1 — create the order from the cart (unpaid, holds items + address)
         from naderk.ecommerce.services import order_create_from_cart
         from naderk.ecommerce.models import Cart
         try:
@@ -92,26 +92,29 @@ class InitializePaymentApi(APIView):
             return build_error_response("bad-request", "Cart not found", 404,
                                         "No active cart found for this user.")
 
+        # Order creation and payment initialisation succeed or fail together.
+        # Creating the order empties the cart and reserves stock, so if the
+        # provider then refused the payment the customer was left with an empty
+        # cart and an order they had no way to pay for.
         try:
-            order = order_create_from_cart(
-                user=request.user,
-                shipping_address=shipping_address,
-                payment_reference=None,   # not paid yet — webhook will confirm
-            )
-        except Exception as e:
-            logger.exception("Order creation failed during payment init: %s", e)
-            return build_error_response("server-error", "Could not create order", 500, str(e))
-
-        # Step 2 — initialise payment with provider, linking the order
-        try:
-            result = initialize_payment(
-                user=request.user,
-                amount_kobo=amount_kobo,
-                email=email,
-                order=order,
-                provider_name=provider_name,
-                idempotency_key=idempotency_key or None,
-            )
+            with db_transaction.atomic():
+                order = order_create_from_cart(
+                    user=request.user,
+                    shipping_address=shipping_address,
+                )
+                amount_kobo = order_amount_kobo(order)
+                result = initialize_payment(
+                    user=request.user,
+                    amount_kobo=amount_kobo,
+                    email=email,
+                    order=order,
+                    provider_name=provider_name,
+                    idempotency_key=idempotency_key or None,
+                )
+        except DjangoValidationError as e:
+            # Expired prescription, or not enough stock left.
+            return build_error_response("validation-error", "Could not create order", 400,
+                                        '; '.join(e.messages))
         except ValueError as e:
             return build_error_response("bad-request", str(e), 400, str(e))
         except Exception as e:
@@ -126,6 +129,7 @@ class InitializePaymentApi(APIView):
             'public_config':    result.public_config,
             'provider':         provider_name,
             'order_id':         str(order.id),   # frontend polls this
+            'amount_kobo':      amount_kobo,     # what the popup must charge
         }
         return build_success_response("Payment initialized successfully", data)
 
@@ -313,7 +317,6 @@ class VerifyOrderPaymentApi(APIView):
 
         from .models import PaymentTransaction
         from naderk.ecommerce.models import Order
-        from naderk.ecommerce.services import order_process_payment
 
         try:
             txn = PaymentTransaction.objects.select_related('order').get(

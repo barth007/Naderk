@@ -40,25 +40,16 @@ class ProductSerializer(serializers.ModelSerializer):
             'variants', 'created_at', 'updated_at'
         ]
 
-    def _active_flash_sale(self, obj):
-        from django.utils import timezone
-        from naderk.ecommerce.models import FlashSale
-        now = timezone.now()
-        return (
-            FlashSale.objects
-            .filter(is_active=True, starts_at__lte=now, ends_at__gte=now, products=obj)
-            .first()
-        )
-
     def get_sale_price(self, obj):
-        sale = self._active_flash_sale(obj)
-        if sale:
-            discounted = float(obj.price) * (1 - float(sale.discount_percent) / 100)
-            return str(round(discounted, 2))
-        return None
+        # Same helper the cart and checkout charge from, so the price shown is
+        # the price paid.
+        from naderk.ecommerce.services import product_sale_price
+        price = product_sale_price(obj)
+        return str(price) if price is not None else None
 
     def get_flash_sale_name(self, obj):
-        sale = self._active_flash_sale(obj)
+        from naderk.ecommerce.services import active_flash_sale
+        sale = active_flash_sale(obj)
         return sale.name if sale else None
 
 
@@ -350,7 +341,6 @@ class OrderSerializer(serializers.ModelSerializer):
 
 class CheckoutSerializer(serializers.Serializer):
     shipping_address = serializers.CharField(required=True)
-    payment_reference = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
 # --- Glasses Builder Configuration ---

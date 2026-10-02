@@ -26,6 +26,9 @@ export interface Product {
   category_name: string;
   category_slug: string;
   price: string;
+  /** Discounted base price while a flash sale is running; this is what the cart charges. */
+  sale_price?: string | null;
+  flash_sale_name?: string | null;
   images: string[];
   quantity_available: number;
   low_stock_threshold: number;

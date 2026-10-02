@@ -357,7 +357,6 @@ export const useToggleWishlist = () => {
 // Checkout & Orders
 export interface CheckoutPayload {
   shipping_address: string;
-  payment_reference?: string | null;
 }
 
 export const useCheckout = () => {

@@ -24,7 +24,7 @@ from .selectors import (
 from .services import (
     prescription_create, prescription_assign_for_review, prescription_review_complete,
     cart_add_item, cart_update_item_quantity, cart_remove_item, cart_clear,
-    wishlist_toggle_item, order_create_from_cart, order_process_payment,
+    wishlist_toggle_item, order_create_from_cart, order_release_stock,
     order_update_status
 )
 
@@ -531,14 +531,26 @@ class CheckoutApi(APIView):
                 errors=serializer.errors
             )
             
+        # This route used to accept a payment_reference and mark the new order
+        # paid if the provider called that reference successful — any earlier
+        # payment of any amount would do. An order can only be paid through a
+        # payment started for it: POST /payments/initialize/.
+        if request.data.get('payment_reference'):
+            return build_error_response(
+                type_uri=_problems_url('validation-error'),
+                title="Validation Error",
+                status_code=400,
+                detail="payment_reference is not accepted here. Start the payment with /payments/initialize/.",
+                instance=request.path,
+            )
+
         try:
             order = order_create_from_cart(
                 user=request.user,
                 shipping_address=serializer.validated_data.get('shipping_address'),
-                payment_reference=serializer.validated_data.get('payment_reference')
             )
             return build_success_response(
-                "Order created and processed successfully",
+                "Order created successfully",
                 OrderSerializer(order).data,
                 status_code=201
             )
@@ -621,11 +633,10 @@ class OrderPaymentApi(APIView):
                     instance=request.path
                 )
                 
-            order = order_process_payment(
-                order=order,
-                actor=request.user,
-                payment_reference=payment_reference
-            )
+            # Only a payment that was started for this order can settle it, and
+            # only once the provider confirms the full amount.
+            from naderk.payments.services import confirm_order_payment
+            order = confirm_order_payment(order=order, reference=payment_reference)
             return build_success_response("Payment completed successfully", OrderSerializer(order).data)
         except Order.DoesNotExist:
             return build_error_response(
@@ -691,7 +702,11 @@ class OrderPrescriptionReviewApi(APIView):
             return build_error_response("validation-error", "Invalid action", 400, "action must be 'approve' or 'reject'.")
         if notes:
             order.internal_notes = notes
-        order.save()
+        from django.db import transaction
+        with transaction.atomic():
+            order.save()
+            if action == 'reject':
+                order_release_stock(order)
         from .models import OrderActivity
         OrderActivity.objects.create(
             order=order,

@@ -9,7 +9,6 @@ import { toast } from 'sonner';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface InitializePaymentPayload {
-  amount_kobo: number;
   email: string;
   shipping_address: string;
   provider?: string;
@@ -23,6 +22,7 @@ export interface InitializePaymentResult {
   public_config?: Record<string, any>;
   provider: string;
   order_id: string;   // poll this until payment_status = PAID
+  amount_kobo: number; // the order's total, priced by the server — charge exactly this
 }
 
 export interface PaystackPopupOptions {

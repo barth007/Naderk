@@ -493,10 +493,57 @@ class AppointmentDetailApi(APIView):
         return build_success_response("Appointment retrieved", AppointmentSerializer(appointment).data)
 
     def delete(self, request, pk):
+        """
+        Discard a checkout that was started and not finished.
+
+        The booking wizard creates the appointment before payment and calls
+        this when the payment popup closes or fails. It used to delete whatever
+        it was pointed at, so a patient could delete a paid booking — and the
+        wizard itself did, whenever a bank transfer took longer to confirm than
+        its 15-second grace period. A real booking is cancelled, not deleted.
+        """
+        from naderk.payments.models import PaymentTransaction
+        from naderk.payments.services import confirm_and_fulfill
+        from .tasks import ABANDONED_CHECKOUT_REASON
+
         try:
             appointment = Appointment.objects.get(id=pk, patient=request.user)
         except Appointment.DoesNotExist:
             return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")
+
+        not_deletable = build_error_response(
+            "conflict", "Cannot delete", 409,
+            "This appointment is booked. Cancel it instead.",
+        )
+        if not Appointment.objects.unpaid_checkouts().filter(pk=appointment.pk).exists():
+            return not_deletable
+
+        # A payment may have gone through that we have not heard about yet.
+        # Ask the provider before throwing the booking away.
+        transactions = appointment.payment_transactions.all()
+        for txn in transactions.filter(status=PaymentTransaction.Status.INITIATED):
+            try:
+                confirm_and_fulfill(reference=txn.reference)
+            except Exception:
+                return build_error_response(
+                    "conflict", "Payment still being confirmed", 409,
+                    "We could not confirm whether this appointment was paid. "
+                    "It will be released automatically if no payment arrives.",
+                )
+        appointment.refresh_from_db()
+        if appointment.payment_status == Appointment.PaymentStatus.PAID:
+            return not_deletable
+
+        if transactions.exists():
+            # A payment was started. A slow bank transfer can still land after
+            # the provider has called it abandoned, so keep the row for it to
+            # attach to (confirm_appointment_payment revives it) and only free
+            # the slot.
+            appointment.status = Appointment.Status.CANCELLED
+            appointment.cancelled_at = timezone.now()
+            appointment.cancellation_reason = ABANDONED_CHECKOUT_REASON
+            appointment.save(update_fields=['status', 'cancelled_at', 'cancellation_reason'])
+            return build_success_response("Appointment checkout cancelled", None)
 
         appointment.delete()
         return build_success_response("Appointment deleted successfully", None)

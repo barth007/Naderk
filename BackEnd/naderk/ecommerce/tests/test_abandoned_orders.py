@@ -89,7 +89,7 @@ class AbandonedOrderCleanupTests(TestCase):
         self.assertEqual(self.product.quantity_available, 30)
 
         order_process_payment(
-            order=order, actor=self.user, payment_reference='TEST-REF', skip_verify=True
+            order=order, actor=self.user, payment_reference='TEST-REF'
         )
 
         self.product.refresh_from_db()

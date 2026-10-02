@@ -1,4 +1,3 @@
-from unittest.mock import patch, Mock
 from django.test import TestCase
 from django.utils import timezone
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -331,11 +330,7 @@ class EcommerceTestCase(TestCase):
         
         order = order_create_from_cart(user=self.patient, shipping_address="123 Test Street")
 
-        # Process payment. Stub the provider verification so the test exercises
-        # stock allocation without making a live Paystack API call.
-        with patch('naderk.payments.services.verify_and_confirm',
-                   return_value=Mock(status='success')):
-            order_process_payment(order=order, actor=self.patient, payment_reference="PAY-1234")
+        order_process_payment(order=order, actor=self.patient, payment_reference="PAY-1234")
 
         # Refresh from db
         self.variant.refresh_from_db()

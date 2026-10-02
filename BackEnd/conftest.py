@@ -2,21 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from naderk.core.models import User
-
-PASSWORD = 'pw12345!'
-
-
-def make_user(email, role=User.Role.PATIENT, **extra):
-    extra.setdefault('first_name', email.split('@')[0].title())
-    extra.setdefault('last_name', 'Test')
-    return User.objects.create_user(email=email, password=PASSWORD, role=role, **extra)
-
-
-def client_for(user):
-    """An API client authenticated as `user`."""
-    client = APIClient()
-    client.force_authenticate(user)
-    return client
+from tests.helpers import client_for, make_user
 
 
 @pytest.fixture
@@ -49,3 +35,12 @@ def admin_user(db):
 def auth_client(patient):
     """An API client authenticated as `patient`."""
     return client_for(patient)
+
+
+@pytest.fixture(autouse=True)
+def no_real_http(monkeypatch):
+    """Tests must stub the provider they exercise; none may reach a real one."""
+    def refuse(self, method, url, *args, **kwargs):
+        raise RuntimeError(f'Test attempted a real HTTP request: {method} {url}')
+
+    monkeypatch.setattr('requests.sessions.Session.request', refuse)

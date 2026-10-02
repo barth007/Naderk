@@ -46,6 +46,10 @@ export default function Step5Summary() {
   }, [gateways, gateway]);
 
   const [phase, setPhase] = React.useState<Phase>('idle');
+  // Read by the popup's delayed onClose handler, which outlives the render it
+  // was created in.
+  const phaseRef = useRef<Phase>(phase);
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
   const [pendingAppointmentId, setPendingAppointmentId] = React.useState<string | null>(null);
   const [pendingReference, setPendingReference] = React.useState<string | null>(null);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
@@ -181,17 +185,28 @@ export default function Step5Summary() {
         },
         onClose: () => {
           // The popup can close right after a successful transfer (Monnify), so
-          // do NOT delete immediately — that would discard a just-paid booking.
-          // Keep verifying briefly; only clean up if it never confirms.
-          setTimeout(() => {
-            setPhase((cur) => {
-              if (cur !== 'popup_open' && cur !== 'confirming') return cur; // already paid/advanced
-              apiClient.delete(`/appointments/${appointmentId}/`).catch(() => {});
-              setPendingAppointmentId(null);
-              setPendingReference(null);
-              setErrorMsg('Payment was not completed. Your slot reservation may have expired.');
-              return 'idle';
-            });
+          // do NOT clean up immediately. Keep verifying briefly first.
+          setTimeout(async () => {
+            const cur = phaseRef.current;
+            if (cur !== 'popup_open' && cur !== 'confirming') return; // already paid/advanced
+
+            // The server checks with the payment provider before it releases
+            // the booking, and answers 409 if it was paid or it cannot tell.
+            // A transfer that takes longer than this grace period used to lose
+            // the patient their appointment after they had paid for it.
+            try {
+              await apiClient.delete(`/appointments/${appointmentId}/`);
+            } catch (err) {
+              const status = (err as { response?: { status?: number } })?.response?.status;
+              if (status === 409) {
+                setPhase('confirming'); // keep polling; the 90s notice covers a long wait
+                return;
+              }
+            }
+            setPhase('idle');
+            setPendingAppointmentId(null);
+            setPendingReference(null);
+            setErrorMsg('Payment was not completed. Your slot reservation may have expired.');
           }, 15000);
         },
       });

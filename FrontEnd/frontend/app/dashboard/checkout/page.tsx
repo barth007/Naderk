@@ -246,7 +246,6 @@ export default function CheckoutPage() {
 
   const items     = cart?.items ?? [];
   const total     = cart?.total_price ?? 0;
-  const amtKobo   = Math.round(Number(total) * 100);
   const canPay    = !!street.trim() && !!city.trim() && !!country && paymentPhase === 'idle';
 
   const handlePay = async () => {
@@ -256,7 +255,6 @@ export default function CheckoutPage() {
     let creds;
     try {
       creds = await initializePayment.mutateAsync({
-        amount_kobo: amtKobo,
         email: user?.email ?? '',
         shipping_address: shippingAddress,
         provider: gateway || undefined,
@@ -274,7 +272,8 @@ export default function CheckoutPage() {
     payCheckout({
       provider:     creds.provider,
       publicConfig: creds.public_config ?? { public_key: creds.public_key },
-      amountKobo:   amtKobo,
+      // The server prices the order; a payment for any other amount is refused.
+      amountKobo:   creds.amount_kobo,
       email:        user?.email ?? '',
       reference:    creds.reference,
       customerName: [user?.first_name, user?.last_name].filter(Boolean).join(' '),

@@ -50,9 +50,13 @@ export default function ProductDetailPage() {
     );
   }
 
-  const basePrice = parseFloat(product.price);
+  // A running flash sale discounts the base price; the variant's modifier is
+  // added on top — the same sum the server charges.
+  const listPrice = parseFloat(product.price);
+  const basePrice = product.sale_price ? parseFloat(product.sale_price) : listPrice;
   const variantModifier = selectedVariant ? parseFloat(selectedVariant.price_modifier) : 0;
   const unitPrice = basePrice + variantModifier;
+  const fullUnitPrice = listPrice + variantModifier;
   const inStock = (selectedVariant ? selectedVariant.quantity_available : product.quantity_available) > 0;
 
   const handleAddToCart = (goToCart = false) => {
@@ -136,6 +140,16 @@ export default function ProductDetailPage() {
             <h1 className="text-2xl md:text-3xl font-extrabold text-[#111827] leading-tight">{product.name}</h1>
             <div className="flex items-baseline gap-3 pt-1">
               <span className="text-2xl font-black text-[#ff052f]">₦{unitPrice.toLocaleString()}</span>
+              {product.sale_price && (
+                <>
+                  <span className="text-sm font-semibold text-gray-400 line-through">₦{fullUnitPrice.toLocaleString()}</span>
+                  {product.flash_sale_name && (
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#fff0f2] text-[#ff052f]">
+                      {product.flash_sale_name}
+                    </span>
+                  )}
+                </>
+              )}
               <span className={cn("text-[11px] font-bold px-2 py-0.5 rounded-full",
                 inStock ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500")}>
                 {inStock ? 'In Stock' : 'Out of Stock'}

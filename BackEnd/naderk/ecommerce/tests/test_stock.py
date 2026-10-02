@@ -46,7 +46,7 @@ class ProductVariantStockSyncTests(TestCase):
         )
 
         order_process_payment(
-            order=order, actor=self.user, payment_reference='REF-1', skip_verify=True
+            order=order, actor=self.user, payment_reference='REF-1'
         )
 
         self.variant.refresh_from_db()
@@ -67,7 +67,7 @@ class ProductVariantStockSyncTests(TestCase):
         OrderItem.objects.create(order=order, product=plain, quantity=4, price=plain.price)
 
         order_process_payment(
-            order=order, actor=self.user, payment_reference='REF-2', skip_verify=True
+            order=order, actor=self.user, payment_reference='REF-2'
         )
 
         plain.refresh_from_db()

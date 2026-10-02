@@ -101,7 +101,14 @@ export default function ProductCard({
 
         <div className="mt-auto pt-3">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="text-base font-extrabold text-gray-900">{naira(product.price)}</span>
+            {product.sale_price ? (
+              <span className="flex items-baseline gap-1.5">
+                <span className="text-base font-extrabold text-[#ff052f]">{naira(product.sale_price)}</span>
+                <span className="text-xs font-semibold text-gray-400 line-through">{naira(product.price)}</span>
+              </span>
+            ) : (
+              <span className="text-base font-extrabold text-gray-900">{naira(product.price)}</span>
+            )}
             {hasVariants && (
               <span className="text-[11px] font-semibold text-gray-400">
                 {product.variants!.length} options
