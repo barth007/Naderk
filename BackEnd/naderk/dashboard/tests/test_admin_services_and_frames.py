@@ -133,7 +133,6 @@ def test_service_admin_access(admin, patient, doctor):
         assert new_service(client).status_code == 403
 
 
-@pytest.mark.xfail(strict=True, reason='A service fee is accepted as any number, including a negative one.')
 def test_a_fee_cannot_be_negative(admin):
     assert new_service(admin, fee='-500').status_code == 400
 

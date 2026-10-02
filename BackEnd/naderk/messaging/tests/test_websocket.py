@@ -28,8 +28,10 @@ def session(user, steps, token=None):
     Open a socket as `user`, run `steps(send, receive)` and return its result.
     `receive()` returns the next frame, or None if nothing arrives.
     """
+    # Issued before entering the event loop: creating a token writes to the database.
+    query = f'?token={token if token is not None else access_token(user)}'
+
     async def run():
-        query = f'?token={token if token is not None else access_token(user)}'
         socket = WebsocketCommunicator(APP, f'/ws/messaging/{query}')
         connected, _ = await socket.connect()
         assert connected
@@ -157,10 +159,6 @@ def test_read_action_marks_the_conversation_read(patient):
     assert MessageRead.objects.filter(message=reply, user=patient).exists()
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'MessagingConsumer.subscribe joins conversation_<id> without checking the user belongs to that '
-    'conversation, so any signed-in user who knows an id receives its messages live.'
-))
 def test_outsider_cannot_subscribe_to_someone_elses_conversation(patient, other_patient):
     conv = factories.conversation(patient)
 

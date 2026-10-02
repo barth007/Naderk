@@ -641,13 +641,30 @@ class CheckInAppointmentApi(APIView):
 
         return build_success_response("Check-in undone", AppointmentSerializer(appointment).data)
 
+def can_run_appointment(user, appointment) -> bool:
+    """
+    True for whoever delivers the visit: its doctor, or — since a facility
+    service has no doctor — front-desk staff and admins.
+
+    The patient used to be accepted here too, so they could mark their own
+    consultation started or completed (and draw down a session pack) without
+    ever being seen.
+    """
+    if appointment.doctor_id is not None and user.id == appointment.doctor_id:
+        return True
+    if getattr(user, 'role', None) in ('ADMIN', 'SUPER_ADMIN'):
+        return True
+    from naderk.common.permissions import user_has_area
+    return user_has_area(user, 'appointments')
+
+
 class StartAppointmentApi(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request, pk):
         try:
             appointment = Appointment.objects.get(id=pk)
-            if request.user not in [appointment.patient, appointment.doctor]:
+            if not can_run_appointment(request.user, appointment):
                 return build_error_response("forbidden", "Access denied", 403, "Not your appointment")
         except Appointment.DoesNotExist:
             return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")
@@ -667,7 +684,7 @@ class CompleteAppointmentApi(APIView):
     def post(self, request, pk):
         try:
             appointment = Appointment.objects.get(id=pk)
-            if request.user not in [appointment.patient, appointment.doctor]:
+            if not can_run_appointment(request.user, appointment):
                 return build_error_response("forbidden", "Access denied", 403, "Not your appointment")
         except Appointment.DoesNotExist:
             return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")

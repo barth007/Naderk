@@ -126,10 +126,6 @@ def test_editing_and_deleting_a_sale(ops):
     assert not FlashSale.objects.exists()
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'AdminFlashSaleDetailAPI.patch applies discount_percent and the dates without the checks the create '
-    'endpoint has, so an edit can set a 500% or negative discount, or an end before the start.'
-))
 @pytest.mark.parametrize('body', [{'discount_percent': 500}, {'discount_percent': -10}, window(2, 1)])
 def test_editing_a_sale_is_validated_like_creating_one(ops, body):
     pk = create_sale(ops).json()['data']['id']

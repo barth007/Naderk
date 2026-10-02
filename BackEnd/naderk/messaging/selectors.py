@@ -12,6 +12,8 @@ from .models import (
 
 User = get_user_model()
 
+from .access import can_access_conversation, is_messaging_staff
+
 def get_user_conversations(user: User) -> QuerySet:
     """
     Returns non-archived conversations based on user roles:
@@ -44,10 +46,7 @@ def get_conversation_messages(conversation: Conversation, user: User) -> QuerySe
     Returns messages in a conversation. Asserts participant access.
     """
     # Check if user has access to conversation
-    is_staff = user.role in [User.Role.AGENT, User.Role.DOCTOR, User.Role.ADMIN]
-    has_access = is_staff or conversation.patient == user or conversation.participants.filter(user=user).exists()
-    
-    if not has_access:
+    if not can_access_conversation(user, conversation):
         raise PermissionError("Access to this conversation is denied.")
         
     return Message.objects.filter(conversation=conversation, is_archived=False)
@@ -56,7 +55,7 @@ def get_conversation_activities(conversation: Conversation, user: User) -> Query
     """
     Returns activities. Only staff can access conversation activities for triage tracking.
     """
-    is_staff = user.role in [User.Role.AGENT, User.Role.DOCTOR, User.Role.ADMIN]
+    is_staff = is_messaging_staff(user)
     if not is_staff and conversation.patient != user:
         raise PermissionError("Access denied.")
     return ConversationActivity.objects.filter(conversation=conversation)
@@ -65,7 +64,7 @@ def get_conversation_internal_notes(conversation: Conversation, user: User) -> Q
     """
     Returns internal notes. Patients can never view internal notes.
     """
-    is_staff = user.role in [User.Role.AGENT, User.Role.DOCTOR, User.Role.ADMIN]
+    is_staff = is_messaging_staff(user)
     if not is_staff:
         raise PermissionError("Access to internal notes is restricted to clinical staff.")
     return InternalNote.objects.filter(conversation=conversation)

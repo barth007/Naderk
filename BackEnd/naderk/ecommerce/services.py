@@ -138,12 +138,20 @@ def cart_add_item(*, user: User, product_id: Optional[str] = None, product_varia
                   quantity: int = 1) -> CartItem:
     
     cart, _ = Cart.objects.get_or_create(user=user)
-    
+
+    def find(queryset, what, **lookup):
+        # A stale or made-up id used to escape as DoesNotExist, which the view
+        # does not catch: the shopper got a 500.
+        obj = queryset.filter(**lookup).first()
+        if obj is None:
+            raise ValidationError(f"The selected {what} is not available.")
+        return obj
+
     if product_id:
-        product = Product.objects.get(id=product_id)
+        product = find(Product.objects.filter(is_active=True), 'product', id=product_id)
         product_variant = None
         if product_variant_id:
-            product_variant = ProductVariant.objects.get(id=product_variant_id, product=product)
+            product_variant = find(ProductVariant.objects, 'product option', id=product_variant_id, product=product)
         price = product_unit_price(product, product_variant)
 
         cart_item, created = CartItem.objects.get_or_create(
@@ -161,9 +169,9 @@ def cart_add_item(*, user: User, product_id: Optional[str] = None, product_varia
             cart_item.save()
             
     elif frame_variant_id:
-        frame_variant = FrameVariant.objects.get(id=frame_variant_id)
+        frame_variant = find(FrameVariant.objects, 'frame', id=frame_variant_id)
         # Lens is optional — a patient can buy a frame on its own (frame-only purchase)
-        lens_type = LensType.objects.get(id=lens_type_id) if lens_type_id else None
+        lens_type = find(LensType.objects, 'lens type', id=lens_type_id) if lens_type_id else None
         prescription = None
         if prescription_id:
             # Scoped to the shopper: the cart echoes the prescription's values

@@ -109,10 +109,6 @@ def test_a_doctor_cannot_act_on_another_doctors_or_an_already_decided_request(pa
     assert pending.status == A.PENDING
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'DoctorAcceptRequestAPI looks the appointment up by id and PENDING status only. The requests list '
-    'hides unpaid checkouts, but accepting one by id confirms a consultation nobody paid for.'
-))
 def test_an_unpaid_checkout_cannot_be_accepted(patient, doctor):
     unpaid = factories.appointment(patient, factories.service(), doctor)
 

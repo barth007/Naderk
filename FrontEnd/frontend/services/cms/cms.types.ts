@@ -1,18 +1,18 @@
 export interface BlogCategory {
-  id: number;
+  id: string;
   name: string;
   slug: string;
   description: string;
 }
 
 export interface BlogAuthor {
-  id: number;
+  id: string;
   first_name: string;
   last_name: string;
 }
 
 export interface BlogPost {
-  id: number;
+  id: string;
   title: string;
   slug: string;
   excerpt: string;

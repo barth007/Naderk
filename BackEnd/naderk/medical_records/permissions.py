@@ -1,4 +1,5 @@
 from rest_framework.permissions import BasePermission
+from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from naderk.appointments.models import Appointment
 from naderk.core.models import User
@@ -24,16 +25,20 @@ class IsRecordOwnerOrDoctorWithActiveAppointment(BasePermission):
         if request.user.role in ['ADMIN', 'SUPER_ADMIN']:
             return True
             
-        # Patients can always access their own
-        if request.user.role == 'PATIENT':
-            return True
-
         # For list views and overview where a patient_id is passed in query params
         patient_id = request.query_params.get('patient_id') or request.data.get('patient_id')
+
+        # A patient can read their own records and nobody else's. This used to
+        # return True for every patient before looking at patient_id, and the
+        # list views then used that id as given — so any patient could read any
+        # other patient's records by passing their id.
+        if request.user.role == 'PATIENT':
+            return not patient_id or str(patient_id) == str(request.user.id)
+
         if patient_id:
             try:
                 patient = User.objects.get(id=patient_id)
-            except (User.DoesNotExist, ValueError):
+            except (User.DoesNotExist, ValueError, ValidationError):
                 return False
                 
             return self.has_patient_access(request.user, patient)

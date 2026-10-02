@@ -110,11 +110,6 @@ def test_another_patient_cannot_open_single_records(other_patient, records):
     assert client.get(f"{BASE}prescriptions/{records['prescription'].id}/pdf/").status_code in (403, 404)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'The permission class lets every PATIENT through before it looks at ?patient_id=, and the list and '
-    'overview views then use that id as given. Any patient can read any other patient\'s encounters, '
-    'prescriptions, diagnostics, scans and overview by passing their id.'
-))
 @pytest.mark.parametrize('path', LISTS + ['overview/'])
 def test_a_patient_cannot_read_another_patients_records_by_passing_their_id(patient, other_patient, records, path):
     res = client_for(other_patient).get(BASE + path, {'patient_id': str(patient.id)})
@@ -134,10 +129,6 @@ def test_unrelated_doctor_is_refused(patient, other_doctor, records, path):
     assert client_for(other_doctor).get(BASE + path, {'patient_id': str(patient.id)}).status_code == 403
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'These views call build_error_response("bad_request", "Patient ID is required.", 400) without its '
-    'required `detail` argument, so the intended 400 is a TypeError and the client gets a 500.'
-))
 @pytest.mark.parametrize('path', LISTS + ['overview/'])
 def test_staff_must_say_which_patient(doctor, path):
     client = client_for(doctor)
@@ -259,18 +250,10 @@ def test_medication_validation(patient, doctor):
     assert {'name', 'start_date'} <= set(res.json()['errors'])
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'MedicationCreateSerializer has none of the checks DiagnosticResultCreateSerializer has: any doctor '
-    'can prescribe for any user id, whether or not they treat that patient.'
-))
 def test_a_doctor_cannot_prescribe_for_a_patient_they_do_not_treat(patient, other_doctor):
     assert prescribe(other_doctor, patient).status_code in (400, 403)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'MedicationCreateSerializer.create does User.objects.get() on an unchecked id, so an unknown '
-    'patient_id is a 500 instead of a validation error.'
-))
 def test_prescribing_for_an_unknown_patient_is_a_validation_error(doctor):
     client = client_for(doctor)
     client.raise_request_exception = False

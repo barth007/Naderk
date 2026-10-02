@@ -164,7 +164,13 @@ class DoctorAcceptRequestAPI(APIView):
         from naderk.telehealth.models import TelehealthSession
         from naderk.messaging.models import Conversation
         try:
-            appt = Appointment.objects.get(id=pk, doctor=request.user, status=Appointment.Status.PENDING)
+            # exclude_unpaid_checkouts: the requests list hides abandoned
+            # checkouts, but accepting one by id used to confirm a consultation
+            # nobody had paid for.
+            appt = (
+                Appointment.objects.exclude_unpaid_checkouts()
+                .get(id=pk, doctor=request.user, status=Appointment.Status.PENDING)
+            )
             appt.status = Appointment.Status.CONFIRMED
             appt.save()
 
@@ -752,10 +758,15 @@ class AdminScheduleAppointmentAPI(APIView):
             )
 
         import datetime as dt
+        from django.utils.dateparse import parse_date, parse_time
         from naderk.core.models import User as UserModel
 
         try:
-            appt = Appointment.objects.select_related('patient').get(id=pk, status=Appointment.Status.PENDING)
+            # A real booking only — never an abandoned, unpaid checkout.
+            appt = (
+                Appointment.objects.exclude_unpaid_checkouts().select_related('patient')
+                .get(id=pk, status=Appointment.Status.PENDING)
+            )
         except Appointment.DoesNotExist:
             return build_error_response(
                 type_uri='not-found', title='Not Found', status_code=404,
@@ -780,9 +791,41 @@ class AdminScheduleAppointmentAPI(APIView):
                 detail='Doctor not found.',
             )
 
+        # Real date/time objects, not the request strings. Saving fires the
+        # telehealth signal, which combines them into a datetime; with strings
+        # that raised, so scheduling a video visit returned a 500 and left the
+        # appointment confirmed with no session.
+        try:
+            parsed_date, parsed_time = parse_date(str(new_date)), parse_time(str(new_time))
+        except ValueError:
+            parsed_date = parsed_time = None
+        if parsed_date is None or parsed_time is None:
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='date must be YYYY-MM-DD and time HH:MM.',
+            )
+
+        clash = (
+            Appointment.objects.exclude_unpaid_checkouts()
+            .filter(
+                doctor=doctor, appointment_date=parsed_date, appointment_time=parsed_time,
+                status__in=[
+                    Appointment.Status.PENDING, Appointment.Status.CONFIRMED,
+                    Appointment.Status.CHECKED_IN, Appointment.Status.IN_PROGRESS,
+                ],
+            )
+            .exclude(pk=appt.pk)
+            .exists()
+        )
+        if clash:
+            return build_error_response(
+                type_uri='conflict', title='Slot unavailable', status_code=409,
+                detail='That doctor already has an appointment at that time.',
+            )
+
         appt.doctor = doctor
-        appt.appointment_date = new_date
-        appt.appointment_time = new_time
+        appt.appointment_date = parsed_date
+        appt.appointment_time = parsed_time
         appt.status = Appointment.Status.CONFIRMED
         appt.save()
 
@@ -2117,13 +2160,39 @@ class AdminFlashSaleDetailAPI(APIView):
         for field in ['name', 'is_active']:
             if field in request.data:
                 setattr(sale, field, request.data[field])
+
+        # Same rules as creating one. An edit used to skip them, so a sale
+        # could be given a 500% or negative discount, or an end before its start.
         if 'discount_percent' in request.data:
-            sale.discount_percent = float(request.data['discount_percent'])
+            try:
+                discount = float(request.data['discount_percent'])
+                if not (0 < discount <= 100):
+                    raise ValueError
+            except (ValueError, TypeError):
+                return build_error_response(
+                    type_uri='validation-error', title='Validation Error', status_code=400,
+                    detail='discount_percent must be between 1 and 100.',
+                )
+            sale.discount_percent = discount
+
         from django.utils.dateparse import parse_datetime
-        if 'starts_at' in request.data:
-            sale.starts_at = parse_datetime(request.data['starts_at'])
-        if 'ends_at' in request.data:
-            sale.ends_at = parse_datetime(request.data['ends_at'])
+        for field in ('starts_at', 'ends_at'):
+            if field in request.data:
+                try:
+                    parsed = parse_datetime(str(request.data[field]))
+                except ValueError:
+                    parsed = None
+                if parsed is None:
+                    return build_error_response(
+                        type_uri='validation-error', title='Validation Error', status_code=400,
+                        detail=f'{field} is not a valid date and time.',
+                    )
+                setattr(sale, field, parsed)
+        if sale.ends_at <= sale.starts_at:
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail='Invalid date range.',
+            )
         sale.save()
         if 'product_ids' in request.data:
             products = Product.objects.filter(id__in=request.data['product_ids'])
@@ -2436,6 +2505,18 @@ class AdminStaffToggleAPI(APIView):
                 detail='User not found.',
             )
 
+        # Guard the two ways this could lock the organisation out.
+        if user.id == request.user.id:
+            return build_error_response(
+                type_uri='validation-error', title='Not allowed', status_code=400,
+                detail='You cannot deactivate your own account.',
+            )
+        if user.role == 'SUPER_ADMIN' and request.user.role != 'SUPER_ADMIN':
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Only a super admin can deactivate a super admin.',
+            )
+
         user.is_active = not user.is_active
         user.save(update_fields=['is_active'])
         return build_success_response(
@@ -2569,12 +2650,21 @@ class AdminDepartmentListAPI(APIView):
                 type_uri='validation-error', title='Validation Error', status_code=400,
                 detail='Name is required.',
             )
-        if Department.objects.filter(name__iexact=name).exists():
+        description = (request.data.get('description') or '').strip() or None
+        existing = Department.objects.filter(name__iexact=name).first()
+        if existing and existing.is_active:
             return build_error_response(
                 type_uri='validation-error', title='Validation Error', status_code=400,
                 detail='Department already exists.',
             )
-        dept = Department.objects.create(name=name, description=(request.data.get('description') or '').strip() or None)
+        if existing:
+            # Removing a department only hides it, so its name stayed taken
+            # forever. Creating it again brings the hidden one back.
+            existing.name, existing.description, existing.is_active = name, description, True
+            existing.save()
+            dept = existing
+        else:
+            dept = Department.objects.create(name=name, description=description)
         return build_success_response(
             message="Department created.",
             data={'id': str(dept.id), 'name': dept.name, 'description': dept.description or ''},
@@ -2939,8 +3029,10 @@ class AdminServiceListAPI(APIView):
 
         try:
             fee = float(request.data.get('fee') or 0)
+            if fee < 0:
+                raise ValueError
         except (TypeError, ValueError):
-            return build_error_response('validation-error', 'Validation Error', 400, 'fee must be a number.',
+            return build_error_response('validation-error', 'Validation Error', 400, 'fee must be a number, zero or more.',
                                         errors={'fee': ['Valid fee is required.']})
 
         service = MedicalService.objects.create(
@@ -3047,10 +3139,13 @@ class AdminServiceDetailAPI(APIView):
 
         if 'fee' in request.data:
             try:
-                service.fee = float(request.data['fee'])
+                fee = float(request.data['fee'])
+                if fee < 0:
+                    raise ValueError
             except (TypeError, ValueError):
-                return build_error_response('validation-error', 'Validation Error', 400, 'fee must be a number.',
+                return build_error_response('validation-error', 'Validation Error', 400, 'fee must be a number, zero or more.',
                                             errors={'fee': ['Valid fee is required.']})
+            service.fee = fee
 
         if 'billing_type' in request.data:
             bt = request.data['billing_type']

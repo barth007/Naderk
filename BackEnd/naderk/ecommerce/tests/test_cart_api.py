@@ -108,10 +108,6 @@ def test_prescription_lens_needs_a_prescription(patient):
                prescription_id=factories.prescription(patient).id).status_code == 200
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'cart_add_item looks the product up with .get() and the view only catches ValidationError, so an '
-    'unknown or stale product id is a 500 instead of a 404/400.'
-))
 def test_unknown_product_is_a_client_error(patient):
     client = client_for(patient)
     client.raise_request_exception = False

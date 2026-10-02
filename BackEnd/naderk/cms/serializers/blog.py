@@ -3,7 +3,9 @@ from ..models import BlogPost
 from .category import BlogCategorySerializer
 
 class AuthorSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
+    # User ids are UUIDs. As an IntegerField this came out as a 39-digit number
+    # that JavaScript rounds, so the id the browser held matched no user.
+    id = serializers.UUIDField()
     first_name = serializers.CharField()
     last_name = serializers.CharField()
 

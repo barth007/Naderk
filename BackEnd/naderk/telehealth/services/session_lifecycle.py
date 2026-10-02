@@ -92,10 +92,16 @@ def join_session(*, session: TelehealthSession, user) -> TelehealthParticipant:
     ).exists()
     
     old_status = session.status
+    # True only the first time both sides are in the room together. When a
+    # dropped participant reconnects the status goes back to ACTIVE as well,
+    # and each time used to log another STARTED event and send the patient
+    # another "Consultation Started" notification.
+    first_start = False
     if patient_connected and doctor_connected:
         session.status = TelehealthSession.Status.ACTIVE
         if not session.started_at:
             session.started_at = timezone.now()
+            first_start = True
     elif patient_connected:
         session.status = TelehealthSession.Status.WAITING_ROOM
     elif doctor_connected:
@@ -105,18 +111,18 @@ def join_session(*, session: TelehealthSession, user) -> TelehealthParticipant:
 
     # If status changed to ACTIVE, sync to appointment and log started event
     if session.status == TelehealthSession.Status.ACTIVE and old_status != TelehealthSession.Status.ACTIVE:
-        if not session.started_at:
-            session.started_at = timezone.now()
         session.save(update_fields=['status', 'started_at'])
-        
-        # Log active session start event
-        TelehealthEvent.objects.create(
-            session=session,
-            actor=None,
-            event_type=TelehealthEvent.EventType.STARTED,
-            metadata={'started_at': session.started_at.isoformat()}
-        )
 
+        if first_start:
+            TelehealthEvent.objects.create(
+                session=session,
+                actor=None,
+                event_type=TelehealthEvent.EventType.STARTED,
+                metadata={'started_at': session.started_at.isoformat()}
+            )
+
+        # Clients are told on every (re)start so a rejoining browser picks the
+        # call back up.
         if channel_layer:
             async_to_sync(channel_layer.group_send)(
                 f"telehealth_{session.id}",
@@ -133,13 +139,14 @@ def join_session(*, session: TelehealthSession, user) -> TelehealthParticipant:
             appointment.started_at = session.started_at
             appointment.save(update_fields=['status', 'started_at'])
 
-        # Notify patient
-        create_notification(
-            user=appointment.patient,
-            title="Consultation Started",
-            message=f"Dr. {appointment.doctor.last_name} has joined the telehealth room. Your consultation is now active.",
-            conversation=session.conversation
-        )
+        if first_start:
+            # Notify patient
+            create_notification(
+                user=appointment.patient,
+                title="Consultation Started",
+                message=f"Dr. {appointment.doctor.last_name} has joined the telehealth room. Your consultation is now active.",
+                conversation=session.conversation
+            )
     else:
         session.save(update_fields=['status'])
 

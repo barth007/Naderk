@@ -157,10 +157,6 @@ def test_internal_notes_are_never_sent_to_the_patient(patient, agent):
     assert [n['content'] for n in as_agent['internal_notes']] == ['Patient sounds anxious']
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'MEDICAL_AGENT and SUPER_ADMIN get every conversation in the list and may assign them, but the '
-    'detail, message and notes endpoints only treat AGENT, DOCTOR and ADMIN as staff.'
-))
 @pytest.mark.parametrize('role', [User.Role.MEDICAL_AGENT, User.Role.SUPER_ADMIN])
 def test_every_triage_role_can_open_a_conversation_it_can_list(patient, role):
     conv = factories.conversation(patient)

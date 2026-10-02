@@ -17,6 +17,11 @@ User = get_user_model()
 
 logger = logging.getLogger(__name__)
 
+#: Wrong guesses allowed against one code before it is thrown away. A six-digit
+#: code with unlimited tries in its five-minute life could simply be guessed.
+MAX_OTP_ATTEMPTS = 5
+
+
 def _generate_otp_code() -> str:
     return str(random.randint(100000, 999999))
 
@@ -129,7 +134,14 @@ def verify_otp(*, email: str, code: str) -> dict:
         expires_at__gt=timezone.now()
     ).order_by('-created_at').first()
 
-    if not otp_record or not check_password(code, otp_record.otp_code):
+    if not otp_record:
+        raise InvalidOTPException(detail="Invalid or expired OTP.")
+
+    if not check_password(str(code or ''), otp_record.otp_code):
+        otp_record.retry_attempts += 1
+        if otp_record.retry_attempts >= MAX_OTP_ATTEMPTS:
+            otp_record.is_used = True      # burned: the user must ask for a new code
+        otp_record.save(update_fields=['retry_attempts', 'is_used'])
         raise InvalidOTPException(detail="Invalid or expired OTP.")
 
     otp_record.is_used = True

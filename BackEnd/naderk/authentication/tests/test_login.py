@@ -99,10 +99,6 @@ def test_access_token_is_not_accepted_as_a_refresh_token(api_client, verified_pa
     assert api_client.post(REFRESH, {'refresh': access}, format='json').status_code == 401
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'BLACKLIST_AFTER_ROTATION is on, but rest_framework_simplejwt.token_blacklist is not in '
-    'INSTALLED_APPS, so a rotated refresh token keeps working until it expires.'
-))
 def test_a_rotated_refresh_token_cannot_be_used_again(api_client, verified_patient):
     refresh = sign_in(api_client).json()['data']['refresh']
     api_client.post(REFRESH, {'refresh': refresh}, format='json')

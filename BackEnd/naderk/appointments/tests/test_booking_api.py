@@ -271,11 +271,21 @@ def test_strangers_cannot_start_or_complete(patient, other_patient, doctor):
     assert appt.status == A.CONFIRMED
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'StartAppointmentApi and CompleteAppointmentApi accept the patient as well as the doctor, so a '
-    'patient can mark their own consultation completed.'
-))
-def test_a_patient_cannot_complete_their_own_consultation(patient, doctor):
+def test_a_patient_cannot_start_or_complete_their_own_consultation(patient, doctor):
     appt = factories.appointment(patient, factories.service(), doctor, status=A.CONFIRMED, paid=True)
 
+    assert act(patient, appt, 'start').status_code == 403
     assert act(patient, appt, 'complete').status_code == 403
+    appt.refresh_from_db()
+    assert appt.status == A.CONFIRMED
+
+
+def test_front_desk_runs_a_facility_visit_that_has_no_doctor(patient):
+    scan = factories.service('scan', requires_doctor=False)
+    appt = factories.appointment(patient, scan, None, status=A.CHECKED_IN, paid=True)
+    agent = make_user('agent@naderk.test', role=User.Role.AGENT)
+
+    assert act(agent, appt, 'start').status_code == 200
+    assert act(agent, appt, 'complete').status_code == 200
+    appt.refresh_from_db()
+    assert appt.status == A.COMPLETED

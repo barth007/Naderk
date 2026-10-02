@@ -7,6 +7,7 @@ from django.core import mail
 from django.utils import timezone
 
 from naderk.authentication.models import OTPVerification
+from naderk.authentication.services import MAX_OTP_ATTEMPTS
 from naderk.authentication.tests.helpers import (
     RESEND_OTP, VERIFY_OTP, emailed_code, login, register,
 )
@@ -130,6 +131,30 @@ def test_a_code_works_only_once(api_client):
     verify(api_client, code)
 
     assert verify(api_client, code).status_code == 400
+
+
+def test_too_many_wrong_guesses_burn_the_code(api_client):
+    register(api_client)
+    code = emailed_code()
+    wrong = '000000' if code != '000000' else '111111'
+
+    for _ in range(MAX_OTP_ATTEMPTS):
+        assert verify(api_client, wrong).status_code == 400
+
+    assert verify(api_client, code).status_code == 400          # even the right code is dead now
+    api_client.post(RESEND_OTP, {'email': 'ada@naderk.test'}, format='json')
+    assert verify(api_client, emailed_code()).status_code == 200
+
+
+def test_a_few_wrong_guesses_do_not_lock_the_user_out(api_client):
+    register(api_client)
+    code = emailed_code()
+    wrong = '000000' if code != '000000' else '111111'
+
+    for _ in range(MAX_OTP_ATTEMPTS - 1):
+        verify(api_client, wrong)
+
+    assert verify(api_client, code).status_code == 200
 
 
 def test_expired_code_is_rejected(api_client):

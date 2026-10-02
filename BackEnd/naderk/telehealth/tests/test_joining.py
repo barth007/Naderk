@@ -155,10 +155,6 @@ def test_rejoining_keeps_the_first_join_time_and_the_original_start(patient, doc
     assert TelehealthParticipant.objects.filter(session=session).count() == 2
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'Every time a dropped participant reconnects, join_session sees the status return to ACTIVE and '
-    'logs another STARTED event and sends the patient another "Consultation Started" notification.'
-))
 def test_a_reconnect_does_not_announce_the_start_again(patient, doctor, session):
     join_session(session=session, user=patient)
     join_session(session=session, user=doctor)
@@ -289,10 +285,6 @@ def test_manual_create_refuses_physical_or_unconfirmed_appointments(patient, doc
     assert not TelehealthSession.objects.exists()
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'SessionCreateApi checks only that the caller is signed in, so any user who knows an appointment '
-    'id can create (or read back) the telehealth session for someone else\'s appointment.'
-))
 def test_manual_create_is_limited_to_the_appointments_own_people(other_patient, session):
     res = client_for(other_patient).post(CREATE, {'appointment_id': str(session.appointment_id)}, format='json')
 

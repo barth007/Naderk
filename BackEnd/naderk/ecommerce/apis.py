@@ -15,7 +15,7 @@ from .serializers import (
     StoreCategorySerializer, ProductSerializer, FrameSerializer,
     LensTypeSerializer, LensOptionSerializer, PrescriptionSerializer,
     PrescriptionReviewSerializer, CartSerializer, AddToCartSerializer,
-    WishlistSerializer, OrderSerializer, CheckoutSerializer
+    WishlistSerializer, OrderSerializer, CustomerOrderSerializer, CheckoutSerializer
 )
 from .selectors import (
     get_active_categories, get_products, get_frames, get_lens_types,
@@ -28,6 +28,16 @@ from .services import (
     wishlist_toggle_item, order_create_from_cart, order_release_stock,
     order_update_status
 )
+
+# Clinical prescription review (stays with clinicians + medical/admin). The
+# standalone prescription endpoints used to admit only is_staff, ADMIN and
+# DOCTOR — leaving out OPTICIAN, the role the review workflow is written for.
+PRESCRIPTION_REVIEW_ROLES = {'ADMIN', 'SUPER_ADMIN', 'DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT'}
+
+
+def _can_review_prescriptions(user) -> bool:
+    return user.is_staff or getattr(user, 'role', None) in PRESCRIPTION_REVIEW_ROLES
+
 
 class CategoryListApi(APIView):
     permission_classes = [AllowAny]
@@ -280,7 +290,7 @@ class PrescriptionDetailApi(APIView):
     def get(self, request, pk):
         try:
             # Patients can only see their own prescriptions, staff can see all
-            if request.user.is_staff or request.user.role in ['ADMIN', 'DOCTOR']:
+            if _can_review_prescriptions(request.user):
                 prescription = Prescription.objects.get(id=pk)
             else:
                 prescription = Prescription.objects.get(id=pk, patient=request.user)
@@ -301,7 +311,7 @@ class PrescriptionReviewQueueApi(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        if not request.user.is_staff and request.user.role not in ['ADMIN', 'DOCTOR']:
+        if not _can_review_prescriptions(request.user):
             return build_error_response(
                 type_uri=_problems_url('forbidden'),
                 title="Forbidden",
@@ -319,7 +329,7 @@ class PrescriptionReviewActionApi(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request, pk):
-        if not request.user.is_staff and request.user.role not in ['ADMIN', 'DOCTOR']:
+        if not _can_review_prescriptions(request.user):
             return build_error_response(
                 type_uri=_problems_url('forbidden'),
                 title="Forbidden",
@@ -552,7 +562,7 @@ class CheckoutApi(APIView):
             )
             return build_success_response(
                 "Order created successfully",
-                OrderSerializer(order).data,
+                CustomerOrderSerializer(order).data,
                 status_code=201
             )
         except (DjangoValidationError, DRFValidationError) as e:
@@ -579,7 +589,7 @@ class OrderListApi(APIView):
                 pass
 
         orders = get_user_orders(request.user)
-        serializer = OrderSerializer(orders, many=True)
+        serializer = CustomerOrderSerializer(orders, many=True)
         return build_success_response("Orders retrieved successfully", serializer.data)
 
 
@@ -590,7 +600,8 @@ class OrderDetailApi(APIView):
         try:
             order = Order.objects.prefetch_related('items', 'activities').get(id=pk)
             # Users can see their own orders, staff/admin/doctors can see all
-            if not request.user.is_staff and request.user.role not in ['ADMIN', 'DOCTOR'] and order.user != request.user:
+            is_staff_viewer = request.user.is_staff or request.user.role in ['ADMIN', 'DOCTOR']
+            if not is_staff_viewer and order.user != request.user:
                 return build_error_response(
                     type_uri=_problems_url('forbidden'),
                     title="Forbidden",
@@ -598,7 +609,7 @@ class OrderDetailApi(APIView):
                     detail="You do not have permission to view this order",
                     instance=request.path
                 )
-            serializer = OrderSerializer(order)
+            serializer = (OrderSerializer if is_staff_viewer else CustomerOrderSerializer)(order)
             return build_success_response("Order details retrieved successfully", serializer.data)
         except Order.DoesNotExist:
             return build_error_response(
@@ -639,7 +650,7 @@ class OrderPaymentApi(APIView):
             # only once the provider confirms the full amount.
             from naderk.payments.services import confirm_order_payment
             order = confirm_order_payment(order=order, reference=payment_reference)
-            return build_success_response("Payment completed successfully", OrderSerializer(order).data)
+            return build_success_response("Payment completed successfully", CustomerOrderSerializer(order).data)
         except Order.DoesNotExist:
             return build_error_response(
                 type_uri=_problems_url('not-found'),
@@ -658,8 +669,6 @@ class OrderPaymentApi(APIView):
             )
 
 
-# Clinical prescription review on orders (stays with clinicians + medical/admin).
-PRESCRIPTION_REVIEW_ROLES = {'ADMIN', 'SUPER_ADMIN', 'DOCTOR', 'OPTICIAN', 'MEDICAL_AGENT'}
 # Order-book / fulfillment management (the "orders" area).
 ORDER_MANAGE_ROLES = {'ADMIN', 'SUPER_ADMIN', 'OPERATIONS_MANAGER', 'MEDICAL_AGENT'}
 
@@ -784,7 +793,7 @@ class OrderConfirmDeliveryApi(APIView):
         except (DjangoValidationError, DRFValidationError) as e:
             return build_error_response("invalid-state", "Invalid transition", 400, str(e))
 
-        return build_success_response("Delivery confirmed", OrderSerializer(order).data)
+        return build_success_response("Delivery confirmed", CustomerOrderSerializer(order).data)
 
 
 # --- Glasses Builder Configuration (admin + client) ---

@@ -89,10 +89,6 @@ def test_drafts_and_unknown_slugs_are_404_to_the_public(api_client, doctor):
     assert api_client.get(f'{BLOGS}no-such-post/').status_code == 404
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'AuthorSerializer declares id as an IntegerField, but user ids are UUIDs, so the public blog '
-    'API emits the author id as a 39-digit integer that JavaScript cannot represent.'
-))
 def test_public_author_id_is_the_users_uuid(api_client, doctor):
     post(doctor)
 

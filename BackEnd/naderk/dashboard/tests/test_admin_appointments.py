@@ -109,25 +109,23 @@ def test_scheduling_assigns_the_doctor_moves_the_slot_and_confirms(patient, doct
         doctor, A.CONFIRMED, new_date, datetime.time(14, 0))
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'AdminScheduleAppointmentAPI assigns the date and time as the raw request strings. Saving fires the '
-    'telehealth signal, which does datetime.combine() on them and raises TypeError: the staff member '
-    'gets a 500, the appointment is left CONFIRMED, and no video session exists for it.'
-))
 def test_scheduling_a_video_visit_creates_its_session_at_the_new_time(patient, doctor, agent):
     appt = factories.appointment(patient, factories.service(), doctor, paid=True,
                                  kind=Appointment.AppointmentType.TELEHEALTH)
-    client = client_for(agent)
-    client.raise_request_exception = False
 
-    res = client.post(f'{BASE}appointments/{appt.id}/schedule/', {
-        'doctor_id': str(doctor.id), 'time': '14:00',
-        'date': (timezone.localdate() + datetime.timedelta(days=4)).isoformat()}, format='json')
-
-    assert res.status_code == 200
+    assert schedule(agent, appt, doctor).status_code == 200
 
     session = TelehealthSession.objects.get(appointment=appt)
     assert timezone.localtime(session.scheduled_start).time() == datetime.time(14, 0)
+
+
+@pytest.mark.parametrize('date, time', [('next tuesday', '14:00'), ('2030-02-30', '14:00'), ('2030-02-01', 'afternoon')])
+def test_an_unreadable_date_or_time_is_a_validation_error(patient, doctor, agent, date, time):
+    appt = factories.appointment(patient, factories.service(), doctor, paid=True)
+
+    assert schedule(agent, appt, doctor, date=date, time=time).status_code == 400
+    appt.refresh_from_db()
+    assert appt.status == A.PENDING
 
 
 def test_scheduling_refusals(patient, doctor, agent):
@@ -143,20 +141,12 @@ def test_scheduling_refusals(patient, doctor, agent):
     assert pending.status == A.PENDING
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'AdminScheduleAppointmentAPI confirms any PENDING appointment by id, including an abandoned '
-    'checkout that was never paid for.'
-))
 def test_an_unpaid_checkout_cannot_be_scheduled(patient, doctor, agent):
     unpaid = factories.appointment(patient, factories.service(), doctor)
 
     assert schedule(agent, unpaid, doctor).status_code in (400, 404, 409)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'AdminScheduleAppointmentAPI does not check the doctor\'s diary, so staff can confirm two patients '
-    'into the same doctor, date and time.'
-))
 def test_a_doctor_cannot_be_double_booked_by_scheduling(patient, other_patient, doctor, agent):
     service = factories.service()
     factories.appointment(other_patient, service, doctor, paid=True, days_ahead=4, time=datetime.time(14, 0),

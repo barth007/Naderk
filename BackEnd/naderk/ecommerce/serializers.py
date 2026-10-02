@@ -241,7 +241,9 @@ class AddToCartSerializer(serializers.Serializer):
             # If lens is prescription-based, ensure a prescription is attached.
             # Approval is NOT required at cart-add time — clinical review happens
             # after payment (order moves to PRESCRIPTION_REVIEW status).
-            lens = LensType.objects.get(id=attrs.get('lens_type_id'))
+            lens = LensType.objects.filter(id=attrs.get('lens_type_id')).first()
+            if lens is None:
+                raise serializers.ValidationError("The selected lens type does not exist.")
             if lens.name.lower() != 'non-prescription':
                 pres_id = attrs.get('prescription_id')
                 if not pres_id:
@@ -254,7 +256,9 @@ class AddToCartSerializer(serializers.Serializer):
                     raise serializers.ValidationError("The selected prescription does not exist.")
 
             # Frame Lens compatibility check
-            frame_var = FrameVariant.objects.get(id=frame_var_id)
+            frame_var = FrameVariant.objects.filter(id=frame_var_id).first()
+            if frame_var is None:
+                raise serializers.ValidationError("The selected frame does not exist.")
             if not FrameLensCompatibility.objects.filter(frame=frame_var.frame, lens_type=lens).exists():
                 raise serializers.ValidationError(f"The selected frame '{frame_var.frame.name}' is incompatible with the lens type '{lens.name}'.")
 
@@ -337,6 +341,16 @@ class OrderSerializer(serializers.ModelSerializer):
             'items', 'activities', 'created_at', 'updated_at'
         ]
         read_only_fields = ['user', 'status', 'payment_status', 'total_price', 'created_at', 'updated_at']
+
+
+class CustomerOrderSerializer(OrderSerializer):
+    """
+    An order as its buyer sees it: everything except the two fields the model
+    marks "Staff only". OrderSerializer sent both to the customer.
+    """
+
+    class Meta(OrderSerializer.Meta):
+        fields = [f for f in OrderSerializer.Meta.fields if f not in ('production_notes', 'internal_notes')]
 
 
 class CheckoutSerializer(serializers.Serializer):

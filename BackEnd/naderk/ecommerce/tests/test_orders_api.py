@@ -63,10 +63,6 @@ def test_unknown_order_is_404_and_orders_need_sign_in(patient, api_client):
     assert api_client.get(ORDERS).status_code == 401
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'OrderSerializer returns production_notes and internal_notes, both marked "Staff only" on the '
-    'model, to the customer who placed the order.'
-))
 def test_staff_only_notes_are_not_sent_to_the_customer(patient):
     order = order_for(patient)
     Order.objects.filter(pk=order.pk).update(internal_notes='Customer was rude on the phone')

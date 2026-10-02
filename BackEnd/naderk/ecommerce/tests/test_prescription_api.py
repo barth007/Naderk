@@ -148,10 +148,6 @@ def test_review_refusals(patient, doctor):
     assert rx.status == 'PENDING_REVIEW'
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'The prescription review endpoints only admit is_staff, ADMIN and DOCTOR. OPTICIAN, the role the '
-    'review workflow is written for, and SUPER_ADMIN are refused.'
-))
 @pytest.mark.parametrize('role', [User.Role.OPTICIAN, User.Role.SUPER_ADMIN])
 def test_opticians_and_super_admins_can_review(patient, role):
     rx = factories.prescription(patient)

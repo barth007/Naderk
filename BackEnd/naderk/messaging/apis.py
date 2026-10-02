@@ -33,6 +33,8 @@ from .services import (
 
 User = get_user_model()
 
+from .access import TRIAGE_ROLES, can_access_conversation, is_messaging_staff
+
 class ConversationListCreateApi(APIView):
     permission_classes = [IsAuthenticated]
     
@@ -104,10 +106,8 @@ class ConversationDetailApi(APIView):
                 instance=request.path
             )
             
-        is_staff = request.user.role in [User.Role.AGENT, User.Role.DOCTOR, User.Role.ADMIN]
-        has_access = is_staff or conversation.patient == request.user or conversation.participants.filter(user=request.user).exists()
-        
-        if not has_access:
+        is_staff = is_messaging_staff(request.user)
+        if not can_access_conversation(request.user, conversation):
             return build_error_response(
                 type_uri=_problems_url('forbidden'),
                 title="Access Denied",
@@ -166,10 +166,8 @@ class MessageCreateApi(APIView):
                 instance=request.path
             )
             
-        is_staff = request.user.role in [User.Role.AGENT, User.Role.DOCTOR, User.Role.ADMIN]
-        has_access = is_staff or conversation.patient == request.user or conversation.participants.filter(user=request.user).exists()
-        
-        if not has_access:
+        is_staff = is_messaging_staff(request.user)
+        if not can_access_conversation(request.user, conversation):
             return build_error_response(
                 type_uri=_problems_url('forbidden'),
                 title="Access Denied",
@@ -262,7 +260,6 @@ class ConversationAssignApi(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request, pk):
-        TRIAGE_ROLES = {User.Role.MEDICAL_AGENT, User.Role.AGENT, User.Role.ADMIN, User.Role.SUPER_ADMIN}
         if request.user.role not in TRIAGE_ROLES:
             return build_error_response(
                 type_uri=_problems_url('forbidden'),
@@ -354,7 +351,7 @@ class ConversationInternalNotesApi(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request, pk):
-        is_staff = request.user.role in [User.Role.AGENT, User.Role.DOCTOR, User.Role.ADMIN]
+        is_staff = is_messaging_staff(request.user)
         if not is_staff:
             return build_error_response(
                 type_uri=_problems_url('forbidden'),
@@ -379,7 +376,7 @@ class ConversationInternalNotesApi(APIView):
             )
             
     def post(self, request, pk):
-        is_staff = request.user.role in [User.Role.AGENT, User.Role.DOCTOR, User.Role.ADMIN]
+        is_staff = is_messaging_staff(request.user)
         if not is_staff:
             return build_error_response(
                 type_uri=_problems_url('forbidden'),

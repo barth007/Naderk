@@ -29,6 +29,9 @@ INSTALLED_APPS = [
     # Third party apps
     'rest_framework',
     'rest_framework_simplejwt',
+    # Needed for BLACKLIST_AFTER_ROTATION below to do anything: without this
+    # app a rotated refresh token kept working until it expired.
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
 
     # Local apps

@@ -114,15 +114,18 @@ def test_toggling_an_unknown_user_is_404(admin):
     assert admin.post(f'{STAFF}00000000-0000-0000-0000-000000000000/toggle/').status_code == 404
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'AdminStaffToggleAPI deactivates whichever user id it is given, so an ADMIN can switch off a '
-    'SUPER_ADMIN, or their own account, and lock the organisation out.'
-))
 def test_an_admin_cannot_deactivate_a_super_admin_or_themselves(admin, admin_user):
     owner = make_user('owner@naderk.test', role=User.Role.SUPER_ADMIN)
 
     assert admin.post(f'{STAFF}{owner.id}/toggle/').status_code in (400, 403)
     assert admin.post(f'{STAFF}{admin_user.id}/toggle/').status_code in (400, 403)
+
+
+def test_a_super_admin_can_deactivate_another_super_admin():
+    owner = make_user('owner@naderk.test', role=User.Role.SUPER_ADMIN)
+    other = make_user('other-owner@naderk.test', role=User.Role.SUPER_ADMIN)
+
+    assert client_for(owner).post(f'{STAFF}{other.id}/toggle/').json()['data']['is_active'] is False
 
 
 # ── Weekly rota ──────────────────────────────────────────────────────────────
@@ -172,15 +175,15 @@ def test_department_lifecycle(admin):
     assert admin.delete(missing).status_code == 404
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'Removing a department only hides it; the duplicate-name check still sees the hidden row, so the '
-    'same name can never be created again and the hidden one cannot be restored from the UI.'
-))
 def test_a_removed_departments_name_can_be_used_again(admin):
     pk = admin.post(DEPARTMENTS, {'name': 'Low Vision Clinic'}, format='json').json()['data']['id']
     admin.delete(f'{DEPARTMENTS}{pk}/')
 
-    assert admin.post(DEPARTMENTS, {'name': 'Low Vision Clinic'}, format='json').status_code == 201
+    again = admin.post(DEPARTMENTS, {'name': 'Low Vision Clinic'}, format='json')
+
+    assert again.status_code == 201
+    assert again.json()['data']['id'] == pk                 # the hidden one comes back, no duplicate row
+    assert 'Low Vision Clinic' in department_names(admin)
 
 
 # ── Role permissions ─────────────────────────────────────────────────────────
