@@ -270,9 +270,12 @@ class OverlappingAppointmentError(Exception):
 
 class PatientAppointmentValidationService:
     @staticmethod
-    def validate_overlapping_appointments(patient, date, start_time, duration_minutes):
+    def validate_overlapping_appointments(patient, date, start_time, duration_minutes,
+                                          exclude_appointment_id=None):
         """
         Check if the proposed appointment overlaps with any existing active appointments for the patient.
+        `exclude_appointment_id` is the appointment being moved, when rescheduling —
+        it must not be counted as clashing with itself.
         """
         active_statuses = [
             Appointment.Status.PENDING,
@@ -287,6 +290,8 @@ class PatientAppointmentValidationService:
             appointment_date=date,
             status__in=active_statuses
         ).select_related('service')
+        if exclude_appointment_id is not None:
+            existing_appointments = existing_appointments.exclude(id=exclude_appointment_id)
         
         for appt in existing_appointments:
             appt_start = timezone.make_aware(datetime.datetime.combine(appt.appointment_date, appt.appointment_time))

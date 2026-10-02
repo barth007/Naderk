@@ -5,6 +5,24 @@ from naderk.notifications.services import create_notification
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
+#: Staff who oversee consultations: they may look at a session and follow its
+#: live status, but they are not in the call (see generate_livekit_token).
+SESSION_OVERSIGHT_ROLES = ('AGENT', 'MEDICAL_AGENT', 'ADMIN', 'SUPER_ADMIN')
+
+
+def is_session_participant(session: TelehealthSession, user) -> bool:
+    appointment = session.appointment
+    return user.id in (appointment.patient_id, appointment.doctor_id)
+
+
+def can_view_session(session: TelehealthSession, user) -> bool:
+    return is_session_participant(session, user) or user.role in SESSION_OVERSIGHT_ROLES
+
+
+def can_end_session(session: TelehealthSession, user) -> bool:
+    return user.role in ('DOCTOR', 'ADMIN', 'AGENT', 'MEDICAL_AGENT') or user.id == session.appointment.doctor_id
+
+
 def join_session(*, session: TelehealthSession, user) -> TelehealthParticipant:
     """
     Handles a participant joining a telehealth session.
@@ -196,7 +214,7 @@ def end_session(*, session: TelehealthSession, user) -> TelehealthSession:
     """
     Ends a telehealth session (Doctor or Staff only).
     """
-    if user.role not in ['DOCTOR', 'ADMIN', 'AGENT', 'MEDICAL_AGENT'] and user.id != session.appointment.doctor.id:
+    if not can_end_session(session, user):
         raise PermissionError("Access Denied: Only doctors or staff members can end the session.")
 
     if session.status == TelehealthSession.Status.COMPLETED:

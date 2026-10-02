@@ -52,8 +52,9 @@ export default function TelehealthDashboard({ sessions }: TelehealthDashboardPro
       withinJoinWindow = true;
     }
     // Doctors may open the room early to prepare; patients wait for the window.
-    const canJoin = isJoinableStatus && (isDoctor || withinJoinWindow);
-    const joinBlockedEarly = isJoinableStatus && !isDoctor && !withinJoinWindow;
+    // Staff oversee sessions but are never in the call, so they get no join button.
+    const canJoin = !isAgent && isJoinableStatus && (isDoctor || withinJoinWindow);
+    const joinBlockedEarly = !isAgent && isJoinableStatus && !isDoctor && !withinJoinWindow;
 
     return (
       <div

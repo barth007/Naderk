@@ -16,9 +16,10 @@ def service(slug='consult', fee='8500.00', billing=MedicalService.BillingType.PE
 
 
 def appointment(patient, of, doctor=None, *, days_ahead=1, time=datetime.time(10, 0),
-                status=Appointment.Status.PENDING, paid=False, fee=None):
+                status=Appointment.Status.PENDING, paid=False, fee=None,
+                kind=Appointment.AppointmentType.PHYSICAL):
     return Appointment.objects.create(
-        patient=patient, doctor=doctor, service=of,
+        patient=patient, doctor=doctor, service=of, appointment_type=kind,
         appointment_date=timezone.localdate() + datetime.timedelta(days=days_ahead),
         appointment_time=time, status=status,
         consultation_fee=of.fee if fee is None else Decimal(fee),

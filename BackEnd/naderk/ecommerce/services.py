@@ -166,7 +166,12 @@ def cart_add_item(*, user: User, product_id: Optional[str] = None, product_varia
         lens_type = LensType.objects.get(id=lens_type_id) if lens_type_id else None
         prescription = None
         if prescription_id:
-            prescription = Prescription.objects.get(id=prescription_id)
+            # Scoped to the shopper: the cart echoes the prescription's values
+            # and its owner's email back, so any id used to be readable.
+            try:
+                prescription = Prescription.objects.get(id=prescription_id, patient=user)
+            except Prescription.DoesNotExist:
+                raise ValidationError("The selected prescription does not exist.")
 
         # Base Price (+ lens modifier only when a lens was chosen)
         price = frame_variant.frame.base_price

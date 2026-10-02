@@ -1,4 +1,5 @@
 import datetime
+from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
 from rest_framework.views import APIView
@@ -349,13 +350,16 @@ class AppointmentHistoryApi(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        # Sync check as a fail-safe for local development if celery beat is not running
-        try:
-            from .tasks import mark_missed_appointments, cancel_abandoned_unpaid_appointments
-            cancel_abandoned_unpaid_appointments()
-            mark_missed_appointments()
-        except Exception:
-            pass
+        # Fail-safe for local development, where celery beat may not be running.
+        # Deployed environments rely on beat: these sweep the whole table, which
+        # is not something to do on every page load.
+        if settings.DEBUG:
+            try:
+                from . import tasks
+                tasks.cancel_abandoned_unpaid_appointments()
+                tasks.mark_missed_appointments()
+            except Exception:
+                pass
 
         active_statuses = [
             Appointment.Status.PENDING, 
@@ -448,11 +452,14 @@ class RescheduleAppointmentApi(APIView):
             return build_error_response("invalid-time", "Invalid Time", 400, "Cannot reschedule to a past time")
             
         try:
+            # The patient's diary, not the caller's: staff reschedule on a
+            # patient's behalf, and their own bookings are beside the point.
             PatientAppointmentValidationService.validate_overlapping_appointments(
-                patient=request.user,
+                patient=appointment.patient,
                 date=new_date,
                 start_time=new_time,
-                duration_minutes=appointment.service.duration_minutes
+                duration_minutes=appointment.service.duration_minutes,
+                exclude_appointment_id=appointment.id,
             )
         except OverlappingAppointmentError as e:
             from rest_framework.response import Response

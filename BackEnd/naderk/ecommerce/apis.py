@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.exceptions import ValidationError as DRFValidationError
+from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.http import Http404
 
@@ -568,13 +569,14 @@ class OrderListApi(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        # Sync fail-safe for local development, where celery beat may not be
-        # running. Mirrors AppointmentHistoryApi; the task is idempotent.
-        try:
-            from .tasks import cancel_abandoned_unpaid_orders
-            cancel_abandoned_unpaid_orders()
-        except Exception:
-            pass
+        # Fail-safe for local development, where celery beat may not be running.
+        # Mirrors AppointmentHistoryApi; deployed environments rely on beat.
+        if settings.DEBUG:
+            try:
+                from . import tasks
+                tasks.cancel_abandoned_unpaid_orders()
+            except Exception:
+                pass
 
         orders = get_user_orders(request.user)
         serializer = OrderSerializer(orders, many=True)
