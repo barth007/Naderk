@@ -1,10 +1,5 @@
 from .base import *  # noqa: F403
 
-# Matches config.settings.local, which the suite ran under before pytest: a few
-# views only refuse a localhost/insecure LiveKit URL when DEBUG is off, and the
-# tests that cover that switch it off themselves with override_settings.
-DEBUG = True
-
 PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
 EMAIL_PROVIDER = 'smtp'
@@ -20,6 +15,8 @@ DISABLE_OTP_VERIFICATION = False
 PAYSTACK_SECRET_KEY = 'sk_test_dummy'
 PAYSTACK_PUBLIC_KEY = 'pk_test_dummy'
 PAYSTACK_WEBHOOK_SECRET = ''
-LIVEKIT_URL = 'http://localhost:7880'
+# A reachable-looking secure URL: the join endpoint refuses localhost and ws://
+# whenever DEBUG is off, and the test runner always turns DEBUG off.
+LIVEKIT_URL = 'https://livekit.naderk.test'
 LIVEKIT_API_KEY = 'testkey'
 LIVEKIT_API_SECRET = 'test-secret-that-is-long-enough-for-hs256'
