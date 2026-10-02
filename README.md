@@ -88,6 +88,10 @@ DB_HOST_PORT=5433 docker compose up -d db
 # DATABASE_URL=postgres://naderk_user:naderk_password@localhost:5433/naderk_db
 ```
 
+A test marked `xfail(strict=True)` describes behaviour the code does not have yet;
+its `reason` says what is missing. Fixing the code makes that test fail as
+"unexpectedly passing", which is the prompt to remove the marker.
+
 Frontend checks:
 
 ```bash
