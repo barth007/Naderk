@@ -11,7 +11,7 @@ from naderk.telehealth.models import TelehealthSession
 from naderk.telehealth.services.generate_token import generate_livekit_token
 from tests.helpers import client_for, make_user
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures('channels_db')]
 
 
 @pytest.fixture
@@ -66,18 +66,6 @@ def test_patient_and_doctor_are_issued_a_call_token(patient, doctor, session):
 
 
 # ── Live events over the WebSocket ───────────────────────────────────────────
-
-@pytest.fixture(autouse=True)
-def keep_test_connection_open(monkeypatch):
-    """
-    async_to_sync runs the consumer's database calls back on the test's own
-    thread, so they see the test's uncommitted rows — but Channels closes "old"
-    connections around each call, which here is the test's connection. Keeping
-    it open avoids a transactional test database, whose flush would wipe the
-    rows that migrations seed.
-    """
-    monkeypatch.setattr('channels.db.close_old_connections', lambda: None)
-
 
 def subscribe(user, session_id):
     """Connect as `user`, ask for the session's events, return the server's reply."""

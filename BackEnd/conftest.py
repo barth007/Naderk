@@ -44,3 +44,17 @@ def no_real_http(monkeypatch):
         raise RuntimeError(f'Test attempted a real HTTP request: {method} {url}')
 
     monkeypatch.setattr('requests.sessions.Session.request', refuse)
+
+
+@pytest.fixture
+def channels_db(monkeypatch):
+    """
+    For tests that drive a Channels consumer with async_to_sync.
+
+    async_to_sync runs the consumer's database calls back on the test's own
+    thread, so they see the test's uncommitted rows — but Channels closes "old"
+    connections around each call, which here is the test's connection. Keeping
+    it open avoids a transactional test database, whose flush would wipe the
+    rows that migrations seed.
+    """
+    monkeypatch.setattr('channels.db.close_old_connections', lambda: None)
