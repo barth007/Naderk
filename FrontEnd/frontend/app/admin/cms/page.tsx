@@ -1234,6 +1234,31 @@ function ArticlesTab() {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+/** Public pages whose copy is editable (see PAGE_SCHEMAS in the backend). */
+const EDITABLE_PAGES = [
+  { id: 'about', label: 'About' },
+  { id: 'extend_life_africa', label: 'Extend Life Africa' },
+];
+
+function PageContentTab() {
+  const [page, setPage] = useState(EDITABLE_PAGES[0].id);
+  return (
+    <div className="space-y-4">
+      <div role="group" aria-label="Page" className="flex flex-wrap gap-2">
+        {EDITABLE_PAGES.map((p) => (
+          <button key={p.id} type="button" aria-pressed={page === p.id} onClick={() => setPage(p.id)}
+            className={`text-xs font-semibold px-3.5 py-2 rounded-md border transition-colors ${
+              page === p.id ? 'bg-[#E03E3E] text-white border-[#E03E3E]' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <PageContentEditor key={page} page={page} />
+    </div>
+  );
+}
+
 export default function AdminCMSPage() {
   const [activeTab, setActiveTab] = useState<TabId>('hero');
 
@@ -1271,7 +1296,7 @@ export default function AdminCMSPage() {
 
       {/* Tab content */}
       <div>
-        {activeTab === 'pages' && <PageContentEditor page="about" />}
+        {activeTab === 'pages' && <PageContentTab />}
         {activeTab === 'hero' && <HeroSlidesTab />}
         {activeTab === 'testimonials' && <TestimonialsTab />}
         {activeTab === 'team' && <TeamTab />}

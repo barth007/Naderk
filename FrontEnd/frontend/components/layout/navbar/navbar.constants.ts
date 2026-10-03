@@ -33,13 +33,13 @@ export const DEFAULT_NAV_ITEMS: NavItem[] = [
       },
       {
         label: "Extend Life Africa",
-        href: "/coming-soon",
+        href: "/extend-life-africa",
       },
     ],
   },
   {
     label: "Extend Life Africa",
-    href: "/coming-soon",
+    href: "/extend-life-africa",
   },
   {
     label: "Contact",
@@ -59,7 +59,8 @@ export const DEFAULT_CTA_BUTTONS: CTAButton[] = [
   },
   {
     label: "Support Us",
-    href: "/coming-soon",
+    // Straight to the gift form on the Extend Life Africa page.
+    href: "/extend-life-africa#give",
     variant: "solid",
   },
 ]

@@ -25,6 +25,7 @@ export const ADMIN_NAV: SidebarItem[] = [
   { name: 'Glasses Builder', href: '/admin/glasses-builder', iconName: 'SlidersHorizontal', area: 'glass_builder' },
   { name: 'Messages', href: '/admin/messages', iconName: 'MessageSquare', area: 'messaging' },
   { name: 'CMS', href: '/admin/cms', iconName: 'Globe', area: 'cms' },
+  { name: 'Extend Life Africa', href: '/admin/extend-life-africa', iconName: 'HandHeart', area: 'donations' },
   { name: 'Settings', href: '/profile', iconName: 'Settings' },
 ];
 
@@ -205,6 +206,7 @@ const ADMIN_PATH_AREAS: Record<string, string> = {
   'glasses-builder': 'glass_builder',
   messages: 'messaging',
   cms: 'cms',
+  'extend-life-africa': 'donations',
 };
 
 export function areaForAdminPath(pathname: string): string | null {

@@ -28,7 +28,8 @@ docker-compose.prod.yml  app services: web, celery worker, celery beat, frontend
 
 Backend apps: `core` (user model), `authentication`, `users`, `appointments`,
 `payments`, `ecommerce`, `telehealth`, `medical_records`, `messaging`,
-`notifications`, `cms`, `dashboard`, `storage`, `common`.
+`notifications`, `cms`, `dashboard`, `storage`, `donations` (Extend Life Africa
+gifts and volunteers), `common`.
 
 ## Running locally
 
