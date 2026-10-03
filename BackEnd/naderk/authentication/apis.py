@@ -2,6 +2,7 @@ from rest_framework.views import APIView
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.throttling import ScopedRateThrottle
 
 from naderk.common.responses.builders import build_success_response
 from naderk.common.exceptions.auth import ValidationFailedException, AuthenticationRequiredException
@@ -19,6 +20,9 @@ class RegisterAPI(APIView):
     """
     POST /auth/register/
     """
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth_register'
+
     def post(self, request):
         serializer = RegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -59,6 +63,9 @@ class LoginAPI(APIView):
     """
     POST /auth/login/
     """
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth_login'
+
     def post(self, request):
         email = request.data.get('email')
         password = request.data.get('password')

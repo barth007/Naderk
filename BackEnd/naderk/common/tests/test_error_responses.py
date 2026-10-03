@@ -93,3 +93,27 @@ def test_error_envelope_accepts_a_slug_or_a_full_url(settings):
     assert build_error_response('conflict', 'C', 409, 'd').data['type'] == 'https://api.naderk.test/problems/conflict'
     assert build_error_response('https://x.test/y', 'C', 409, 'd').data['type'] == 'https://x.test/y'
     assert 'errors' not in build_error_response('conflict', 'C', 409, 'd').data
+
+
+def test_an_exhausted_connection_pool_is_a_retryable_503():
+    from django.db import OperationalError
+    from psycopg_pool import PoolTimeout
+
+    # Django re-raises the pool's error wrapped in its own OperationalError.
+    try:
+        try:
+            raise PoolTimeout("couldn't get a connection after 10.00 sec")
+        except PoolTimeout as cause:
+            raise OperationalError(str(cause)) from cause
+    except OperationalError as exc:
+        res = handle(exc)
+
+    assert res.status_code == 503
+    assert res['Retry-After'] == '5'
+    assert res.data['title'] == 'Service Unavailable'
+
+
+def test_other_database_errors_stay_500():
+    from django.db import OperationalError
+
+    assert handle(OperationalError('server closed the connection')).status_code == 500

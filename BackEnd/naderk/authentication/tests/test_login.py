@@ -2,7 +2,7 @@
 import pytest
 
 from naderk.authentication.models import LoginAttempt
-from naderk.authentication.tests.helpers import ME, REFRESH, login
+from naderk.authentication.tests.helpers import LOGIN, ME, REFRESH, login
 from naderk.core.models import User
 from naderk.users.models import RolePermissionConfig
 from tests.helpers import PASSWORD, client_for, make_user
@@ -134,3 +134,29 @@ def test_me_reflects_an_admins_change_to_a_roles_areas():
     RolePermissionConfig.objects.create(role='AGENT', permissions=['messaging', 'not-a-real-area'])
 
     assert client_for(agent).get(ME).json()['data']['areas'] == ['messaging']
+
+
+def test_sign_ins_are_rate_limited_even_when_the_forwarded_for_header_changes(
+    api_client, verified_patient, monkeypatch,
+):
+    from django.core.cache import cache
+    from rest_framework.throttling import ScopedRateThrottle
+
+    cache.clear()
+    monkeypatch.setattr(ScopedRateThrottle, 'THROTTLE_RATES', {'auth_login': '2/minute'})
+    try:
+        # nginx appends the real client address, so only the last entry counts;
+        # whatever the client puts before it must not reset the count.
+        codes = [
+            api_client.post(
+                LOGIN,
+                {'email': 'ada@naderk.test', 'password': PASSWORD},
+                format='json',
+                HTTP_X_FORWARDED_FOR=f'10.0.0.{n}, 203.0.113.7',
+            ).status_code
+            for n in range(3)
+        ]
+    finally:
+        cache.clear()
+
+    assert codes == [200, 200, 429]

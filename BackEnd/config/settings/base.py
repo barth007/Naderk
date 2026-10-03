@@ -87,6 +87,25 @@ DATABASES = {
     'default': env.db('DATABASE_URL')
 }
 
+# Connection pool, per process. Without one, every in-flight request opens its
+# own Postgres connection; a 5,000-user load test pushed past Postgres's
+# default max_connections (100) and every further request failed with "too many
+# clients already". With a pool, requests queue for a connection instead.
+#
+# Only the web process sets DB_POOL_MAX_SIZE (entrypoint.sh). Celery
+# forks its workers, and a pool opened before the fork would be shared between
+# them. Keep (web workers x max_size) + Celery well under max_connections.
+DB_POOL_MAX_SIZE = env.int('DB_POOL_MAX_SIZE', default=0)
+if DB_POOL_MAX_SIZE:
+    DATABASES['default']['OPTIONS'] = {
+        'pool': {
+            'min_size': 2,
+            'max_size': DB_POOL_MAX_SIZE,
+            # Fail before nginx's 60s proxy timeout turns it into a 504.
+            'timeout': 10,
+        },
+    }
+
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -173,11 +192,21 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'naderk.common.handlers.exception_handler.custom_exception_handler',
     # Only the public Extend Life Africa forms opt in (ScopedRateThrottle on the
     # view); they take no login, so they are the easy target for abuse.
+    # Sign-up and sign-in opt in too: each one runs a deliberately slow password
+    # hash, so a flood of them starves every other request. The throttle is
+    # checked before the view runs, so a refused request costs no hash. Load
+    # tests from one machine raise these through the environment.
     'DEFAULT_THROTTLE_RATES': {
         'donations': '30/hour',
         'donation_verify': '240/hour',
         'volunteers': '10/hour',
+        'auth_register': env('AUTH_REGISTER_THROTTLE_RATE', default='60/hour'),
+        'auth_login': env('AUTH_LOGIN_THROTTLE_RATE', default='30/minute'),
     },
+    # nginx is the one proxy in front of Django and appends the client address
+    # to X-Forwarded-For. Without this DRF keys throttles on the whole header,
+    # which a client can change on every request to dodge the limit.
+    'NUM_PROXIES': 1,
 }
 
 # Simple JWT Settings
@@ -237,13 +266,26 @@ ASGI_APPLICATION = 'config.asgi.application'
 # the actual environment (localhost in dev, real domain in production).
 API_BASE_URL = env('API_BASE_URL', default='http://localhost:8000')
 
+# Falls back to CELERY_BROKER_URL (already points at the redis service in every
+# environment) so the cache and channel layer aren't stuck on localhost.
+REDIS_URL = env('REDIS_URL', default=env('CELERY_BROKER_URL', default='redis://localhost:6379/0'))
+
+# Shared across web workers. The default in-process cache gives each worker its
+# own copy, so throttle counts would be split between workers and the
+# messaging "who is online" flags would only be visible to one of them.
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': REDIS_URL,
+        'KEY_PREFIX': 'naderk',
+    },
+}
+
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            # Fall back to CELERY_BROKER_URL (already points at the redis service in
-            # every environment) so the channel layer isn't stuck on localhost.
-            "hosts": [env('REDIS_URL', default=env('CELERY_BROKER_URL', default='redis://localhost:6379/0'))],
+            "hosts": [REDIS_URL],
         },
     },
 }

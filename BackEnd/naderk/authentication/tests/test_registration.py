@@ -193,3 +193,18 @@ def test_resend_does_not_reveal_whether_the_email_exists(api_client):
     unknown = api_client.post(RESEND_OTP, {'email': 'nobody@naderk.test'}, format='json')
 
     assert (known.status_code, known.json()) == (unknown.status_code, unknown.json())
+
+
+def test_sign_ups_are_rate_limited_per_client(api_client, monkeypatch):
+    from django.core.cache import cache
+    from rest_framework.throttling import ScopedRateThrottle
+
+    cache.clear()
+    monkeypatch.setattr(ScopedRateThrottle, 'THROTTLE_RATES', {'auth_register': '2/hour'})
+    try:
+        codes = [register(api_client, email=f'p{n}@naderk.test').status_code for n in range(3)]
+    finally:
+        cache.clear()
+
+    assert codes == [201, 201, 429]
+    assert User.objects.count() == 2
