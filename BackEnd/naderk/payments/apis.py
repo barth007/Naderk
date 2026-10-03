@@ -491,7 +491,7 @@ class AdminTransactionListApi(APIView):
 
         qs = (
             PaymentTransaction.objects
-            .select_related('user', 'appointment__service', 'order')
+            .select_related('user', 'appointment__service', 'order', 'donation')
             .order_by('-created_at')
         )
 
@@ -504,6 +504,8 @@ class AdminTransactionListApi(APIView):
             qs = qs.filter(appointment__isnull=False)
         elif txn_type == 'order':
             qs = qs.filter(order__isnull=False)
+        elif txn_type == 'donation':
+            qs = qs.filter(donation__isnull=False)
 
         if status:
             qs = qs.filter(status=status.upper())
@@ -531,19 +533,29 @@ class AdminTransactionListApi(APIView):
             elif txn.order:
                 type_label   = 'ORDER'
                 service_desc = f"Marketplace Order #{str(txn.order.id)[:8].upper()}"
+            elif txn.donation:
+                type_label   = 'DONATION'
+                service_desc = f"Extend Life Africa — {txn.donation.get_purpose_display()}"
             else:
                 type_label   = 'OTHER'
                 service_desc = '—'
 
             patient = txn.user
+            if patient is not None:
+                payer_name, payer_email = patient.get_full_name() or patient.email, patient.email
+            elif txn.donation:
+                # A gift from someone without an account.
+                payer_name, payer_email = txn.donation.donor_name, txn.donation.donor_email
+            else:
+                payer_name, payer_email = '—', ''
             results.append({
                 'id':                  str(txn.id),
                 'reference':           txn.reference,
-                'patient_name':        patient.get_full_name() or patient.email,
-                'patient_email':       patient.email,
+                'patient_name':        payer_name,
+                'patient_email':       payer_email,
                 'type':                type_label,
                 'service_description': service_desc,
-                'insurance':           getattr(patient, 'insurance_provider', None) or '—',
+                'insurance':           (getattr(patient, 'insurance_provider', None) if patient else None) or '—',
                 'amount_kobo':         txn.amount_kobo,
                 'currency':            txn.currency,
                 'status':              txn.status,
@@ -667,8 +679,13 @@ class AdminGatewayDetailApi(APIView):
 
 
 class GatewayListApi(APIView):
-    """GET active gateways with client-safe config only (for checkout)."""
-    permission_classes = [IsAuthenticated]
+    """
+    GET active gateways with client-safe config only (for checkout).
+
+    Public: the Extend Life Africa page takes gifts from people without an
+    account, and nothing here is secret (public keys only).
+    """
+    permission_classes = [AllowAny]
 
     def get(self, request):
         gateways = PaymentGateway.objects.filter(is_active=True)

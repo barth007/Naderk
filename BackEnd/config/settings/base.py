@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'naderk.medical_records',
     'naderk.messaging',
     'naderk.storage',
+    'naderk.donations',
 ]
 
 MIDDLEWARE = [
@@ -170,6 +171,13 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'EXCEPTION_HANDLER': 'naderk.common.handlers.exception_handler.custom_exception_handler',
+    # Only the public Extend Life Africa forms opt in (ScopedRateThrottle on the
+    # view); they take no login, so they are the easy target for abuse.
+    'DEFAULT_THROTTLE_RATES': {
+        'donations': '30/hour',
+        'donation_verify': '240/hour',
+        'volunteers': '10/hour',
+    },
 }
 
 # Simple JWT Settings

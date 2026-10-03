@@ -22,7 +22,7 @@ class FakeProvider:
     def __init__(self):
         self.charged = None
 
-    def initialize(self, *, amount_kobo, email, reference, metadata):
+    def initialize(self, *, amount_kobo, email, reference, metadata, currency="NGN"):
         self.charged = amount_kobo
         return PaymentInitResult(reference=reference, access_code='AC', provider='PAYSTACK',
                                  public_config={'public_key': 'pk_test'})

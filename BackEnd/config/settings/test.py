@@ -10,6 +10,12 @@ CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 CHANNEL_LAYERS = {'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}
 
+# Throttles count across tests in one process; the throttle tests set their own rates.
+REST_FRAMEWORK = {
+    **REST_FRAMEWORK,  # noqa: F405
+    'DEFAULT_THROTTLE_RATES': {scope: '100000/hour' for scope in REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']},  # noqa: F405
+}
+
 # Never talk to a real provider, whatever a developer's .env holds.
 DISABLE_OTP_VERIFICATION = False
 PAYSTACK_SECRET_KEY = 'sk_test_dummy'

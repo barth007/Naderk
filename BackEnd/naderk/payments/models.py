@@ -20,7 +20,9 @@ class PaymentTransaction(models.Model):
         ABANDONED = 'ABANDONED', 'Abandoned'
 
     id              = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user            = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='payment_transactions')
+    # Null for an Extend Life Africa gift from someone without an account.
+    user            = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+                                        related_name='payment_transactions')
     provider        = models.CharField(max_length=20, choices=Provider.choices)
     reference       = models.CharField(max_length=255, unique=True, db_index=True)
     # Provider-generated reference (e.g. Monnify transactionReference "MNFY|..."),
@@ -36,6 +38,10 @@ class PaymentTransaction(models.Model):
     )
     appointment  = models.ForeignKey(
         'appointments.Appointment', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='payment_transactions'
+    )
+    donation     = models.ForeignKey(
+        'donations.Donation', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='payment_transactions'
     )
     raw_response = models.JSONField(default=dict)

@@ -4,6 +4,14 @@ from rest_framework.test import APIClient
 from naderk.core.models import User
 from tests.helpers import client_for, make_user
 
+# Import every view module now, before any test runs. Views bind names like
+# `get_provider` at import time, and Django imports them on the first request;
+# if that request came from a test that had patched one of those names, the
+# patch stayed in the view for the rest of the run.
+from django.urls import get_resolver  # noqa: E402
+
+get_resolver().url_patterns
+
 
 @pytest.fixture
 def api_client():

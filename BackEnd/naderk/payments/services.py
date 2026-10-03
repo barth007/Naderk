@@ -49,6 +49,8 @@ def initialize_payment(
     email: str,
     order=None,
     appointment=None,
+    donation=None,
+    currency: str = 'NGN',
     provider_name: str = 'PAYSTACK',
     idempotency_key: str | None = None,
 ) -> PaymentInitResult:
@@ -58,10 +60,12 @@ def initialize_payment(
         amount_kobo=amount_kobo,
         email=email,
         reference=reference,
+        currency=currency,
         metadata={
-            'user_id': str(user.id),
+            'user_id': str(user.id) if user else None,
             'order_id': str(order.id) if order else None,
             'appointment_id': str(appointment.id) if appointment else None,
+            'donation_id': str(donation.id) if donation else None,
         },
     )
     PaymentTransaction.objects.create(
@@ -69,8 +73,10 @@ def initialize_payment(
         provider=provider_name.upper(),
         reference=reference,
         amount_kobo=amount_kobo,
+        currency=currency,
         order=order,
         appointment=appointment,
+        donation=donation,
         status=PaymentTransaction.Status.INITIATED,
         idempotency_key=idempotency_key or None,
         raw_response={'access_code': result.access_code},
@@ -222,8 +228,11 @@ def fulfill_payment_transaction(txn: PaymentTransaction) -> None:
             order_process_payment(
                 order=txn.order, actor=txn.user, payment_reference=txn.reference,
             )
+    elif txn.donation_id:
+        from naderk.donations.services import confirm_donation_payment
+        confirm_donation_payment(donation=txn.donation, reference=txn.reference)
     else:
-        logger.warning("fulfill_payment: txn %s has no linked order or appointment", txn.reference)
+        logger.warning("fulfill_payment: txn %s has no linked order, appointment or donation", txn.reference)
 
 
 def confirm_and_fulfill(*, reference: str, provider_name: str | None = None) -> PaymentVerifyResult | None:
@@ -236,7 +245,7 @@ def confirm_and_fulfill(*, reference: str, provider_name: str | None = None) -> 
     """
     txn = (
         PaymentTransaction.objects
-        .select_related('order', 'appointment', 'user')
+        .select_related('order', 'appointment', 'donation', 'user')
         .filter(reference=reference)
         .first()
     )

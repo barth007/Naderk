@@ -9,6 +9,9 @@ if [ "$1" = "" ] || [ "$1" = "daphne" ]; then
     echo "==> Seeding CMS content (skips if already seeded)..."
     python manage.py seed_cms
 
+    echo "==> Seeding editable page copy (never overwrites edits)..."
+    python manage.py seed_page_content
+
     echo "==> Collecting static files..."
     python manage.py collectstatic --no-input --clear
 

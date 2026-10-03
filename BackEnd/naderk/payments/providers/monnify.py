@@ -69,7 +69,10 @@ class MonnifyProvider(PaymentProvider):
             "isTestMode": self.mode == 'TEST',
         }
 
-    def initialize(self, *, amount_kobo: int, email: str, reference: str, metadata: dict) -> PaymentInitResult:
+    def initialize(self, *, amount_kobo: int, email: str, reference: str, metadata: dict,
+                   currency: str = 'NGN') -> PaymentInitResult:
+        if currency != 'NGN':
+            raise ValueError("Monnify only takes payments in Naira (NGN). Choose another payment method.")
         # Inline-SDK flow: the client SDK creates the transaction using `reference`
         # as the Monnify paymentReference. No server call needed here; the endpoint
         # returns public_config for the SDK, and we verify by paymentReference.

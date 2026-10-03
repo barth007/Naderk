@@ -25,11 +25,12 @@ AREA_MESSAGING = 'messaging'
 AREA_BILLING = 'billing'
 AREA_SETTINGS = 'settings'
 AREA_STAFF = 'staff'
+AREA_DONATIONS = 'donations'
 
 ALL_AREAS = frozenset({
     AREA_DASHBOARD, AREA_INVENTORY, AREA_ORDERS, AREA_CMS, AREA_FRAMES,
     AREA_SERVICES, AREA_GLASS_BUILDER, AREA_PATIENT_RECORDS, AREA_APPOINTMENTS,
-    AREA_MESSAGING, AREA_BILLING, AREA_SETTINGS, AREA_STAFF,
+    AREA_MESSAGING, AREA_BILLING, AREA_SETTINGS, AREA_STAFF, AREA_DONATIONS,
 })
 
 # ── Role -> areas ────────────────────────────────────────────────────────────
@@ -70,6 +71,7 @@ AREA_CATALOG = [
     {'key': AREA_SERVICES,        'label': 'Services',         'category': 'Store'},
     {'key': AREA_GLASS_BUILDER,   'label': 'Glasses Builder',  'category': 'Store'},
     {'key': AREA_CMS,             'label': 'CMS Content',      'category': 'Content'},
+    {'key': AREA_DONATIONS,       'label': 'Donations & Volunteers', 'category': 'Extend Life Africa'},
     {'key': AREA_BILLING,         'label': 'Billing',          'category': 'Administration'},
     {'key': AREA_STAFF,           'label': 'Staff Management', 'category': 'Administration'},
     {'key': AREA_SETTINGS,        'label': 'System Settings',  'category': 'Administration'},

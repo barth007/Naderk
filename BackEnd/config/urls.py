@@ -71,6 +71,7 @@ urlpatterns = [
     path('api/v1/medical-records/', include('naderk.medical_records.urls')),
     path('api/v1/payments/', include('naderk.payments.urls')),
     path('api/v1/storage/',   include('naderk.storage.urls')),
+    path('api/v1/donations/', include('naderk.donations.urls')),
     path('api/v1/webhooks/email/', include('naderk.common.email.urls')),
 ]
 

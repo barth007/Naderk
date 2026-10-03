@@ -33,6 +33,7 @@ class PaymentProvider(ABC):
         email: str,
         reference: str,
         metadata: dict,
+        currency: str = 'NGN',
     ) -> PaymentInitResult: ...
 
     @abstractmethod
