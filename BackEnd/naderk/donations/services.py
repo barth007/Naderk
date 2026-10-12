@@ -20,7 +20,7 @@ AMOUNT_LIMITS = {
 
 #: What a test and an intervention cost, used when the CMS has not set them.
 DEFAULT_PRICES = {
-    'NGN': {'test': Decimal('9999'), 'intervention': Decimal('20000')},
+    'NGN': {'test': Decimal('9999'), 'intervention': Decimal('30000')},
     'GBP': {'test': Decimal('5'), 'intervention': Decimal('10')},
     'USD': {'test': Decimal('6.50'), 'intervention': Decimal('13')},
 }

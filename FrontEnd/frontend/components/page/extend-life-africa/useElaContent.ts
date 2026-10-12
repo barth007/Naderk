@@ -23,7 +23,7 @@ const num = (v: unknown, fallback: number) => {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
-/** "9999, 20000, …" → six positive numbers, or the defaults if that is not what was typed. */
+/** "30000, 90000, …" → three to six positive numbers, or the defaults if that is not what was typed. */
 const amounts = (v: unknown, fallback: number[]) => {
   if (typeof v !== 'string') return fallback;
   const parsed = v.split(',').map((x) => parseFloat(x.replace(/[^\d.]/g, ''))).filter((n) => Number.isFinite(n) && n > 0);

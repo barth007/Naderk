@@ -20,14 +20,15 @@ export const ELA_DEFAULTS = {
   giving: {
     cardTitle: 'Make a gift',
     prices: {
-      NGN: { test: 9999, intervention: 20000 },
+      NGN: { test: 9999, intervention: 30000 },
       GBP: { test: 5, intervention: 10 },
       USD: { test: 6.5, intervention: 13 },
     },
+    // 1, 3, 5, 10 and 15 interventions in each currency.
     amounts: {
-      NGN: [9999, 20000, 50000, 100000, 150000, 250000],
-      GBP: [5, 10, 25, 50, 100, 250],
-      USD: [6.5, 13, 30, 60, 120, 300],
+      NGN: [30000, 90000, 150000, 300000, 450000],
+      GBP: [10, 30, 50, 100, 150],
+      USD: [13, 39, 65, 130, 195],
     },
   },
   waysToGive: {

@@ -66,7 +66,7 @@ export function DonationCard({ content }: { content: ElaContent }) {
 
   const [currency, setCurrency] = useState<DonationCurrency>('NGN');
   const [frequency, setFrequency] = useState<DonationFrequency>('ONE_TIME');
-  const [pick, setPick] = useState<number | 'custom'>(1);
+  const [pick, setPick] = useState<number | 'custom'>(0);
   const [custom, setCustom] = useState('');
   // null until the donor types: until then a signed-in donor's own details show.
   const [nameInput, setName] = useState<string | null>(null);

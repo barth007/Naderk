@@ -91,13 +91,12 @@ function Hero({ content }: { content: ElaContent }) {
   );
 }
 
-function PriceChips({ content, kind, dark = false }: { content: ElaContent; kind: 'test' | 'intervention'; dark?: boolean }) {
+function PriceChips({ content, kind }: { content: ElaContent; kind: 'test' | 'intervention' }) {
   const p = content.giving.prices;
   return (
     <div className="mt-auto flex flex-wrap gap-2">
       {(['NGN', 'GBP', 'USD'] as const).map((code) => (
-        <span key={code}
-          className={dark ? 'rounded-full bg-white/[0.12] px-3 py-2 text-sm font-bold' : 'rounded-full bg-[#FFF7F5] px-3 py-2 text-sm font-bold text-[#1A1A2E]'}>
+        <span key={code} className="rounded-full bg-[#FFF7F5] px-3 py-2 text-sm font-bold text-[#1A1A2E]">
           {formatMoney(p[code][kind], code)}
         </span>
       ))}
@@ -130,17 +129,17 @@ function WaysToGive({ content }: { content: ElaContent }) {
           </a>
         </article>
 
-        <article className={`${card} relative overflow-hidden bg-[#1A1A2E] text-white`}>
-          <span className="absolute right-5 top-5 rounded-full bg-white px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[#1A1A2E]">
+        <article className={`${card} relative overflow-hidden border border-[#F1E4E4] bg-white`}>
+          <span className="absolute right-5 top-5 rounded-full bg-[#FFF1F1] px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[#B42318]">
             Most impact
           </span>
-          <span className="flex h-[52px] w-[52px] items-center justify-center rounded-[14px] bg-white/10">
-            <Activity className="h-[26px] w-[26px] text-[#FFB4B4]" aria-hidden />
+          <span className="flex h-[52px] w-[52px] items-center justify-center rounded-[14px] bg-[#FFF1F1]">
+            <Activity className="h-[26px] w-[26px] text-[var(--destructive)]" aria-hidden />
           </span>
           <h3 className="text-xl font-bold">{w.interventionTitle}</h3>
-          <p className="text-[15px] leading-relaxed text-[#D9D9E3]">{w.interventionDescription}</p>
-          <PriceChips content={content} kind="intervention" dark />
-          <a href="#give" className="inline-flex min-h-11 items-center gap-1.5 text-[15px] font-semibold text-[#FFB4B4] hover:text-white">
+          <p className="text-[15px] leading-relaxed text-[#4A4A5A]">{w.interventionDescription}</p>
+          <PriceChips content={content} kind="intervention" />
+          <a href="#give" className="inline-flex min-h-11 items-center gap-1.5 text-[15px] font-semibold text-[#B42318] hover:text-[#7A1A10]">
             {w.interventionTitle} <ArrowRight className="h-4 w-4" aria-hidden />
           </a>
         </article>
@@ -248,36 +247,36 @@ function Volunteer({ content, onVolunteer }: { content: ElaContent; onVolunteer:
   const v = content.volunteer;
   return (
     <section id="volunteer" aria-labelledby="vol-heading" className={`${CONTAINER} scroll-mt-24 pt-20 sm:pt-[88px] pb-10`}>
-      <div className="flex flex-wrap items-center gap-10 rounded-[28px] bg-[#1A1A2E] p-7 text-white sm:p-14">
+      <div className="flex flex-wrap items-center gap-10 rounded-[28px] border border-[#F1E4E4] bg-[#FFF7F5] p-7 text-[#1A1A2E] sm:p-14">
         <div className="flex min-w-0 flex-[1_1_420px] flex-col gap-[18px]">
-          <p className="text-[13px] font-bold uppercase tracking-[0.12em] text-[#FFB4B4]">{v.label}</p>
-          <h2 id="vol-heading" className="text-[28px] sm:text-[34px] lg:text-[40px] leading-[1.15] font-extrabold tracking-[-0.02em]">{v.title}</h2>
-          <p className="max-w-[560px] text-base leading-[1.7] text-[#D9D9E3]">{v.description}</p>
+          <p className={EYEBROW}>{v.label}</p>
+          <h2 id="vol-heading" className={H2}>{v.title}</h2>
+          <p className="max-w-[560px] text-base leading-[1.7] text-[#4A4A5A]">{v.description}</p>
           <div className="flex flex-wrap gap-2.5" role="group" aria-label="Volunteer as">
             {VOLUNTEER_ROLES.map((r) => (
               <button key={r.value} type="button" onClick={() => onVolunteer(r.value)}
-                className="min-h-11 rounded-full border border-white/25 px-4 text-sm font-semibold hover:bg-white/10">
+                className="min-h-11 rounded-full border border-[#E7D7D7] bg-white px-4 text-sm font-semibold hover:bg-[#FFF1F1]">
                 {r.label}
               </button>
             ))}
           </div>
           <button type="button" onClick={() => onVolunteer(null)}
-            className="mt-1.5 self-start inline-flex min-h-[52px] items-center rounded-xl bg-white px-6 text-base font-bold text-[#1A1A2E] hover:bg-[#FFF1F1]">
+            className="mt-1.5 self-start inline-flex min-h-[52px] items-center rounded-xl bg-[var(--destructive)] px-6 text-base font-bold text-white hover:brightness-95">
             {v.ctaLabel}
           </button>
         </div>
         <div className="grid min-w-0 flex-[1_1_340px] grid-cols-2 gap-3.5">
-          <div className="col-span-2 flex flex-col gap-1.5 rounded-[20px] bg-white/[0.06] p-[22px]">
-            <p className="text-[13px] text-[#BDBDCB]">Your commitment</p>
+          <div className="col-span-2 flex flex-col gap-1.5 rounded-[20px] border border-[#F1E4E4] bg-white p-[22px]">
+            <p className="text-[13px] text-[#4A4A5A]">Your commitment</p>
             <p className="text-[34px] font-extrabold">{v.commitment}</p>
           </div>
           {[{ bars: 4, label: '4 × 15 min', hint: 'short consultations' }, { bars: 3, label: '3 × 20 min', hint: 'longer consultations' }].map((f) => (
-            <div key={f.label} className="flex flex-col gap-2.5 rounded-[20px] bg-white/[0.06] p-[22px]">
+            <div key={f.label} className="flex flex-col gap-2.5 rounded-[20px] border border-[#F1E4E4] bg-white p-[22px]">
               <div className="flex gap-1.5" aria-hidden>
-                {Array.from({ length: f.bars }).map((_, i) => <span key={i} className="h-2 flex-1 rounded bg-[#FFB4B4]" />)}
+                {Array.from({ length: f.bars }).map((_, i) => <span key={i} className="h-2 flex-1 rounded bg-[var(--destructive)]/70" />)}
               </div>
               <p className="text-[22px] font-bold">{f.label}</p>
-              <p className="text-[13px] text-[#BDBDCB]">{f.hint}</p>
+              <p className="text-[13px] text-[#4A4A5A]">{f.hint}</p>
             </div>
           ))}
         </div>

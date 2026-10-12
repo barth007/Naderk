@@ -91,7 +91,7 @@ def test_pounds_and_dollars_are_charged_in_their_own_currency(api_client, provid
 
 
 @pytest.mark.parametrize('amount, purpose', [
-    ('20000', 'INTERVENTION'), ('45000', 'INTERVENTION'), ('9999', 'TEST'), ('15000', 'TEST'), ('500', 'GENERAL'),
+    ('30000', 'INTERVENTION'), ('45000', 'INTERVENTION'), ('9999', 'TEST'), ('20000', 'TEST'), ('500', 'GENERAL'),
 ])
 def test_the_gift_is_labelled_by_what_it_pays_for(api_client, provider, amount, purpose):
     give(api_client, amount=amount)
@@ -104,7 +104,7 @@ def test_prices_follow_the_cms(api_client, provider):
                                content={'test_price_ngn': '15,000', 'intervention_price_ngn': 'not a number'})
 
     give(api_client, amount='12000')                 # below the new test price
-    give(api_client, amount='20000')                 # the unreadable price falls back to ₦20,000
+    give(api_client, amount='30000')                 # the unreadable price falls back to ₦30,000
 
     assert list(Donation.objects.order_by('created_at').values_list('purpose', flat=True)) == ['GENERAL', 'INTERVENTION']
 
