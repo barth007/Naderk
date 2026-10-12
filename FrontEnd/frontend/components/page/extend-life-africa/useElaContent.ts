@@ -12,6 +12,15 @@ import { ELA_DEFAULTS as D } from './ela.constants';
 
 type Section = Record<string, unknown>;
 
+export type Trustee = {
+  name: string;
+  role?: string;
+  image?: string;
+  bio?: string;
+  website?: string;
+  socials?: { label?: string; url?: string }[];
+};
+
 const str = (v: unknown, fallback: string) => (typeof v === 'string' && v.trim() ? v : fallback);
 
 function list<T>(v: unknown, fallback: readonly T[]): readonly T[] {
@@ -117,7 +126,7 @@ export function useElaContent() {
     },
     trustees: {
       title: str(trustees.title, D.trustees.title),
-      members: list(trustees.members, D.trustees.members) as readonly { name: string; role?: string; image?: string }[],
+      members: list(trustees.members, D.trustees.members) as readonly Trustee[],
     },
     contact: {
       title: str(contact.title, D.contact.title),

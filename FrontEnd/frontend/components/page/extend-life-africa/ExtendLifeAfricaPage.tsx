@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { DonationCard, formatMoney } from './DonationCard';
 import { VolunteerFormModal, VOLUNTEER_ROLES } from './VolunteerFormModal';
-import { useElaContent, type ElaContent } from './useElaContent';
+import { ProfileModal, initials } from '@/components/shared/ProfileModal';
+import { useElaContent, type ElaContent, type Trustee } from './useElaContent';
 import type { VolunteerRole } from '@/services/donations/donations.hooks';
 
 const CONTAINER = 'mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8';
@@ -319,31 +320,38 @@ function Resources({ content }: { content: ElaContent }) {
   );
 }
 
-const initials = (name: string) =>
-  name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('');
-
 function TrusteesAndContact({ content }: { content: ElaContent }) {
   const { trustees, contact } = content;
+  const [open, setOpen] = useState<Trustee | null>(null);
+  const close = useCallback(() => setOpen(null), []);
   const tel = (n: string) => `tel:${n.replace(/[^\d+]/g, '')}`;
   return (
     <section aria-label="Trustees and contact" className={`${CONTAINER} flex flex-wrap gap-6 pt-10 pb-20 sm:pb-[88px]`}>
       <div id="trustees" className="flex min-w-0 flex-[1.4_1_480px] flex-col gap-6 rounded-3xl border border-[#F1E4E4] p-6 sm:p-8">
         <h2 className="text-2xl font-extrabold">{trustees.title}</h2>
-        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {trustees.members.map((m, i) => (
-            <li key={`${m.name}-${i}`} className="flex items-center gap-3.5">
-              {m.image
-                // eslint-disable-next-line @next/next/no-img-element -- CMS URLs from any host
-                ? <img src={m.image} alt="" className="h-[52px] w-[52px] shrink-0 rounded-full object-cover" />
-                : <span className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-[#FFE3E3] font-bold text-[#9B1C1C]" aria-hidden>{initials(m.name)}</span>}
-              <div>
-                <p className="font-semibold">{m.name}</p>
-                {m.role && <p className="text-[13px] text-[#6B6B7B]">{m.role}</p>}
-              </div>
+            <li key={`${m.name}-${i}`}>
+              <button type="button" onClick={() => setOpen(m)} aria-haspopup="dialog"
+                className="group flex h-full w-full items-start gap-3.5 rounded-2xl p-3 text-left transition-colors hover:bg-[#FFF7F5] focus-visible:outline-2 focus-visible:outline-[var(--destructive)]">
+                {m.image
+                  // eslint-disable-next-line @next/next/no-img-element -- CMS URLs from any host
+                  ? <img src={m.image} alt="" className="h-[52px] w-[52px] shrink-0 rounded-full object-cover" />
+                  : <span className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-[#FFE3E3] font-bold text-[#9B1C1C]" aria-hidden>{initials(m.name)}</span>}
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="font-semibold">{m.name}</span>
+                  {m.role && <span className="text-[13px] text-[#6B6B7B]">{m.role}</span>}
+                  {m.bio?.trim() && <span className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-[#4A4A5A]">{m.bio.trim()}</span>}
+                  <span className="mt-1 inline-flex items-center gap-1 text-[13px] font-semibold text-[#B42318] group-hover:text-[#7A1A10]">
+                    View profile <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                  </span>
+                </span>
+              </button>
             </li>
           ))}
         </ul>
       </div>
+      {open && <ProfileModal profile={open} onClose={close} />}
       <div id="contact" className="flex min-w-0 flex-[1_1_320px] flex-col gap-[18px] rounded-3xl bg-[#FFF7F5] p-6 sm:p-8">
         <h2 className="text-2xl font-extrabold">{contact.title}</h2>
         {[

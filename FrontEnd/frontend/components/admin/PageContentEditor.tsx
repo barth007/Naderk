@@ -79,6 +79,9 @@ function FieldInput({
               <div key={sub.name}>
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
                   {sub.label}
+                  {sub.help && (
+                    <span className="ml-1.5 normal-case font-medium text-gray-300">{sub.help}</span>
+                  )}
                 </label>
                 <FieldInput
                   field={sub}

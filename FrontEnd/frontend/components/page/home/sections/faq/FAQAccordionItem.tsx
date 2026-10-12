@@ -1,47 +1,62 @@
 "use client";
 
-import { AnimatedIcon } from "@/components/ui/AnimatedIcon";
+import { useId } from "react";
+import { Plus } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { FAQType } from "./faq.types";
-import { useState } from "react";
 
 interface FAQAccordionItemProps {
   faq: FAQType;
-  defaultOpen?: boolean;
+  isOpen: boolean;
+  onToggle: () => void;
 }
 
-export function FAQAccordionItem({ faq, defaultOpen = false }: FAQAccordionItemProps) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+export function FAQAccordionItem({ faq, isOpen, onToggle }: FAQAccordionItemProps) {
+  const id = useId();
 
   return (
-    <div 
+    <div
       className={cn(
-        "collapse bg-transparent rounded-none border-b border-border/60",
-        isOpen ? "collapse-open" : "collapse-close"
+        "rounded-2xl border transition-colors",
+        isOpen ? "border-[#F5C9C9] bg-[#FFF7F5]" : "border-[#F1E4E4] bg-white hover:border-[#F5C9C9]",
       )}
     >
-      <div 
-        className="collapse-title flex cursor-pointer items-center justify-between px-0 py-6 text-lg font-medium transition-colors hover:text-primary"
-        onClick={() => setIsOpen(!isOpen)}
-        tabIndex={0}
-        role="button"
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setIsOpen(!isOpen);
-          }
-        }}
-        aria-expanded={isOpen}
+      <h3>
+        <button
+          type="button"
+          id={`${id}-q`}
+          aria-expanded={isOpen}
+          aria-controls={`${id}-a`}
+          onClick={onToggle}
+          className={cn(
+            "group flex w-full items-center justify-between gap-4 px-5 py-4 text-left text-base font-semibold transition-colors",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--destructive)] rounded-2xl",
+            isOpen ? "text-[#B42318]" : "text-foreground hover:text-[#B42318]",
+          )}
+        >
+          <span>{faq.question}</span>
+          <span
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all duration-300",
+              isOpen ? "rotate-45 bg-[var(--destructive)] text-white" : "bg-[#FFF1F1] text-[var(--destructive)] group-hover:bg-[#FFE3E3]",
+            )}
+            aria-hidden
+          >
+            <Plus className="h-4 w-4" />
+          </span>
+        </button>
+      </h3>
+      <div
+        id={`${id}-a`}
+        role="region"
+        aria-labelledby={`${id}-q`}
+        className={cn("grid transition-[grid-template-rows] duration-300", isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}
       >
-        <span className="pr-4">{faq.question}</span>
-        <div className="shrink-0 text-muted-foreground transition-all duration-300">
-          <AnimatedIcon name={isOpen ? "minus" : "plus"} size={24} />
+        <div className="overflow-hidden">
+          <p className="whitespace-pre-line px-5 pb-5 text-[15px] leading-relaxed text-muted-foreground">
+            {faq.answer}
+          </p>
         </div>
-      </div>
-      <div className="collapse-content px-0 pb-6">
-        <p className="text-base leading-relaxed text-muted-foreground">
-          {faq.answer}
-        </p>
       </div>
     </div>
   );
