@@ -12,7 +12,7 @@ export const LABORATORY_CONTENT: LaboratoryContent = {
   },
   overview: {
     title: "Our Full Range of Services",
-    description: "At Naderk Eye Centre, our commitment extends beyond treatment; we are building a healthier, sustainable future through preventive healthcare, advanced technology, and patient-centred excellence, and a deep sense of purpose.",
+    description: "At NaderkEla, our commitment extends beyond treatment; we are building a healthier, sustainable future through preventive healthcare, advanced technology, and patient-centred excellence, and a deep sense of purpose.",
     services: [
       {
         icon: "eye",

@@ -7,10 +7,10 @@ import type {
 } from "./about.types"
 
 export const ABOUT_HERO_CONTENT: AboutHeroContent = {
-  badge: "About NaderkEye Center",
+  badge: "About NaderkEla",
   title: "Our Identity & Commitment",
   description:
-    "Naderk Eye Centre is a purpose-driven multispecialty healthcare institution, dedicated to transforming the landscape of eye care, diagnostics, preventive healthcare, and telehealth across Africa.",
+    "NaderkEla is a purpose-driven multispecialty healthcare institution, dedicated to transforming the landscape of eye care, diagnostics, preventive healthcare, and telehealth across Africa.",
   image: "/images/image 13.png",
   imageAlt: "Microscope lenses in a modern eye care clinic",
 }
@@ -156,7 +156,7 @@ export const SOCIAL_ICONS = {
 export const PROMISE_MANDATE_CONTENT: PromiseMandateContent = {
   title: "The Promise Mandate",
   description:
-    "At Naderk Eye Centre, we are more than a healthcare provider; we are a beacon of hope, healing, and transformation. Guided by compassion and empowered by technology, we are dedicated to restoring sight, improving health, and enriching lives across Africa and beyond.",
+    "At NaderkEla, we are more than a healthcare provider; we are a beacon of hope, healing, and transformation. Guided by compassion and empowered by technology, we are dedicated to restoring sight, improving health, and enriching lives across Africa and beyond.",
   primaryCTA: {
     label: "Book Your Consultation",
     href: "/coming-soon",

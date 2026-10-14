@@ -495,7 +495,7 @@ export const useDraftBlog = () => {
 export const useBrand = () => {
   const { data: settings } = useSiteSettings();
   return {
-    name: settings?.company_name || 'NaderkEye Care',
+    name: settings?.company_name || 'NaderkEla',
     logoUrl: settings?.logo_url || null,
   };
 };

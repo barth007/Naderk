@@ -884,7 +884,7 @@ function SiteSettingsTab() {
 
       <Card className="p-5 border border-gray-100 rounded-md space-y-4">
         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Brand</p>
-        <Field label="Company Name"><Input value={form.company_name ?? ''} onChange={v => set('company_name', v)} placeholder="NaderkEye Care" /></Field>
+        <Field label="Company Name"><Input value={form.company_name ?? ''} onChange={v => set('company_name', v)} placeholder="NaderkEla" /></Field>
         <Field label="Logo URL">
           <ImageUploader
             value={form.logo_url ?? ''}

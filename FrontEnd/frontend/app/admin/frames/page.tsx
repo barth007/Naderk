@@ -111,7 +111,7 @@ function FrameModal({ initial, onClose, onSaved }: { initial?: Frame; onClose: (
             </div>
             <div>
               <label className={lbl}>Brand *</label>
-              <input value={form.brand} onChange={e => setF('brand', e.target.value)} className={input} placeholder="e.g. Naderk" />
+              <input value={form.brand} onChange={e => setF('brand', e.target.value)} className={input} placeholder="e.g. NaderkEla" />
               {errors.brand && <p className="text-xs text-red-500 mt-1">{errors.brand}</p>}
             </div>
           </div>

@@ -27,7 +27,7 @@ const DEFAULT_DESCRIPTION =
   'Comprehensive eye care, telehealth consultations, laboratory diagnostics, and optical services with modern technology and expert support.';
 
 const DEFAULT_BRAND: SiteBrand = {
-  name: 'Naderk Eye Clinic',
+  name: 'NaderkEla',
   description: DEFAULT_DESCRIPTION,
   logoUrl: null,
   faviconUrl: null,

@@ -60,7 +60,7 @@ export const TELEHEALTH_CONTENT: TelehealthContent = {
     ],
     privacy: {
       title: "Privacy & Security",
-      description: "Your privacy is our highest priority. All telehealth sessions at NaderkEye center are:",
+      description: "Your privacy is our highest priority. All telehealth sessions at NaderkEla are:",
       features: [
         "100% HIPAA Compliant",
         "End-to-End Encrypted Video",
