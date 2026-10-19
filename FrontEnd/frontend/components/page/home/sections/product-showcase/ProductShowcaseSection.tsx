@@ -30,8 +30,14 @@ type Item = {
 }
 
 const SHOP_HREF = "/dashboard/marketplace"
-/** Below this many distinct items one row is enough; two rows would just repeat. */
-const TWO_ROW_MIN = 8
+/** Three rows: alternating directions, each at its own pace so no two move together. */
+const ROWS = [
+  { direction: "right", pace: 1 },
+  { direction: "left", pace: 1.3 },
+  { direction: "right", pace: 0.8 },
+] as const
+/** With fewer distinct items than this, every row shows them all, each in its own order. */
+const SPLIT_MIN = 12
 /** Each row is repeated until it holds at least this many cards, so it always fills a wide screen. */
 const ROW_MIN = 8
 const SECONDS_PER_CARD = 6
@@ -145,10 +151,12 @@ function ShowcaseCard({
 }
 
 function MarqueeRow({
-  items, direction, onOpen,
+  items, direction, pace = 1, onOpen,
 }: {
   items: Item[]
   direction: "left" | "right"
+  /** Seconds-per-card multiplier: above 1 is slower. */
+  pace?: number
   onOpen: (e: MouseEvent<HTMLAnchorElement>, href: string) => void
 }) {
   // Pad the row so one copy is wider than the screen, then render it twice:
@@ -158,7 +166,7 @@ function MarqueeRow({
     while (out.length < ROW_MIN) out.push(...items)
     return out
   }, [items])
-  const style = { animationDuration: `${row.length * SECONDS_PER_CARD}s` } as CSSProperties
+  const style = { animationDuration: `${row.length * SECONDS_PER_CARD * pace}s` } as CSSProperties
 
   return (
     <div className="group/row relative overflow-hidden motion-reduce:overflow-x-auto [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]">
@@ -194,11 +202,15 @@ export function ProductShowcaseSection() {
 
   if (!isLoading && items.length === 0) return null
 
-  const twoRows = items.length >= TWO_ROW_MIN
-  const half = Math.ceil(items.length / 2)
-  const rows: { items: Item[]; direction: "left" | "right" }[] = twoRows
-    ? [{ items: items.slice(0, half), direction: "right" }, { items: items.slice(half), direction: "left" }]
-    : [{ items, direction: "right" }]
+  // Enough items: each row gets its own third. Too few: every row shows all of
+  // them, started at a different point so the rows do not line up.
+  const third = Math.ceil(items.length / ROWS.length)
+  const rows = ROWS.map((r, i) => ({
+    ...r,
+    items: items.length >= SPLIT_MIN
+      ? items.slice(i * third, (i + 1) * third)
+      : [...items.slice((i * third) % items.length), ...items.slice(0, (i * third) % items.length)],
+  }))
 
   return (
     <section aria-labelledby="showcase-heading" className="overflow-hidden bg-background py-16 sm:py-20">
@@ -233,7 +245,7 @@ export function ProductShowcaseSection() {
             ))}
           </div>
         ) : (
-          rows.map((r, i) => <MarqueeRow key={i} items={r.items} direction={r.direction} onOpen={open} />)
+          rows.map((r, i) => <MarqueeRow key={i} items={r.items} direction={r.direction} pace={r.pace} onOpen={open} />)
         )}
       </div>
     </section>
