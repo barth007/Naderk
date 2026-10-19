@@ -7,6 +7,7 @@ class PaymentProviderChoices(models.TextChoices):
     PAYSTACK    = 'PAYSTACK',    'Paystack'
     MONNIFY     = 'MONNIFY',     'Monnify'
     FLUTTERWAVE = 'FLUTTERWAVE', 'Flutterwave'
+    PAYPAL      = 'PAYPAL',      'PayPal'
 
 
 class PaymentTransaction(models.Model):
@@ -68,13 +69,15 @@ class PaymentGateway(models.Model):
     display_name  = models.CharField(max_length=100)
     is_active     = models.BooleanField(default=False)
     is_default    = models.BooleanField(default=False)
-    # Client-safe key exposed to the SDK: Paystack public key / Monnify API key.
+    # Client-safe key exposed to the SDK: Paystack public key / Monnify API key /
+    # PayPal client ID.
     client_key    = models.CharField(max_length=255, blank=True, default='')
     # Fernet ciphertext — access via get_secret_key()/set_secret_key().
     secret_key_encrypted = models.TextField(blank=True, default='')
     # Monnify contract code (first-class; other providers leave blank).
     contract_code = models.CharField(max_length=100, blank=True, default='')
-    # Optional provider-specific extras (e.g. webhook_secret, payment_methods).
+    # Optional provider-specific extras (e.g. webhook_secret, payment_methods;
+    # for PayPal, webhook_id and ngn_per_usd).
     config        = models.JSONField(default=dict, blank=True)
     created_at    = models.DateTimeField(auto_now_add=True)
     updated_at    = models.DateTimeField(auto_now=True)

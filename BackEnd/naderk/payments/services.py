@@ -10,6 +10,7 @@ from .models import PaymentTransaction
 from .providers.base import PaymentProvider, PaymentInitResult, PaymentVerifyResult
 from .providers.paystack import PaystackProvider
 from .providers.monnify import MonnifyProvider
+from .providers.paypal import PayPalProvider
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 PROVIDERS: dict[str, type[PaymentProvider]] = {
     'PAYSTACK': PaystackProvider,
     'MONNIFY': MonnifyProvider,
+    'PAYPAL': PayPalProvider,
 }
 
 
@@ -40,6 +42,38 @@ def provider_public_config(provider_name: str) -> dict:
         return get_provider(provider_name).public_config()
     except Exception:
         return {}
+
+
+def checkout_public_config(txn: PaymentTransaction) -> dict:
+    """
+    What the browser needs to reopen the payment for an existing transaction
+    (an idempotent retry). PayPal's buttons also need the PayPal order to show
+    and its currency, which only the transaction knows.
+    """
+    pub = provider_public_config(txn.provider)
+    if txn.provider == 'PAYPAL':
+        pub = {**pub, 'order_id': txn.provider_txn_ref, 'currency': txn.currency}
+    return pub
+
+
+def paypal_usd_minor(ngn_kobo: int) -> int:
+    """
+    A Naira amount in US cents, at the rate set in the PayPal gateway settings
+    (naira per dollar). Shop prices are in Naira only and PayPal cannot charge
+    Naira, so a PayPal order is charged its Naira total converted at that rate.
+    """
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    from .config import gateway_config, ProviderNotConfigured
+
+    try:
+        rate = Decimal(str((gateway_config('PAYPAL').get('config') or {}).get('ngn_per_usd') or 0))
+    except (ProviderNotConfigured, InvalidOperation):
+        rate = Decimal(0)
+    if rate <= 0:
+        raise ValueError("PayPal is not available for this order yet: no exchange rate "
+                         "(naira per US dollar) has been set for it. Choose another payment method.")
+    cents = (Decimal(ngn_kobo) / rate).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    return max(int(cents), 1)
 
 
 def initialize_payment(
@@ -72,6 +106,10 @@ def initialize_payment(
         user=user,
         provider=provider_name.upper(),
         reference=reference,
+        # The provider's own id for this payment when it differs from ours
+        # (PayPal's order id, which verify() needs to find the payment).
+        provider_txn_ref=(result.provider_reference
+                          if result.provider_reference and result.provider_reference != reference else ''),
         amount_kobo=amount_kobo,
         currency=currency,
         order=order,

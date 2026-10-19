@@ -153,7 +153,13 @@ export default function CheckoutPage() {
   const idempotencyKey    = useCheckoutIdempotencyKey();
   const initializePayment = useInitializePayment(idempotencyKey);
   const payCheckout       = usePaymentCheckout();
-  const { data: gateways = [] } = usePaymentGateways();
+  const { data: allGateways = [] } = usePaymentGateways();
+  // Prices are in Naira; PayPal charges dollars at the rate set for it in the
+  // admin, so it is only offered once that rate exists.
+  const gateways = useMemo(
+    () => allGateways.filter((g) => g.provider !== 'PAYPAL' || Number(g.public_config.ngn_per_usd) > 0),
+    [allGateways],
+  );
 
   const [profileLoading, setProfileLoading]     = useState(true);
   const [showAddressModal, setShowAddressModal]  = useState(false);
@@ -246,6 +252,12 @@ export default function CheckoutPage() {
 
   const items     = cart?.items ?? [];
   const total     = cart?.total_price ?? 0;
+  const paypalRate = gateway === 'PAYPAL'
+    ? Number(gateways.find((g) => g.provider === 'PAYPAL')?.public_config.ngn_per_usd) || 0
+    : 0;
+  // An estimate for display; the server converts the order's own total.
+  const usdTotal  = paypalRate ? Math.round((Number(total) / paypalRate) * 100) / 100 : null;
+  const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   const canPay    = !!street.trim() && !!city.trim() && !!country && paymentPhase === 'idle';
 
   const handlePay = async () => {
@@ -274,6 +286,7 @@ export default function CheckoutPage() {
       publicConfig: creds.public_config ?? { public_key: creds.public_key },
       // The server prices the order; a payment for any other amount is refused.
       amountKobo:   creds.amount_kobo,
+      currency:     creds.currency,
       email:        user?.email ?? '',
       reference:    creds.reference,
       customerName: [user?.first_name, user?.last_name].filter(Boolean).join(' '),
@@ -345,7 +358,7 @@ export default function CheckoutPage() {
   const gatewayName = gateways.find((g) => g.provider === gateway)?.display_name || '';
 
   const payLabel = {
-    idle:         `Pay ₦${Number(total).toLocaleString()}${gatewayName ? ` with ${gatewayName}` : ''}`,
+    idle:         `Pay ${usdTotal !== null ? usd(usdTotal) : `₦${Number(total).toLocaleString()}`}${gatewayName ? ` with ${gatewayName}` : ''}`,
     initializing: 'Preparing payment…',
     popup_open:   'Complete payment in popup…',
     waiting_webhook: 'Confirming…',
@@ -506,7 +519,9 @@ export default function CheckoutPage() {
                 <div>
                   <span className="font-bold block">Secure payment{gatewayName ? ` via ${gatewayName}` : ''}</span>
                   <span className="font-medium text-green-600">
-                    Pay with card, bank transfer, or USSD. Your order is confirmed only after payment is verified.
+                    {gateway === 'PAYPAL'
+                      ? `Pay with your PayPal account or a card, in US dollars at ₦${paypalRate.toLocaleString()} per $1. Your order is confirmed only after payment is verified.`
+                      : 'Pay with card, bank transfer, or USSD. Your order is confirmed only after payment is verified.'}
                   </span>
                 </div>
               </div>
@@ -533,6 +548,12 @@ export default function CheckoutPage() {
                 <span className="text-xs font-extrabold text-gray-900">Total</span>
                 <span className="text-xl font-black text-[#ff052f]">₦{Number(total).toLocaleString()}</span>
               </div>
+              {usdTotal !== null && (
+                <div className="-mt-2 flex justify-between items-center text-xs font-semibold text-gray-500">
+                  <span>Charged by PayPal</span>
+                  <span className="font-bold text-gray-900">≈ {usd(usdTotal)}</span>
+                </div>
+              )}
 
               {/* Readiness checklist */}
               <div className="space-y-1.5">

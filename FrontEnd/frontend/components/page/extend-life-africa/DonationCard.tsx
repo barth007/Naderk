@@ -88,9 +88,10 @@ export function DonationCard({ content }: { content: ElaContent }) {
   const name = nameInput ?? (user ? `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim() : '');
   const email = emailInput ?? user?.email ?? '';
 
-  // Monnify only takes Naira, so it is not offered for £ or $.
+  // Monnify only takes Naira, so it is not offered for £ or $; PayPal takes no
+  // Naira, so it is offered only for £ or $.
   const usableGateways = useMemo(
-    () => gateways.filter((g) => currency === 'NGN' || g.provider !== 'MONNIFY'),
+    () => gateways.filter((g) => (currency === 'NGN' ? g.provider !== 'PAYPAL' : g.provider !== 'MONNIFY')),
     [gateways, currency],
   );
   const gateway = usableGateways.some((g) => g.provider === chosenGateway)
@@ -190,6 +191,7 @@ export function DonationCard({ content }: { content: ElaContent }) {
       provider: data.provider,
       publicConfig: data.public_config ?? { public_key: data.public_key },
       amountKobo: data.amount_minor,
+      currency: data.currency,
       email: data.email,
       reference: data.reference,
       customerName: data.donor_name,
@@ -366,7 +368,7 @@ export function DonationCard({ content }: { content: ElaContent }) {
 
       {noGatewayForCurrency && (
         <p className="text-sm text-[#9B1C1C] bg-[#FFF1F1] rounded-xl px-4 py-3">
-          Gifts in {currency} are not available yet. Please give in Naira.
+          Gifts in {currency} are not available yet. {currency === 'NGN' ? 'Please give in pounds or dollars.' : 'Please give in Naira.'}
         </p>
       )}
       {error && (

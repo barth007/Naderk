@@ -12,6 +12,7 @@ import {
 const PROVIDERS = [
   { value: 'PAYSTACK', label: 'Paystack' },
   { value: 'MONNIFY', label: 'Monnify' },
+  { value: 'PAYPAL', label: 'PayPal' },
 ];
 const MODES = [
   { value: 'TEST', label: 'Test' },
@@ -19,7 +20,24 @@ const MODES = [
 ];
 
 const clientKeyLabel = (provider: string) =>
-  provider === 'MONNIFY' ? 'API Key' : 'Public Key';
+  provider === 'MONNIFY' ? 'API Key' : provider === 'PAYPAL' ? 'Client ID' : 'Public Key';
+
+const secretKeyLabel = (provider: string) => (provider === 'PAYPAL' ? 'Client Secret' : 'Secret Key');
+
+const PLACEHOLDERS: Record<string, { client: string; secret: string }> = {
+  PAYSTACK: { client: 'pk_test_...', secret: 'sk_test_...' },
+  MONNIFY: { client: 'MK_TEST_...', secret: 'Monnify secret key' },
+  PAYPAL: { client: 'PayPal REST app client ID', secret: 'PayPal REST app secret' },
+};
+
+/** Where PayPal should send webhooks: this API's /payments/webhook/paypal/. */
+const PAYPAL_WEBHOOK_URL =
+  `${(process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1').replace(/\/$/, '')}/payments/webhook/paypal/`;
+
+const rateOf = (config: Record<string, unknown> | undefined) => {
+  const n = Number(String(config?.ngn_per_usd ?? '').replace(/,/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
 
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
@@ -45,15 +63,24 @@ function GatewayModal({ gateway, onClose }: { gateway: PaymentGateway | null; on
     contract_code: gateway?.contract_code ?? '',
     is_active: gateway?.is_active ?? false,
     is_default: gateway?.is_default ?? false,
+    config: { ...(gateway?.config ?? {}) },
   });
   const set = (k: keyof GatewayPayload, v: unknown) => setForm((p) => ({ ...p, [k]: v }));
+  const setConfig = (k: string, v: string) => setForm((p) => ({ ...p, config: { ...(p.config ?? {}), [k]: v } }));
+  const cfg = (k: string) => String(form.config?.[k] ?? '');
 
   const isMonnify = form.provider === 'MONNIFY';
+  const isPayPal = form.provider === 'PAYPAL';
+  const placeholder = PLACEHOLDERS[form.provider ?? 'PAYSTACK'] ?? PLACEHOLDERS.PAYSTACK;
 
   const submit = async () => {
     if (!form.display_name?.trim()) { toast.error('Display name is required.'); return; }
     if (!isEdit && !form.secret_key?.trim()) { toast.error('Secret key is required.'); return; }
     if (isMonnify && !form.contract_code?.trim()) { toast.error('Contract code is required for Monnify.'); return; }
+    if (isPayPal && !form.client_key?.trim()) { toast.error('Client ID is required for PayPal.'); return; }
+    if (isPayPal && cfg('ngn_per_usd').trim() && !rateOf(form.config)) {
+      toast.error('The exchange rate must be a positive number of naira per US dollar.'); return;
+    }
     try {
       const payload: GatewayPayload = { ...form };
       if (isEdit && !payload.secret_key) delete payload.secret_key;
@@ -119,20 +146,20 @@ function GatewayModal({ gateway, onClose }: { gateway: PaymentGateway | null; on
           <input
             value={form.client_key}
             onChange={(e) => set('client_key', e.target.value)}
-            placeholder={isMonnify ? 'MK_TEST_...' : 'pk_test_...'}
+            placeholder={placeholder.client}
             className="border border-gray-200 rounded-md px-3 py-2 text-sm font-mono"
           />
         </div>
 
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-700">
-            Secret Key {isEdit && <span className="text-gray-400 font-normal">(leave blank to keep {gateway?.secret_key_hint})</span>}
+            {secretKeyLabel(form.provider!)} {isEdit && <span className="text-gray-400 font-normal">(leave blank to keep {gateway?.secret_key_hint})</span>}
           </label>
           <input
             type="password"
             value={form.secret_key}
             onChange={(e) => set('secret_key', e.target.value)}
-            placeholder={isMonnify ? 'Monnify secret key' : 'sk_test_...'}
+            placeholder={placeholder.secret}
             className="border border-gray-200 rounded-md px-3 py-2 text-sm font-mono"
             autoComplete="new-password"
           />
@@ -148,6 +175,41 @@ function GatewayModal({ gateway, onClose }: { gateway: PaymentGateway | null; on
               className="border border-gray-200 rounded-md px-3 py-2 text-sm font-mono"
             />
           </div>
+        )}
+
+        {isPayPal && (
+          <>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-700">Exchange rate (₦ per $1)</label>
+              <input
+                inputMode="decimal"
+                value={cfg('ngn_per_usd')}
+                onChange={(e) => setConfig('ngn_per_usd', e.target.value)}
+                placeholder="e.g. 1500"
+                className="border border-gray-200 rounded-md px-3 py-2 text-sm font-mono"
+              />
+              <p className="text-[11px] text-gray-400">
+                Shop prices are in Naira and PayPal can&rsquo;t charge Naira, so a shop order paid with PayPal is
+                charged its Naira total divided by this rate, in US dollars. Leave it empty and PayPal is offered only
+                for dollar and pound donations. Update it when the rate moves.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-700">Webhook ID</label>
+              <input
+                value={cfg('webhook_id')}
+                onChange={(e) => setConfig('webhook_id', e.target.value)}
+                placeholder="From your PayPal app's webhook settings"
+                className="border border-gray-200 rounded-md px-3 py-2 text-sm font-mono"
+              />
+              <p className="text-[11px] text-gray-400">
+                In your PayPal app, add a webhook for <span className="font-mono text-gray-500 break-all">{PAYPAL_WEBHOOK_URL}</span> with
+                the events <span className="font-mono">Checkout order approved</span> and{' '}
+                <span className="font-mono">Payment capture completed</span>, then paste its ID here. Without it,
+                payments still confirm when the buyer returns from PayPal, but webhooks are refused.
+              </p>
+            </div>
+          </>
         )}
 
         <div className="flex items-center gap-6 pt-1">
@@ -241,6 +303,14 @@ export default function PaymentGatewaysTab() {
                 <p className="text-xs text-gray-400 mt-1 font-mono truncate">
                   {clientKeyLabel(gw.provider)}: {gw.client_key || '—'} · Secret: {gw.has_secret_key ? gw.secret_key_hint : 'not set'}
                 </p>
+                {gw.provider === 'PAYPAL' && (
+                  <p className={`text-xs mt-0.5 ${rateOf(gw.config) ? 'text-gray-500' : 'text-amber-600'}`}>
+                    {rateOf(gw.config)
+                      ? `₦${rateOf(gw.config).toLocaleString()} per $1 for shop orders`
+                      : 'No exchange rate set — PayPal is offered for dollar and pound donations only'}
+                    {!gw.config?.webhook_id && ' · no webhook ID'}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <button onClick={() => openEdit(gw)} title="Edit" className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:text-[#E03E3E] hover:border-[#E03E3E]">

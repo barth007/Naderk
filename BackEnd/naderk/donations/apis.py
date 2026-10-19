@@ -54,7 +54,7 @@ class DonationCreateApi(APIView):
 
     def post(self, request):
         from naderk.payments.models import PaymentTransaction
-        from naderk.payments.services import provider_public_config
+        from naderk.payments.services import checkout_public_config
 
         idempotency_key = request.headers.get('Idempotency-Key', '').strip()
         if idempotency_key:
@@ -65,7 +65,7 @@ class DonationCreateApi(APIView):
             if existing:
                 return build_success_response("Payment already started", _checkout_payload(
                     existing.donation, existing.reference, existing.raw_response.get('access_code', ''),
-                    provider_public_config(existing.provider), existing.provider,
+                    checkout_public_config(existing), existing.provider,
                 ))
 
         serializer = StartDonationSerializer(data=request.data, context={'request': request})

@@ -36,7 +36,9 @@ export default function Step5Summary() {
   const initPaymentMutation = useInitializeAppointmentPayment(idempotencyKey);
   const verifyPayment = useVerifyAppointmentPayment();
   const payCheckout = usePaymentCheckout();
-  const { data: gateways = [] } = usePaymentGateways();
+  const { data: allGateways = [] } = usePaymentGateways();
+  // Fees are charged in Naira, which PayPal does not take.
+  const gateways = React.useMemo(() => allGateways.filter((g) => g.provider !== 'PAYPAL'), [allGateways]);
   const [gateway, setGateway] = React.useState<string>('');
 
   useEffect(() => {

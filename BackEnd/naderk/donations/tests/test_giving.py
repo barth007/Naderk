@@ -234,7 +234,7 @@ def test_the_webhook_confirms_a_gift_too(api_client, provider):
 
 
 def test_gifts_appear_in_admin_billing(api_client, provider, admin_user):
-    reference = started(api_client)
+    reference = started(api_client, amount='30000')      # one intervention
     with provider_says():
         api_client.post(VERIFY, {'reference': reference}, format='json')
 
