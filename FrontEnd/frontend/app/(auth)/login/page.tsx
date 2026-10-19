@@ -26,6 +26,17 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
+/**
+ * Where to go after logging in, from ?next= (e.g. the home page sends a
+ * signed-out shopper here with the product they clicked). Only paths on this
+ * site are accepted, so the link cannot bounce someone to another domain.
+ */
+function nextPath(): string | null {
+  const next = new URLSearchParams(window.location.search).get('next');
+  if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return null;
+  return next;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const setAuth = useAuth(state => state.setAuth);
@@ -62,7 +73,10 @@ export default function LoginPage() {
         return;
       }
 
-      router.push(portalHomeFor(role, areas));
+      // The shop lives in the patient portal, so only a patient is sent back to
+      // the item they picked; everyone else goes to their own home.
+      const next = role === 'PATIENT' ? nextPath() : null;
+      router.push(next ?? portalHomeFor(role, areas));
     } catch (error) {
       const err = error as AxiosError<ProblemDetailsResponse>;
       if (err.response?.data) {
