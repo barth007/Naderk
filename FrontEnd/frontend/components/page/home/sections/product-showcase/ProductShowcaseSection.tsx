@@ -4,7 +4,7 @@ import { useMemo, type CSSProperties, type MouseEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowRight, Glasses } from "lucide-react"
+import { ArrowRight, ArrowUpRight, Glasses } from "lucide-react"
 import { toast } from "sonner"
 import { apiClient } from "@/lib/api"
 import { cn } from "@/lib/cn"
@@ -109,6 +109,9 @@ function useShowcaseItems() {
   })
 }
 
+/** Card width; the trailing margin (not a flex gap) keeps the two loop copies exactly equal. */
+const CARD_WIDTH = "w-[230px] sm:w-[250px] lg:w-[260px] mr-4 sm:mr-5"
+
 function ShowcaseCard({
   item, onOpen, clone = false,
 }: {
@@ -119,51 +122,61 @@ function ShowcaseCard({
 }) {
   const onSale = item.salePrice !== null && item.salePrice < item.price
   return (
-    <li className={cn("w-[220px] shrink-0 sm:w-[260px] lg:w-[280px]", clone && "motion-reduce:hidden")} aria-hidden={clone || undefined}>
+    <li className={cn("shrink-0", CARD_WIDTH, clone && "motion-reduce:hidden")} aria-hidden={clone || undefined}>
       <Link
         href={item.href}
         onClick={(e) => onOpen(e, item.href)}
         tabIndex={clone ? -1 : undefined}
-        className="group block focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--destructive)] rounded-2xl"
+        className="group relative block overflow-hidden rounded-[28px] bg-[#0E0E13] p-2.5 shadow-[0_18px_40px_-18px_rgba(14,14,19,0.55)] ring-1 ring-white/10 transition-transform duration-500 hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--destructive)]"
       >
-        <div className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-[#F3F1ED] transition-colors duration-500 group-hover:bg-[#EDEAE4]">
+        {/* Coloured light behind the glass. */}
+        <span className="pointer-events-none absolute -left-10 -top-12 h-40 w-40 rounded-full bg-[#E03E3E]/45 blur-3xl transition-opacity duration-500 group-hover:opacity-80" aria-hidden />
+        <span className="pointer-events-none absolute -bottom-14 -right-10 h-44 w-44 rounded-full bg-[#7C5CFF]/35 blur-3xl" aria-hidden />
+
+        {/* Product on a lit pane. */}
+        <div className="relative aspect-square overflow-hidden rounded-[22px] bg-gradient-to-b from-white to-[#ECE9F1]">
           {item.image ? (
             // eslint-disable-next-line @next/next/no-img-element -- product images come from any storage host
             <img
               src={item.image}
               alt={item.name}
               loading="lazy"
-              // multiply melts a photo's white backdrop into the tile.
-              className="absolute inset-0 h-full w-full object-contain p-8 mix-blend-multiply transition-transform duration-700 ease-out group-hover:scale-[1.06]"
+              // multiply melts a photo's white backdrop into the pane.
+              className="absolute inset-0 h-full w-full object-contain p-7 mix-blend-multiply transition-transform duration-700 ease-out group-hover:scale-[1.07] group-hover:-rotate-2"
             />
           ) : (
-            <span className="absolute inset-0 flex items-center justify-center text-[#C9C4BA]" aria-hidden>
+            <span className="absolute inset-0 flex items-center justify-center text-[#B9B4C4]" aria-hidden>
               <Glasses className="h-14 w-14" strokeWidth={1.25} />
             </span>
           )}
+          <span className="absolute left-3 top-3 rounded-full bg-black/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#3B3A44] backdrop-blur-sm">
+            {item.eyebrow}
+          </span>
           {onSale && (
-            <span className="absolute left-4 top-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#B42318]">
+            <span className="absolute right-3 top-3 rounded-full bg-[#E03E3E] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
               Sale
             </span>
           )}
-          <span
-            className="absolute inset-x-0 bottom-4 mx-auto flex w-max translate-y-3 items-center gap-1.5 rounded-full bg-white/90 px-4 py-2 text-xs font-medium text-foreground opacity-0 shadow-sm backdrop-blur transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100"
-            aria-hidden
-          >
-            View <ArrowRight className="h-3.5 w-3.5" />
-          </span>
         </div>
 
-        <div className="mt-4 px-0.5">
-          <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{item.eyebrow}</p>
-          <div className="mt-1 flex items-baseline justify-between gap-3">
-            <p className="truncate text-[15px] font-medium text-foreground">{item.name}</p>
-            <p className="shrink-0 text-[15px] text-foreground tabular-nums">
-              {onSale && <span className="mr-1.5 text-xs text-muted-foreground line-through">{naira(item.price)}</span>}
-              <span className={cn(onSale && "text-[#B42318]")}>{naira(onSale ? item.salePrice! : item.price)}</span>
+        {/* Frosted info panel. */}
+        <div className="relative mt-2.5 flex items-center gap-3 rounded-[20px] border border-white/15 bg-gradient-to-br from-white/[0.14] to-white/[0.04] px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-white">{item.name}</p>
+            <p className="mt-0.5 flex items-baseline gap-1.5 text-sm tabular-nums">
+              <span className={cn("font-semibold", onSale ? "text-[#FF8A8A]" : "text-white/90")}>
+                {naira(onSale ? item.salePrice! : item.price)}
+              </span>
+              {onSale && <span className="text-xs text-white/40 line-through">{naira(item.price)}</span>}
+              {!onSale && item.detail && <span className="truncate text-xs text-white/45">· {item.detail}</span>}
             </p>
           </div>
-          {item.detail && <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.detail}</p>}
+          <span
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-all duration-300 group-hover:border-transparent group-hover:bg-white group-hover:text-[#0E0E13]"
+            aria-hidden
+          >
+            <ArrowUpRight className="h-4 w-4 transition-transform duration-300 group-hover:rotate-45" />
+          </span>
         </div>
       </Link>
     </li>
@@ -195,11 +208,11 @@ function MarqueeRow({
   const style = { animationDuration: `${row.length * SECONDS_PER_CARD * pace}s` } as CSSProperties
 
   return (
-    <div className="group/row relative overflow-hidden motion-reduce:overflow-x-auto">
+    <div className="group/row relative overflow-hidden rounded-[28px] motion-reduce:overflow-x-auto [mask-image:linear-gradient(to_right,transparent,black_4%,black_96%,transparent)]">
       <ul
         style={style}
         className={cn(
-          "flex w-max gap-4 py-1 sm:gap-6",
+          "flex w-max py-3",
           direction === "right" ? "animate-marquee-right" : "animate-marquee-left",
           "group-hover/row:[animation-play-state:paused] group-focus-within/row:[animation-play-state:paused]",
           "motion-reduce:animate-none",
@@ -259,15 +272,15 @@ export function ProductShowcaseSection() {
         </Link>
       </div>
 
-      <div className="mt-12 flex flex-col gap-8 sm:gap-10">
+      {/* Inside the same centred, padded container as the rest of the page. */}
+      <div className="mx-auto mt-12 flex w-full max-w-7xl flex-col gap-5 px-4 sm:gap-6 sm:px-6 lg:px-8">
         {isLoading ? (
           ROWS.map((_, r) => (
-            <div key={r} className="flex gap-4 overflow-hidden sm:gap-6" aria-hidden>
+            <div key={r} className="flex overflow-hidden rounded-[28px] py-3" aria-hidden>
               {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="w-[220px] shrink-0 sm:w-[260px] lg:w-[280px]">
-                  <div className="aspect-[4/5] animate-pulse rounded-2xl bg-[#F3F1ED]" />
-                  <div className="mt-4 h-2.5 w-1/4 animate-pulse rounded bg-muted" />
-                  <div className="mt-2 h-3.5 w-2/3 animate-pulse rounded bg-muted" />
+                <div key={i} className={cn("shrink-0 rounded-[28px] bg-[#0E0E13] p-2.5", CARD_WIDTH)}>
+                  <div className="aspect-square animate-pulse rounded-[22px] bg-white/10" />
+                  <div className="mt-2.5 h-[68px] animate-pulse rounded-[20px] bg-white/[0.06]" />
                 </div>
               ))}
             </div>
