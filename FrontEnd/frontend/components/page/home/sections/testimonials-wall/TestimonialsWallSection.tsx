@@ -54,7 +54,7 @@ export function TestimonialsWallSection() {
               At {brand.name}, our mission is built on patient trust, modern care, and transformational experiences. Our goal is to create a service that you're absolutely satisfied with, ensuring your world remains a clearer place.
             </p>
             <Link
-              href="/coming-soon"
+              href="/about"
               className="btn bg-[#E53E3E] !text-white hover:bg-[#D32F2F] border-[#E53E3E] hover:border-[#D32F2F] font-semibold rounded-md px-8 shadow-sm transition-all"
             >
               Read More Testimonials

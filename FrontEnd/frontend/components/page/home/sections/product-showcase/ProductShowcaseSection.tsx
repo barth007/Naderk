@@ -1,36 +1,31 @@
 'use client'
 
-import { useMemo, type CSSProperties, type MouseEvent } from "react"
+import { useEffect, useMemo, useRef, type CSSProperties, type MouseEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowRight, ArrowUpRight, Glasses } from "lucide-react"
+import { ArrowRight } from "lucide-react"
 import { toast } from "sonner"
 import { apiClient } from "@/lib/api"
 import { cn } from "@/lib/cn"
 import { useAuth } from "@/hooks/useAuth"
+import ProductCard from "@/components/marketplace/ProductCard"
+import FrameCard from "@/components/marketplace/FrameCard"
+import { useAddToCart, useToggleWishlist, useWishlist } from "@/services/marketplace/marketplace.hooks"
 import type { Frame, Product } from "@/services/marketplace/marketplace.types"
 
 /**
- * A slow, endless strip of what the shop sells, for visitors on the home page.
+ * A slow, endless strip of what the shop sells, for visitors on the home page,
+ * using the same cards as the shop itself.
  *
- * Browsing is open to everyone (the product and frame lists are public); only
- * opening an item needs an account, so a signed-out click goes to login and
+ * Browsing is open to everyone (the product and frame lists are public). Any
+ * click on a card needs an account, so a signed-out click goes to login and
  * comes back to that item afterwards.
  */
 
-type Item = {
-  key: string
-  href: string
-  name: string
-  /** Small caps above the name: the frame's brand or the product's category. */
-  eyebrow: string
-  /** A quiet extra line, e.g. how many colours a frame comes in. */
-  detail: string
-  image: string
-  price: number
-  salePrice: number | null
-}
+type Item =
+  | { kind: "product"; key: string; href: string; image: string; product: Product }
+  | { kind: "frame"; key: string; href: string; image: string; frame: Frame }
 
 const SHOP_HREF = "/dashboard/marketplace"
 /** Three rows: alternating directions, each at its own pace so no two move together. */
@@ -46,8 +41,8 @@ const POOL_MAX = 60
 /** Each row is repeated until it holds at least this many cards, so it always fills a wide screen. */
 const ROW_MIN = 8
 const SECONDS_PER_CARD = 6
-
-const naira = (n: number) => `₦${n.toLocaleString()}`
+/** Spacing after each card. A margin rather than a flex gap keeps the two loop copies exactly equal. */
+const CARD_SPACING = "mr-4 sm:mr-5"
 
 function shuffle<T>(list: T[]): T[] {
   const out = [...list]
@@ -73,28 +68,19 @@ function useShowcaseItems() {
       ])
       const items: Item[] = [
         // Frames come back in full, so shuffle before picking, not after.
-        ...shuffle(frames.filter((f) => f.is_active)).slice(0, POOL_MAX).map((f) => ({
-          key: `frame-${f.id}`,
-          href: `/dashboard/marketplace/frame/${f.id}`,
-          name: f.name,
-          eyebrow: f.brand || "Frame",
-          detail: (() => {
-            const colours = new Set((f.variants ?? []).map((v) => v.color).filter(Boolean)).size
-            return colours > 1 ? `${colours} colours` : f.style || ""
-          })(),
-          image: f.front_image || f.images?.[0] || "",
-          price: Number(f.base_price),
-          salePrice: null,
+        ...shuffle(frames.filter((f) => f.is_active)).slice(0, POOL_MAX).map((frame): Item => ({
+          kind: "frame",
+          key: `frame-${frame.id}`,
+          href: `/dashboard/marketplace/frame/${frame.id}`,
+          image: frame.front_image || frame.images?.[0] || "",
+          frame,
         })),
-        ...products.filter((p) => p.is_active).map((p) => ({
-          key: `product-${p.id}`,
-          href: `/dashboard/marketplace/product/${p.id}`,
-          name: p.name,
-          eyebrow: p.category_name || "Eye care",
-          detail: "",
-          image: p.images?.[0] || "",
-          price: Number(p.price),
-          salePrice: p.sale_price ? Number(p.sale_price) : null,
+        ...products.filter((p) => p.is_active).map((product): Item => ({
+          kind: "product",
+          key: `product-${product.id}`,
+          href: `/dashboard/marketplace/product/${product.id}`,
+          image: product.images?.[0] || "",
+          product,
         })),
       ]
       // Pictures sell; anything without one only appears if nothing else does.
@@ -109,88 +95,63 @@ function useShowcaseItems() {
   })
 }
 
-/** Card width; the trailing margin (not a flex gap) keeps the two loop copies exactly equal. */
-const CARD_WIDTH = "w-[230px] sm:w-[250px] lg:w-[260px] mr-4 sm:mr-5"
+type CardActions = {
+  isAuthenticated: boolean
+  toLogin: (href: string) => void
+  inWishlist: (productId: string) => boolean
+  onToggleWishlist: (id: string, e: MouseEvent) => void
+  onAddToCart: (product: Product, e: MouseEvent) => void
+  isAddingToCart: boolean
+}
 
-function ShowcaseCard({
-  item, onOpen, clone = false,
-}: {
-  item: Item
-  onOpen: (e: MouseEvent<HTMLAnchorElement>, href: string) => void
-  /** A copy that only closes the loop: clickable, but skipped by screen readers and Tab. */
-  clone?: boolean
-}) {
-  const onSale = item.salePrice !== null && item.salePrice < item.price
+function ShowcaseItem({ item, actions, clone = false }: { item: Item; actions: CardActions; clone?: boolean }) {
+  const ref = useRef<HTMLLIElement>(null)
+
+  // A loop copy stays clickable (it is half of what is on screen) but is kept
+  // out of the Tab order, so keyboard users meet each card once.
+  useEffect(() => {
+    if (!clone) return
+    ref.current?.querySelectorAll<HTMLElement>("a, button").forEach((el) => { el.tabIndex = -1 })
+  }, [clone])
+
   return (
-    <li className={cn("shrink-0", CARD_WIDTH, clone && "motion-reduce:hidden")} aria-hidden={clone || undefined}>
-      <Link
-        href={item.href}
-        onClick={(e) => onOpen(e, item.href)}
-        tabIndex={clone ? -1 : undefined}
-        className="group relative block overflow-hidden rounded-[28px] bg-[#0E0E13] p-2.5 shadow-[0_18px_40px_-18px_rgba(14,14,19,0.55)] ring-1 ring-white/10 transition-transform duration-500 hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--destructive)]"
-      >
-        {/* Coloured light behind the glass. */}
-        <span className="pointer-events-none absolute -left-10 -top-12 h-40 w-40 rounded-full bg-[#E03E3E]/45 blur-3xl transition-opacity duration-500 group-hover:opacity-80" aria-hidden />
-        <span className="pointer-events-none absolute -bottom-14 -right-10 h-44 w-44 rounded-full bg-[#7C5CFF]/35 blur-3xl" aria-hidden />
-
-        {/* Product on a lit pane. */}
-        <div className="relative aspect-square overflow-hidden rounded-[22px] bg-gradient-to-b from-white to-[#ECE9F1]">
-          {item.image ? (
-            // eslint-disable-next-line @next/next/no-img-element -- product images come from any storage host
-            <img
-              src={item.image}
-              alt={item.name}
-              loading="lazy"
-              // multiply melts a photo's white backdrop into the pane.
-              className="absolute inset-0 h-full w-full object-contain p-7 mix-blend-multiply transition-transform duration-700 ease-out group-hover:scale-[1.07] group-hover:-rotate-2"
-            />
-          ) : (
-            <span className="absolute inset-0 flex items-center justify-center text-[#B9B4C4]" aria-hidden>
-              <Glasses className="h-14 w-14" strokeWidth={1.25} />
-            </span>
-          )}
-          <span className="absolute left-3 top-3 rounded-full bg-black/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#3B3A44] backdrop-blur-sm">
-            {item.eyebrow}
-          </span>
-          {onSale && (
-            <span className="absolute right-3 top-3 rounded-full bg-[#E03E3E] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
-              Sale
-            </span>
-          )}
-        </div>
-
-        {/* Frosted info panel. */}
-        <div className="relative mt-2.5 flex items-center gap-3 rounded-[20px] border border-white/15 bg-gradient-to-br from-white/[0.14] to-white/[0.04] px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-white">{item.name}</p>
-            <p className="mt-0.5 flex items-baseline gap-1.5 text-sm tabular-nums">
-              <span className={cn("font-semibold", onSale ? "text-[#FF8A8A]" : "text-white/90")}>
-                {naira(onSale ? item.salePrice! : item.price)}
-              </span>
-              {onSale && <span className="text-xs text-white/40 line-through">{naira(item.price)}</span>}
-              {!onSale && item.detail && <span className="truncate text-xs text-white/45">· {item.detail}</span>}
-            </p>
-          </div>
-          <span
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-all duration-300 group-hover:border-transparent group-hover:bg-white group-hover:text-[#0E0E13]"
-            aria-hidden
-          >
-            <ArrowUpRight className="h-4 w-4 transition-transform duration-300 group-hover:rotate-45" />
-          </span>
-        </div>
-      </Link>
+    <li
+      ref={ref}
+      aria-hidden={clone || undefined}
+      className={cn("flex shrink-0", CARD_SPACING, clone && "motion-reduce:hidden")}
+      // Signed out, every click on a card (open, wishlist, add to cart) asks
+      // for an account first, then returns to this item.
+      onClickCapture={(e) => {
+        if (actions.isAuthenticated) return
+        e.preventDefault()
+        e.stopPropagation()
+        actions.toLogin(item.href)
+      }}
+    >
+      {item.kind === "frame" ? (
+        <FrameCard frame={item.frame} fixedWidth />
+      ) : (
+        <ProductCard
+          product={item.product}
+          fixedWidth
+          inWishlist={actions.inWishlist(item.product.id)}
+          onToggleWishlist={actions.onToggleWishlist}
+          onAddToCart={actions.onAddToCart}
+          isAddingToCart={actions.isAddingToCart}
+        />
+      )}
     </li>
   )
 }
 
 function MarqueeRow({
-  items, direction, pace = 1, onOpen,
+  items, direction, pace = 1, actions,
 }: {
   items: Item[]
   direction: "left" | "right"
   /** Seconds-per-card multiplier: above 1 is slower. */
   pace?: number
-  onOpen: (e: MouseEvent<HTMLAnchorElement>, href: string) => void
+  actions: CardActions
 }) {
   // Pad the row so one copy is wider than the screen, then render it twice:
   // the animation slides exactly one copy's width and loops without a seam.
@@ -208,18 +169,19 @@ function MarqueeRow({
   const style = { animationDuration: `${row.length * SECONDS_PER_CARD * pace}s` } as CSSProperties
 
   return (
-    <div className="group/row relative overflow-hidden rounded-[28px] motion-reduce:overflow-x-auto [mask-image:linear-gradient(to_right,transparent,black_4%,black_96%,transparent)]">
+    <div className="group/row relative overflow-hidden motion-reduce:overflow-x-auto">
       <ul
         style={style}
         className={cn(
-          "flex w-max py-3",
+          // items-stretch keeps every card in a row the same height.
+          "flex w-max items-stretch py-2",
           direction === "right" ? "animate-marquee-right" : "animate-marquee-left",
           "group-hover/row:[animation-play-state:paused] group-focus-within/row:[animation-play-state:paused]",
           "motion-reduce:animate-none",
         )}
       >
-        {row.map((item, i) => <ShowcaseCard key={`a-${item.key}-${i}`} item={item} onOpen={onOpen} />)}
-        {row.map((item, i) => <ShowcaseCard key={`b-${item.key}-${i}`} item={item} onOpen={onOpen} clone />)}
+        {row.map((item, i) => <ShowcaseItem key={`a-${item.key}-${i}`} item={item} actions={actions} />)}
+        {row.map((item, i) => <ShowcaseItem key={`b-${item.key}-${i}`} item={item} actions={actions} clone />)}
       </ul>
     </div>
   )
@@ -229,14 +191,46 @@ export function ProductShowcaseSection() {
   const router = useRouter()
   const isAuthenticated = useAuth((s) => s.isAuthenticated)
   const { data: items = [], isLoading } = useShowcaseItems()
+  const { data: wishlist } = useWishlist(isAuthenticated)
+  const toggleWishlist = useToggleWishlist()
+  const addToCart = useAddToCart()
 
-  // Open to look at, account to open: a signed-out visitor goes to login,
-  // which brings them back to this item.
-  const open = (e: MouseEvent<HTMLAnchorElement>, href: string) => {
-    if (isAuthenticated) return
-    e.preventDefault()
-    toast.info("Log in to view this item", { description: "You'll come straight back to it afterwards." })
+  const toLogin = (href: string) => {
+    toast.info("Log in to continue", { description: "You'll come straight back to this item afterwards." })
     router.push(`/login?next=${encodeURIComponent(href)}`)
+  }
+
+  // Same behaviour as the shop's own cards.
+  const inWishlist = (id: string) => wishlist?.items?.some((w) => w.product === id) ?? false
+  const actions: CardActions = {
+    isAuthenticated,
+    toLogin,
+    inWishlist,
+    isAddingToCart: addToCart.isPending,
+    onToggleWishlist: (productId, e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const wasSaved = inWishlist(productId)
+      toggleWishlist.mutate({ product_id: productId }, {
+        onSuccess: () => toast.success(wasSaved ? "Removed from wishlist" : "Added to wishlist"),
+        onError: () => toast.error("Could not update your wishlist."),
+      })
+    },
+    onAddToCart: (product, e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      addToCart.mutate({
+        product_id: product.id,
+        product_variant_id: product.variants?.[0]?.id ?? null,
+        quantity: 1,
+      }, {
+        onSuccess: () => toast.success(`${product.name} added to cart`),
+        onError: (err: unknown) => {
+          const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+          toast.error(detail ?? "Could not add item to cart.")
+        },
+      })
+    },
   }
 
   if (!isLoading && items.length === 0) return null
@@ -265,28 +259,33 @@ export function ProductShowcaseSection() {
         </header>
         <Link
           href={SHOP_HREF}
-          onClick={(e) => open(e, SHOP_HREF)}
+          onClick={(e) => { if (!isAuthenticated) { e.preventDefault(); toLogin(SHOP_HREF) } }}
           className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-background px-5 text-sm font-semibold text-foreground transition-colors hover:border-[#F5C9C9] hover:text-[#B42318]"
         >
           Browse the shop <ArrowRight className="h-4 w-4" aria-hidden />
         </Link>
       </div>
 
-      {/* Inside the same centred, padded container as the rest of the page. */}
-      <div className="mx-auto mt-12 flex w-full max-w-7xl flex-col gap-5 px-4 sm:gap-6 sm:px-6 lg:px-8">
+      {/* A little wider than the text above, with a slim gutter, so the strip
+          reads as part of the page without being boxed in. */}
+      <div className="mx-auto mt-10 flex w-full max-w-[1440px] flex-col gap-3 px-2 sm:px-4">
         {isLoading ? (
           ROWS.map((_, r) => (
-            <div key={r} className="flex overflow-hidden rounded-[28px] py-3" aria-hidden>
+            <div key={r} className="flex overflow-hidden py-2" aria-hidden>
               {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className={cn("shrink-0 rounded-[28px] bg-[#0E0E13] p-2.5", CARD_WIDTH)}>
-                  <div className="aspect-square animate-pulse rounded-[22px] bg-white/10" />
-                  <div className="mt-2.5 h-[68px] animate-pulse rounded-[20px] bg-white/[0.06]" />
+                <div key={i} className={cn("w-[240px] shrink-0 overflow-hidden rounded-md border border-gray-200 bg-white", CARD_SPACING)}>
+                  <div className="aspect-[4/3] animate-pulse bg-[#f4f6fa]" />
+                  <div className="space-y-2 p-4">
+                    <div className="h-2.5 w-1/3 animate-pulse rounded bg-gray-100" />
+                    <div className="h-3.5 w-3/4 animate-pulse rounded bg-gray-100" />
+                    <div className="h-9 w-full animate-pulse rounded-md bg-gray-100" />
+                  </div>
                 </div>
               ))}
             </div>
           ))
         ) : (
-          rows.map((r, i) => <MarqueeRow key={i} items={r.items} direction={r.direction} pace={r.pace} onOpen={open} />)
+          rows.map((r, i) => <MarqueeRow key={i} items={r.items} direction={r.direction} pace={r.pace} actions={actions} />)
         )}
       </div>
     </section>

@@ -14,8 +14,8 @@ const servicesLinks =
 
 const infoLinks = [
   { label: "About Us", href: "/about" },
-  { label: "Blogs", href: "/coming-soon" },
-  { label: "FAQ", href: "/coming-soon" },
+  { label: "Blogs", href: "/blog" },
+  { label: "FAQ", href: "/contact#faq-title" },
   { label: "Privacy Policy", href: "/coming-soon" },
 ]
 

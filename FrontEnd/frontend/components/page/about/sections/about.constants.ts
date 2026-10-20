@@ -159,10 +159,10 @@ export const PROMISE_MANDATE_CONTENT: PromiseMandateContent = {
     "At NaderkEla, we are more than a healthcare provider; we are a beacon of hope, healing, and transformation. Guided by compassion and empowered by technology, we are dedicated to restoring sight, improving health, and enriching lives across Africa and beyond.",
   primaryCTA: {
     label: "Book Your Consultation",
-    href: "/coming-soon",
+    href: "/dashboard/appointments/book",
   },
   secondaryCTA: {
     label: "View Our Services",
-    href: "/coming-soon",
+    href: "/services/laboratory",
   },
 }

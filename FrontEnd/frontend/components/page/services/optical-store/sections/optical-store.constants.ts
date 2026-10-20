@@ -10,9 +10,9 @@ export const OPTICAL_STORE_CONTENT: OpticalStoreContent = {
     image: "/images/prescription-glasses.png",
   },
   categories: [
-    { id: 1, title: "Men", image: "/images/home-consultation.png", href: "/coming-soon" },
-    { id: 2, title: "Women", image: "/images/eye-care-exam.png", href: "/coming-soon" },
-    { id: 3, title: "Kids", image: "/images/image 11.png", href: "/coming-soon" },
+    { id: 1, title: "Men", image: "/images/home-consultation.png", href: "/dashboard/marketplace" },
+    { id: 2, title: "Women", image: "/images/eye-care-exam.png", href: "/dashboard/marketplace" },
+    { id: 3, title: "Kids", image: "/images/image 11.png", href: "/dashboard/marketplace" },
   ],
   products: [
     {

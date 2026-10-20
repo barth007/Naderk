@@ -326,13 +326,15 @@ export const useClearCart = () => {
 };
 
 // Wishlist
-export const useWishlist = () => {
+/** `enabled: false` for pages also seen signed out, where the wishlist would 401. */
+export const useWishlist = (enabled = true) => {
   return useQuery({
     queryKey: ['marketplace-wishlist'],
     queryFn: async () => {
       const response = await apiClient.get('/marketplace/wishlist/');
       return response.data.data as Wishlist;
-    }
+    },
+    enabled,
   });
 };
 
