@@ -65,6 +65,26 @@ def test_product_sorting(api_client, sort_by, expected):
     assert names(api_client.get(BASE + 'products/', {'sort_by': sort_by})) == expected
 
 
+def test_random_sort_samples_the_whole_catalogue(api_client):
+    for i in range(30):
+        factories.product(f'item-{i}')
+    hidden = factories.product('hidden')
+    Product.objects.filter(pk=hidden.pk).update(is_active=False)
+
+    seen, samples = set(), set()
+    for _ in range(20):
+        page = api_client.get(BASE + 'products/', {'sort_by': 'random', 'limit': 5}).json()['data']
+        ids = tuple(row['id'] for row in page['results'])
+        assert len(set(ids)) == 5 and page['total'] == 30
+        samples.add(ids)
+        seen.update(ids)
+
+    # Not the same first five every time, and reaching well past them.
+    assert len(samples) > 1
+    assert len(seen) > 10
+    assert str(hidden.id) not in seen
+
+
 def test_unknown_sort_is_ignored(api_client):
     factories.product()
 
