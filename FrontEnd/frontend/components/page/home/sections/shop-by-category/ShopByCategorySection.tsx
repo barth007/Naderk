@@ -110,6 +110,7 @@ export function ShopByCategorySection() {
     <div className="grid w-full" onClickCapture={(e) => openFromCard(e, product)}>
       <ProductCard
         product={product}
+        compact
         inWishlist={inWishlist(product.id)}
         isAddingToCart={isAdding}
         onToggleWishlist={(id, e) => { e.preventDefault(); e.stopPropagation(); wish(id) }}
@@ -119,14 +120,14 @@ export function ShopByCategorySection() {
   )
 
   return (
-    <section aria-labelledby="shop-by-category-title" className="overflow-hidden bg-background py-16 sm:py-20">
+    <section aria-labelledby="shop-by-category-title" className="overflow-hidden bg-background py-12 sm:py-20">
       <div className={container}>
         <header className="mx-auto flex max-w-2xl flex-col items-center gap-2.5 text-center">
           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--destructive)]">Shop</p>
-          <h2 id="shop-by-category-title" className="text-3xl font-bold leading-tight text-foreground sm:text-4xl">
+          <h2 id="shop-by-category-title" className="text-2xl font-bold leading-tight text-foreground sm:text-4xl">
             Shop by category
           </h2>
-          <p className="text-base text-muted-foreground">
+          <p className="text-sm text-muted-foreground sm:text-base">
             Pick a category to see what&rsquo;s in it. Open any product for its details, no account needed.
           </p>
         </header>
@@ -141,7 +142,7 @@ export function ShopByCategorySection() {
           </div>
           <div className="mt-12 flex overflow-hidden py-2">
             {Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="mr-4 w-[240px] shrink-0 overflow-hidden rounded-md border border-gray-200 sm:mr-5">
+              <div key={i} className="mr-3 w-[168px] shrink-0 overflow-hidden rounded-md border border-gray-200 sm:mr-5 sm:w-[220px] lg:w-[240px]">
                 <div className="aspect-[4/3] animate-pulse bg-[#f4f6fa]" />
                 <div className="space-y-2 p-4">
                   <div className="h-2.5 w-1/3 animate-pulse rounded bg-gray-100" />
@@ -158,7 +159,7 @@ export function ShopByCategorySection() {
             <div
               role="tablist"
               aria-label="Product categories"
-              className="no-scrollbar mt-8 flex gap-6 overflow-x-auto border-b border-gray-200 sm:justify-center sm:gap-8"
+              className="no-scrollbar mt-6 flex gap-5 overflow-x-auto border-b border-gray-200 sm:mt-8 sm:justify-center sm:gap-8"
             >
               {tabs.map((t, i) => {
                 const selected = t === current
@@ -175,7 +176,7 @@ export function ShopByCategorySection() {
                     onClick={() => setActive(i)}
                     onKeyDown={(e) => onTabKey(e, i)}
                     className={cn(
-                      "-mb-px min-h-12 shrink-0 border-b-[2.5px] px-1 text-[15px] transition-colors",
+                      "-mb-px min-h-11 shrink-0 border-b-[2.5px] px-1 text-sm transition-colors sm:min-h-12 sm:text-[15px]",
                       selected
                         ? "border-[var(--destructive)] font-bold text-foreground"
                         : "border-transparent font-medium text-gray-500 hover:text-foreground",
@@ -193,10 +194,10 @@ export function ShopByCategorySection() {
               role="tabpanel"
               id={`${baseId}-panel`}
               aria-labelledby={`${baseId}-tab-${tabs.indexOf(current)}`}
-              className="mt-7"
+              className="mt-4 sm:mt-7"
             >
-              <div className={cn(container, "mb-5 flex flex-wrap items-center justify-between gap-3")}>
-                <p className="text-sm text-muted-foreground">{current.category.description || "\u00a0"}</p>
+              <div className={cn(container, "mb-3 flex flex-wrap items-center justify-between gap-x-3 sm:mb-5")}>
+                <p className="hidden text-sm text-muted-foreground sm:block">{current.category.description || "\u00a0"}</p>
                 <Link
                   href={`${SHOP_HREF}?category=${encodeURIComponent(current.category.slug)}`}
                   className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-[#B42318] hover:text-[#7A1A10]"
@@ -214,7 +215,7 @@ export function ShopByCategorySection() {
                 renderItem={renderCard}
               />
 
-              <div className={cn(container, "mt-8 flex justify-center")}>
+              <div className={cn(container, "mt-6 flex justify-center sm:mt-8")}>
                 <Link
                   href={SHOP_HREF}
                   className="inline-flex min-h-[46px] items-center gap-1.5 rounded-full border border-gray-200 px-5 text-sm font-semibold text-foreground hover:border-[#F5C9C9] hover:text-[#B42318]"

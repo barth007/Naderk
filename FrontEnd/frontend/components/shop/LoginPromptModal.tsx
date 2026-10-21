@@ -37,12 +37,12 @@ export default function LoginPromptModal() {
 
   return (
     <ShopDialog labelledBy="login-prompt-title" onClose={close} className="sm:max-w-md">
-      <div className="flex flex-col gap-5 p-7 sm:p-8">
-        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#FFF1F1] text-[#E03E3E]">
-          <Lock className="h-[22px] w-[22px]" aria-hidden />
+      <div className="flex flex-col gap-4 p-5 pt-6 sm:gap-5 sm:p-8">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FFF1F1] text-[#E03E3E] sm:h-12 sm:w-12">
+          <Lock className="h-5 w-5 sm:h-[22px] sm:w-[22px]" aria-hidden />
         </span>
         <div>
-          <h2 id="login-prompt-title" className="text-xl font-bold text-gray-900">{copy.title}</h2>
+          <h2 id="login-prompt-title" className="text-lg font-bold text-gray-900 sm:text-xl">{copy.title}</h2>
           <p className="mt-2 text-sm leading-relaxed text-gray-600">{copy.body}</p>
         </div>
 

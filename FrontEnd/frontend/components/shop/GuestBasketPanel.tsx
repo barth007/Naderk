@@ -48,10 +48,10 @@ function Panel({ onClose }: { onClose: () => void }) {
         aria-labelledby="basket-title"
         className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-white shadow-2xl"
       >
-        <header className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+        <header className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 sm:px-5 sm:py-4">
           <div className="flex items-center gap-2.5">
             <ShoppingBag className="h-5 w-5 text-[#E03E3E]" aria-hidden />
-            <h2 id="basket-title" className="text-lg font-bold text-gray-900">
+            <h2 id="basket-title" className="text-base font-bold text-gray-900 sm:text-lg">
               Your basket <span className="font-medium text-gray-500">({count})</span>
             </h2>
           </div>
@@ -72,7 +72,7 @@ function Panel({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <>
-            <ul className="flex-1 divide-y divide-gray-100 overflow-y-auto px-5">
+            <ul className="flex-1 divide-y divide-gray-100 overflow-y-auto px-4 sm:px-5">
               {items.map((item) => (
                 <BasketLine
                   key={`${item.product_id}-${item.product_variant_id ?? ''}`}
@@ -83,12 +83,12 @@ function Panel({ onClose }: { onClose: () => void }) {
               ))}
             </ul>
 
-            <footer className="space-y-3 border-t border-gray-100 px-5 py-4">
+            <footer className="space-y-2.5 border-t border-gray-100 px-4 py-3 sm:space-y-3 sm:px-5 sm:py-4">
               <div className="flex items-baseline justify-between">
                 <span className="text-sm font-semibold text-gray-600">Subtotal</span>
-                <span className="text-xl font-extrabold text-gray-900">{naira(total)}</span>
+                <span className="text-lg font-extrabold text-gray-900 sm:text-xl">{naira(total)}</span>
               </div>
-              <p className="text-xs text-gray-500">Delivery is worked out at checkout. Prices are confirmed when your basket moves to your account.</p>
+              <p className="hidden text-xs text-gray-500 sm:block">Delivery is worked out at checkout. Prices are confirmed when your basket moves to your account.</p>
               <button
                 type="button"
                 onClick={() => askToLogIn('checkout', '/dashboard/checkout')}
@@ -118,12 +118,12 @@ function BasketLine({
 }) {
   const atMax = item.max_quantity !== undefined && item.quantity >= item.max_quantity;
   return (
-    <li className="flex gap-3.5 py-4">
+    <li className="flex gap-3 py-3 sm:gap-3.5 sm:py-4">
       {item.image ? (
         // eslint-disable-next-line @next/next/no-img-element -- product images come from any storage host
-        <img src={item.image} alt="" className="h-20 w-20 shrink-0 rounded-lg bg-[#F4F6FA] object-cover" />
+        <img src={item.image} alt="" className="h-16 w-16 shrink-0 rounded-lg bg-[#F4F6FA] object-cover sm:h-20 sm:w-20" />
       ) : (
-        <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-[#F4F6FA] text-gray-300" aria-hidden>
+        <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-[#F4F6FA] text-gray-300 sm:h-20 sm:w-20" aria-hidden>
           <ImageOff className="h-6 w-6" />
         </span>
       )}

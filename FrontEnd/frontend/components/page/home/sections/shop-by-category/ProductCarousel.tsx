@@ -125,24 +125,24 @@ export function ProductCarousel<T>({
       <div ref={scroller} className="no-scrollbar flex overflow-x-auto py-2">
         <ul ref={firstCopy} className="flex shrink-0">
           {row.map((item, i) => (
-            <li key={`a-${itemKey(item)}-${i}`} className="mr-4 flex w-[240px] shrink-0 sm:mr-5">{renderItem(item)}</li>
+            <li key={`a-${itemKey(item)}-${i}`} className="mr-3 flex w-[168px] shrink-0 sm:mr-5 sm:w-[220px] lg:w-[240px]">{renderItem(item)}</li>
           ))}
         </ul>
         <ul className="flex shrink-0" aria-hidden data-loop-copy>
           {row.map((item, i) => (
-            <li key={`b-${itemKey(item)}-${i}`} className="mr-4 flex w-[240px] shrink-0 sm:mr-5">{renderItem(item)}</li>
+            <li key={`b-${itemKey(item)}-${i}`} className="mr-3 flex w-[168px] shrink-0 sm:mr-5 sm:w-[220px] lg:w-[240px]">{renderItem(item)}</li>
           ))}
         </ul>
       </div>
 
-      {/* Arrows: always on touch screens, on hover or focus with a mouse. */}
+      {/* Arrows from tablet width up (on hover or focus with a mouse); phones swipe. */}
       {[-1, 1].map((dir) => (
         <button
           key={dir}
           type="button"
           onClick={() => nudge(dir as 1 | -1)}
           aria-label={dir === -1 ? "Previous products" : "Next products"}
-          className={`absolute top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-700 shadow-md backdrop-blur transition-opacity hover:text-[#B42318] focus-visible:opacity-100 sm:opacity-0 sm:group-hover/carousel:opacity-100 sm:group-focus-within/carousel:opacity-100 ${dir === -1 ? "left-3 sm:left-5" : "right-3 sm:right-5"}`}
+          className={`absolute top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-700 shadow-md backdrop-blur transition-opacity hover:text-[#B42318] focus-visible:opacity-100 sm:flex sm:opacity-0 sm:group-hover/carousel:opacity-100 sm:group-focus-within/carousel:opacity-100 ${dir === -1 ? "left-5" : "right-5"}`}
         >
           {dir === -1 ? <ChevronLeft className="h-5 w-5" aria-hidden /> : <ChevronRight className="h-5 w-5" aria-hidden />}
         </button>

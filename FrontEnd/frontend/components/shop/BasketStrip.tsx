@@ -49,25 +49,25 @@ export default function BasketStrip() {
 
   return (
     <div className="bg-[#1A1A2E] text-white">
-      <div className="mx-auto flex min-h-11 w-full max-w-7xl flex-wrap items-center justify-between gap-x-6 gap-y-1.5 px-4 py-1.5 sm:px-6 lg:px-8">
-        <p className="flex items-center gap-2.5 text-[13px]">
+      <div className="mx-auto flex min-h-10 w-full max-w-7xl items-center justify-between gap-3 px-3 py-1 sm:min-h-11 sm:gap-6 sm:px-6 lg:px-8">
+        <p className="flex min-w-0 items-center gap-2 text-xs sm:gap-2.5 sm:text-[13px]">
           <ShoppingBag className="h-4 w-4 shrink-0" aria-hidden />
-          <span className="font-semibold">Your basket</span>
-          <span className="text-[#C9C9D6]">
+          <span className="hidden font-semibold sm:inline">Your basket</span>
+          <span className="truncate text-[#C9C9D6]">
             {count} item{count === 1 ? '' : 's'}{count > 0 && ` · ${naira(total)}`}
           </span>
         </p>
-        <div className="flex items-center gap-2 text-[13px]">
+        <div className="flex shrink-0 items-center gap-1.5 text-xs sm:gap-2 sm:text-[13px]">
           {saved.length > 0 && <WishlistMenu items={saved} />}
           {count > 0 && (
             <>
               {/* A guest manages their basket right here; a signed-in shopper has the full cart page. */}
               <button type="button" onClick={() => (isAuthenticated ? router.push('/dashboard/cart') : openBasket())}
-                className="inline-flex min-h-8 items-center rounded-full border border-white/25 px-3 hover:bg-white/10">
-                View cart
+                className="inline-flex min-h-8 items-center rounded-full border border-white/25 px-2.5 hover:bg-white/10 sm:px-3">
+                <span className="sm:hidden">Cart</span><span className="hidden sm:inline">View cart</span>
               </button>
               <button type="button" onClick={() => go('/dashboard/checkout', 'checkout')}
-                className="inline-flex min-h-8 items-center gap-1.5 rounded-full bg-[#E03E3E] px-3.5 font-semibold hover:bg-[#c93535]">
+                className="inline-flex min-h-8 items-center gap-1.5 rounded-full bg-[#E03E3E] px-3 font-semibold hover:bg-[#c93535] sm:px-3.5">
                 {!isAuthenticated && <Lock className="h-3.5 w-3.5" aria-hidden />}
                 Checkout
               </button>
@@ -99,12 +99,13 @@ function WishlistMenu({ items }: { items: Saved[] }) {
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
-        className={cn('inline-flex min-h-8 items-center gap-1.5 rounded-full border border-white/25 px-3 hover:bg-white/10', open && 'bg-white/10')}>
+        aria-label={`Wishlist, ${items.length} saved`}
+        className={cn('inline-flex min-h-8 items-center gap-1.5 rounded-full border border-white/25 px-2.5 hover:bg-white/10 sm:px-3', open && 'bg-white/10')}>
         <Heart className="h-3.5 w-3.5" aria-hidden />
-        Wishlist ({items.length})
+        <span className="hidden sm:inline">Wishlist</span> ({items.length})
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-40 mt-2 w-72 overflow-hidden rounded-xl border border-gray-100 bg-white text-gray-900 shadow-xl">
+        <div className="absolute right-0 top-full z-40 mt-2 w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-gray-100 bg-white text-gray-900 shadow-xl">
           <p className="border-b border-gray-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-gray-500">Saved for later</p>
           <ul className="max-h-80 overflow-y-auto py-1">
             {items.map((w) => {
