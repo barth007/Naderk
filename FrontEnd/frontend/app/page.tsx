@@ -1,6 +1,6 @@
 import { HeroSection } from "@/components/page/home/sections/hero"
 import { TrustMetricsSection } from "@/components/page/home/sections/trust-metrics"
-import { ProductShowcaseSection } from "@/components/page/home/sections/product-showcase"
+import { ShopByCategorySection } from "@/components/page/home/sections/shop-by-category"
 import { WhyChooseSection } from "@/components/page/home/sections/why-choose"
 import { HowItWorksSection } from "@/components/page/home/sections/how-it-works"
 import { HighlightsPromoSection } from "@/components/page/home/sections/highlights-promo"
@@ -13,7 +13,7 @@ export default function Page() {
     <>
       <HeroSection />
       <TrustMetricsSection />
-      <ProductShowcaseSection />
+      <ShopByCategorySection />
       <WhyChooseSection />
       <HowItWorksSection />
       <HighlightsPromoSection />

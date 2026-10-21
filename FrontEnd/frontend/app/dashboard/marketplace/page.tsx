@@ -107,7 +107,12 @@ function CategoryShelf({
 }
 
 export default function MarketplacePage() {
-  const [activeCategorySlug, setActiveCategorySlug] = useState<string | null>(null);
+  // Opens on a category from the link (?category=slug), e.g. "View all Eye
+  // drops" on the home page. The dashboard layout renders pages only in the
+  // browser, so the URL is there to read.
+  const [activeCategorySlug, setActiveCategorySlug] = useState<string | null>(
+    () => (typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('category')),
+  );
   const [priceRange, setPriceRange] = useState<number>(PRICE_CEILING);
   const [search, setSearch] = useState<string>('');
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');

@@ -106,6 +106,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 import QueryProvider from "@/components/providers/QueryProvider";
+import BasketStrip from "@/components/shop/BasketStrip";
+import GuestCartSync from "@/components/shop/GuestCartSync";
+import LoginPromptModal from "@/components/shop/LoginPromptModal";
+import ProductQuickView from "@/components/shop/ProductQuickView";
 
 export default async function RootLayout({
   children,
@@ -123,8 +127,16 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <QueryProvider initialSiteSettings={siteSettings}>
           <ConditionalWrapper>
-            <Navbar />
+            {/* The basket strip sits above the navbar; both stay pinned together. */}
+            <div className="sticky top-0 z-30">
+              <BasketStrip />
+              <Navbar sticky={false} />
+            </div>
+            <ProductQuickView />
+            <LoginPromptModal />
           </ConditionalWrapper>
+          {/* Everywhere, dashboard included: a guest's basket joins their cart on login. */}
+          <GuestCartSync />
           <main className="flex-1">{children}</main>
           <ConditionalWrapper>
             <Footer />
