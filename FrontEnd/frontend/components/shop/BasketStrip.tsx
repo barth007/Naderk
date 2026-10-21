@@ -23,6 +23,7 @@ export default function BasketStrip() {
   const isAuthenticated = useAuth((s) => s.isAuthenticated);
   const guestItems = useGuestCart((s) => s.items);
   const askToLogIn = useShopUi((s) => s.askToLogIn);
+  const openBasket = useShopUi((s) => s.openBasket);
   const { data: cart } = useCart(isAuthenticated);
   const { data: wishlist } = useWishlist(isAuthenticated);
 
@@ -60,7 +61,8 @@ export default function BasketStrip() {
           {saved.length > 0 && <WishlistMenu items={saved} />}
           {count > 0 && (
             <>
-              <button type="button" onClick={() => go('/dashboard/cart', 'cart')}
+              {/* A guest manages their basket right here; a signed-in shopper has the full cart page. */}
+              <button type="button" onClick={() => (isAuthenticated ? router.push('/dashboard/cart') : openBasket())}
                 className="inline-flex min-h-8 items-center rounded-full border border-white/25 px-3 hover:bg-white/10">
                 View cart
               </button>

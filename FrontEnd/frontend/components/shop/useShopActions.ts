@@ -42,6 +42,7 @@ export function useShopActions() {
         variant_name: variant?.variant_name,
         image: product.images?.[0],
         unit_price: unitPrice(product, variant),
+        max_quantity: variant ? variant.quantity_available : product.quantity_available,
       });
       toast.success(`${product.name} added to your basket`);
       return;

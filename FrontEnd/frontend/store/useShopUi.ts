@@ -15,6 +15,11 @@ interface ShopUiState {
   openQuickView: (product: Product) => void;
   closeQuickView: () => void;
 
+  /** The guest basket panel, opened from the basket strip's "View cart". */
+  basketOpen: boolean;
+  openBasket: () => void;
+  closeBasket: () => void;
+
   /** Set while the login prompt is showing: why, and where to return after logging in. */
   loginPrompt: { reason: LoginReason; next: string } | null;
   askToLogIn: (reason: LoginReason, next: string) => void;
@@ -26,8 +31,12 @@ export const useShopUi = create<ShopUiState>()((set) => ({
   openQuickView: (product) => set({ quickView: product }),
   closeQuickView: () => set({ quickView: null }),
 
+  basketOpen: false,
+  openBasket: () => set({ basketOpen: true }),
+  closeBasket: () => set({ basketOpen: false }),
+
   loginPrompt: null,
-  // The prompt replaces the quick view rather than stacking on it.
-  askToLogIn: (reason, next) => set({ loginPrompt: { reason, next }, quickView: null }),
+  // The prompt replaces any other shop popup rather than stacking on it.
+  askToLogIn: (reason, next) => set({ loginPrompt: { reason, next }, quickView: null, basketOpen: false }),
   closeLoginPrompt: () => set({ loginPrompt: null }),
 }));

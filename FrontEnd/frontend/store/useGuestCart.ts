@@ -17,12 +17,16 @@ export interface GuestCartItem {
   variant_name?: string;
   image?: string;
   unit_price: number;
+  /** Stock when it was added, to cap the quantity; the server checks again at login. */
+  max_quantity?: number;
 }
 
 interface GuestCartState {
   items: GuestCartItem[];
   add: (item: GuestCartItem) => void;
   remove: (productId: string, variantId: string | null) => void;
+  /** Set an item's quantity; below 1 removes it. */
+  setQuantity: (productId: string, variantId: string | null, quantity: number) => void;
   clear: () => void;
 }
 
@@ -38,12 +42,22 @@ export const useGuestCart = create<GuestCartState>()(
         if (!existing) return { items: [...state.items, item] };
         return {
           items: state.items.map((i) => (i === existing
-            ? { ...i, quantity: i.quantity + item.quantity, unit_price: item.unit_price }
+            ? {
+              ...i,
+              quantity: Math.min(i.quantity + item.quantity, item.max_quantity ?? Infinity),
+              unit_price: item.unit_price,
+              max_quantity: item.max_quantity,
+            }
             : i)),
         };
       }),
       remove: (productId, variantId) => set((state) => ({
         items: state.items.filter((i) => !same(i, productId, variantId)),
+      })),
+      setQuantity: (productId, variantId, quantity) => set((state) => ({
+        items: quantity < 1
+          ? state.items.filter((i) => !same(i, productId, variantId))
+          : state.items.map((i) => (same(i, productId, variantId) ? { ...i, quantity } : i)),
       })),
       clear: () => set({ items: [] }),
     }),

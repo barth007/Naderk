@@ -9,11 +9,13 @@ import { cn } from "@/lib/cn"
 import ProductCard from "@/components/marketplace/ProductCard"
 import { useShopActions } from "@/components/shop/useShopActions"
 import { useShopUi } from "@/store/useShopUi"
+import { ProductCarousel } from "./ProductCarousel"
 import type { Product, StoreCategory } from "@/services/marketplace/marketplace.types"
 
 /**
  * "Shop by category" on the home page: a few categories picked at random, one
- * shown at a time behind tabs, each with a random handful of its products.
+ * shown at a time behind tabs, each with a random handful of its products in a
+ * full-width carousel.
  *
  * Everything here works signed out: a card opens the product's quick view, and
  * Add to cart fills the guest basket. The wishlist asks for a login.
@@ -22,7 +24,8 @@ import type { Product, StoreCategory } from "@/services/marketplace/marketplace.
 const TAB_COUNT = 4
 /** Categories tried, so that empty ones can be skipped and still fill TAB_COUNT tabs. */
 const CANDIDATES = 8
-const PRODUCTS_PER_TAB = 8
+/** Products drawn per tab; the carousel repeats them if there are few. */
+const PRODUCTS_PER_TAB = 16
 const SHOP_HREF = "/dashboard/marketplace"
 
 type Tab = { category: StoreCategory; products: Product[] }
@@ -102,9 +105,22 @@ export function ShopByCategorySection() {
     openQuickView(product)
   }
 
+  const container = "mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8"
+  const renderCard = (product: Product) => (
+    <div className="grid w-full" onClickCapture={(e) => openFromCard(e, product)}>
+      <ProductCard
+        product={product}
+        inWishlist={inWishlist(product.id)}
+        isAddingToCart={isAdding}
+        onToggleWishlist={(id, e) => { e.preventDefault(); e.stopPropagation(); wish(id) }}
+        onAddToCart={(p, e) => { e.preventDefault(); e.stopPropagation(); add(p) }}
+      />
+    </div>
+  )
+
   return (
-    <section aria-labelledby="shop-by-category-title" className="bg-background py-16 sm:py-20">
-      <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+    <section aria-labelledby="shop-by-category-title" className="overflow-hidden bg-background py-16 sm:py-20">
+      <div className={container}>
         <header className="mx-auto flex max-w-2xl flex-col items-center gap-2.5 text-center">
           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--destructive)]">Shop</p>
           <h2 id="shop-by-category-title" className="text-3xl font-bold leading-tight text-foreground sm:text-4xl">
@@ -114,27 +130,31 @@ export function ShopByCategorySection() {
             Pick a category to see what&rsquo;s in it. Open any product for its details, no account needed.
           </p>
         </header>
+      </div>
 
-        {isLoading ? (
-          <div aria-hidden className="mt-8">
+      {isLoading ? (
+        <div aria-hidden className="mt-8">
+          <div className={container}>
             <div className="mx-auto flex max-w-xl justify-center gap-7 border-b border-gray-100 pb-3">
               {Array.from({ length: TAB_COUNT }).map((_, i) => <div key={i} className="h-4 w-24 animate-pulse rounded bg-gray-100" />)}
             </div>
-            <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
-              {Array.from({ length: PRODUCTS_PER_TAB }).map((_, i) => (
-                <div key={i} className="overflow-hidden rounded-md border border-gray-200">
-                  <div className="aspect-[4/3] animate-pulse bg-[#f4f6fa]" />
-                  <div className="space-y-2 p-4">
-                    <div className="h-2.5 w-1/3 animate-pulse rounded bg-gray-100" />
-                    <div className="h-3.5 w-3/4 animate-pulse rounded bg-gray-100" />
-                    <div className="h-9 w-full animate-pulse rounded-md bg-gray-100" />
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
-        ) : (
-          <>
+          <div className="mt-12 flex overflow-hidden py-2">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} className="mr-4 w-[240px] shrink-0 overflow-hidden rounded-md border border-gray-200 sm:mr-5">
+                <div className="aspect-[4/3] animate-pulse bg-[#f4f6fa]" />
+                <div className="space-y-2 p-4">
+                  <div className="h-2.5 w-1/3 animate-pulse rounded bg-gray-100" />
+                  <div className="h-3.5 w-3/4 animate-pulse rounded bg-gray-100" />
+                  <div className="h-9 w-full animate-pulse rounded-md bg-gray-100" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className={container}>
             <div
               role="tablist"
               aria-label="Product categories"
@@ -166,51 +186,46 @@ export function ShopByCategorySection() {
                 )
               })}
             </div>
+          </div>
 
-            {current && (
-              <div
-                role="tabpanel"
-                id={`${baseId}-panel`}
-                aria-labelledby={`${baseId}-tab-${tabs.indexOf(current)}`}
-                className="mt-7"
-              >
-                <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm text-muted-foreground">{current.category.description || " "}</p>
-                  <Link
-                    href={`${SHOP_HREF}?category=${encodeURIComponent(current.category.slug)}`}
-                    className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-[#B42318] hover:text-[#7A1A10]"
-                  >
-                    View all {current.category.name} <ArrowRight className="h-4 w-4" aria-hidden />
-                  </Link>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
-                  {current.products.map((product) => (
-                    <div key={product.id} className="grid" onClickCapture={(e) => openFromCard(e, product)}>
-                      <ProductCard
-                        product={product}
-                        inWishlist={inWishlist(product.id)}
-                        isAddingToCart={isAdding}
-                        onToggleWishlist={(id, e) => { e.preventDefault(); e.stopPropagation(); wish(id) }}
-                        onAddToCart={(p, e) => { e.preventDefault(); e.stopPropagation(); add(p) }}
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-8 flex justify-center">
-                  <Link
-                    href={SHOP_HREF}
-                    className="inline-flex min-h-[46px] items-center gap-1.5 rounded-full border border-gray-200 px-5 text-sm font-semibold text-foreground hover:border-[#F5C9C9] hover:text-[#B42318]"
-                  >
-                    Browse the whole shop <ArrowRight className="h-4 w-4" aria-hidden />
-                  </Link>
-                </div>
+          {current && (
+            <div
+              role="tabpanel"
+              id={`${baseId}-panel`}
+              aria-labelledby={`${baseId}-tab-${tabs.indexOf(current)}`}
+              className="mt-7"
+            >
+              <div className={cn(container, "mb-5 flex flex-wrap items-center justify-between gap-3")}>
+                <p className="text-sm text-muted-foreground">{current.category.description || "\u00a0"}</p>
+                <Link
+                  href={`${SHOP_HREF}?category=${encodeURIComponent(current.category.slug)}`}
+                  className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-[#B42318] hover:text-[#7A1A10]"
+                >
+                  View all {current.category.name} <ArrowRight className="h-4 w-4" aria-hidden />
+                </Link>
               </div>
-            )}
-          </>
-        )}
-      </div>
+
+              {/* Full page width; a new carousel per tab so it starts from the beginning. */}
+              <ProductCarousel
+                key={current.category.id}
+                label={`${current.category.name} products`}
+                items={current.products}
+                itemKey={(p) => p.id}
+                renderItem={renderCard}
+              />
+
+              <div className={cn(container, "mt-8 flex justify-center")}>
+                <Link
+                  href={SHOP_HREF}
+                  className="inline-flex min-h-[46px] items-center gap-1.5 rounded-full border border-gray-200 px-5 text-sm font-semibold text-foreground hover:border-[#F5C9C9] hover:text-[#B42318]"
+                >
+                  Browse the whole shop <ArrowRight className="h-4 w-4" aria-hidden />
+                </Link>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </section>
   )
 }

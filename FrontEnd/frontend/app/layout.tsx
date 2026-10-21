@@ -107,6 +107,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 import QueryProvider from "@/components/providers/QueryProvider";
 import BasketStrip from "@/components/shop/BasketStrip";
+import GuestBasketPanel from "@/components/shop/GuestBasketPanel";
 import GuestCartSync from "@/components/shop/GuestCartSync";
 import LoginPromptModal from "@/components/shop/LoginPromptModal";
 import ProductQuickView from "@/components/shop/ProductQuickView";
@@ -133,6 +134,7 @@ export default async function RootLayout({
               <Navbar sticky={false} />
             </div>
             <ProductQuickView />
+            <GuestBasketPanel />
             <LoginPromptModal />
           </ConditionalWrapper>
           {/* Everywhere, dashboard included: a guest's basket joins their cart on login. */}
