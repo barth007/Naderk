@@ -5,11 +5,11 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import { Order } from '@/services/marketplace/marketplace.types';
 import { toast } from 'sonner';
+import { openPayPalCheckout } from './paypal-checkout';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface InitializePaymentPayload {
-  amount_kobo: number;
   email: string;
   shipping_address: string;
   provider?: string;
@@ -23,6 +23,8 @@ export interface InitializePaymentResult {
   public_config?: Record<string, any>;
   provider: string;
   order_id: string;   // poll this until payment_status = PAID
+  amount_kobo: number; // what to charge, priced by the server, in `currency`'s minor unit
+  currency?: string;   // 'NGN', or 'USD' when paying with PayPal
 }
 
 export interface PaystackPopupOptions {
@@ -183,7 +185,8 @@ export function usePaystackPopup() {
 export interface PaymentCheckoutOptions {
   provider: string;
   publicConfig?: Record<string, any>;   // from the initialize response
-  amountKobo: number;
+  amountKobo: number;                    // in `currency`'s minor unit
+  currency?: string;                     // defaults to NGN
   email: string;
   reference: string;
   customerName?: string;
@@ -194,14 +197,29 @@ export interface PaymentCheckoutOptions {
 }
 
 /**
- * Opens the correct payment UI for the chosen provider: Paystack's inline popup
- * or Monnify's inline SDK. Both call onSuccess with our reference (the backend
- * then verifies it authoritatively). Requires <PaymentScripts /> on the route.
+ * Opens the correct payment UI for the chosen provider: Paystack's inline popup,
+ * Monnify's inline SDK, or PayPal's buttons. All call onSuccess with our
+ * reference (the backend then verifies it authoritatively). Requires
+ * <PaymentScripts /> on the route for Paystack and Monnify; PayPal loads its
+ * own SDK when it is used.
  */
 export function usePaymentCheckout() {
   return useCallback((opts: PaymentCheckoutOptions) => {
     const provider = (opts.provider || 'PAYSTACK').toUpperCase();
     const cfg = opts.publicConfig || {};
+
+    if (provider === 'PAYPAL') {
+      openPayPalCheckout({
+        clientId: cfg.client_id,
+        orderId: cfg.order_id,
+        currency: cfg.currency || opts.currency || 'USD',
+        amountMinor: opts.amountKobo,
+        description: opts.paymentDescription,
+        onApproved: () => opts.onSuccess(opts.reference),
+        onClose: opts.onClose,
+      });
+      return;
+    }
 
     if (provider === 'MONNIFY') {
       const MonnifySDK = (window as any).MonnifySDK;

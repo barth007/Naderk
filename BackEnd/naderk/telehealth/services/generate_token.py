@@ -4,14 +4,12 @@ from livekit.api import AccessToken, VideoGrants
 def generate_livekit_token(*, session, user) -> str:
     """
     Generates a LiveKit JWT token for a given session and user.
-    Enforces that the user is the patient, doctor, or authorized medical staff.
+
+    A consultation is between the patient and their doctor: nobody else is
+    issued a token, whatever their role.
     """
     appointment = session.appointment
-    is_patient = (user.id == appointment.patient.id)
-    is_doctor = (user.id == appointment.doctor.id)
-    is_staff = user.role in ['AGENT', 'ADMIN']
-
-    if not (is_patient or is_doctor or is_staff):
+    if user.id not in (appointment.patient_id, appointment.doctor_id):
         raise PermissionError("Access Denied: You are not authorized to join this session.")
 
     api_key = getattr(settings, 'LIVEKIT_API_KEY', 'devkey')

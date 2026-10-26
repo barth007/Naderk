@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
 
+from naderk.cms.extend_life_africa_content import EXTEND_LIFE_AFRICA_SECTIONS
 from naderk.cms.models import PageSection
 
 #: The copy currently living in about.constants.ts, so the first edit starts
@@ -95,7 +96,7 @@ ABOUT_SECTIONS = {
     },
 }
 
-PAGES = {'about': ABOUT_SECTIONS}
+PAGES = {'about': ABOUT_SECTIONS, 'extend_life_africa': EXTEND_LIFE_AFRICA_SECTIONS}
 
 
 class Command(BaseCommand):

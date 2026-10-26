@@ -28,13 +28,17 @@ class PaystackProvider(PaymentProvider):
     def public_config(self) -> dict:
         return {"public_key": self.client_key}
 
-    def initialize(self, *, amount_kobo: int, email: str, reference: str, metadata: dict) -> PaymentInitResult:
+    def initialize(self, *, amount_kobo: int, email: str, reference: str, metadata: dict,
+                   currency: str = 'NGN') -> PaymentInitResult:
+        # `amount_kobo` is in the currency's minor unit (kobo, pence, cents).
+        # Charging anything but NGN needs that currency enabled on the
+        # Paystack account; Paystack refuses the initialisation otherwise.
         payload = {
             "amount": amount_kobo,
             "email": email,
             "reference": reference,
             "metadata": metadata,
-            "currency": "NGN",
+            "currency": currency,
         }
         resp = requests.post(f"{PAYSTACK_BASE}/transaction/initialize", json=payload, headers=self._headers, timeout=30)
         resp.raise_for_status()

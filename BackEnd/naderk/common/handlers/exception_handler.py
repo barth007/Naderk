@@ -3,7 +3,9 @@ import traceback
 from rest_framework.views import exception_handler
 from rest_framework.exceptions import ValidationError, APIException
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import OperationalError
 from django.http import Http404
+from psycopg_pool import PoolTimeout
 
 from naderk.common.exceptions.base import BaseCustomException, _problems_url
 from naderk.common.responses.builders import build_error_response
@@ -83,6 +85,20 @@ def custom_exception_handler(exc, context):
             instance=instance,
             errors=errors,
         )
+
+    # Every pooled database connection stayed busy for the pool's whole timeout:
+    # the server is overloaded, not broken. Tell the client to retry rather
+    # than reporting a crash.
+    if isinstance(exc, OperationalError) and isinstance(exc.__cause__, PoolTimeout):
+        response = build_error_response(
+            type_uri=_problems_url('service-unavailable'),
+            title='Service Unavailable',
+            status_code=503,
+            detail='The server is busy. Please try again shortly.',
+            instance=instance,
+        )
+        response['Retry-After'] = '5'
+        return response
 
     # Unhandled exception → 500
     traceback.print_exc()

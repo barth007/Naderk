@@ -18,7 +18,7 @@ import { cn } from '@/lib/cn';
 
 // ─── Clinic header (static brand info) ───────────────────────────────────────
 const CLINIC = {
-  name: 'NaderkEye Clinic',
+  name: 'NaderkEla',
   tagline: 'Advanced Eye Care Services',
   address: '1234 Medical Center Drive, Suite 100\nLugbe, Abuja',
   phone: '+234 081 098 234',

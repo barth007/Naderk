@@ -1,4 +1,5 @@
 import datetime
+from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
 from rest_framework.views import APIView
@@ -349,13 +350,16 @@ class AppointmentHistoryApi(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        # Sync check as a fail-safe for local development if celery beat is not running
-        try:
-            from .tasks import mark_missed_appointments, cancel_abandoned_unpaid_appointments
-            cancel_abandoned_unpaid_appointments()
-            mark_missed_appointments()
-        except Exception:
-            pass
+        # Fail-safe for local development, where celery beat may not be running.
+        # Deployed environments rely on beat: these sweep the whole table, which
+        # is not something to do on every page load.
+        if settings.DEBUG:
+            try:
+                from . import tasks
+                tasks.cancel_abandoned_unpaid_appointments()
+                tasks.mark_missed_appointments()
+            except Exception:
+                pass
 
         active_statuses = [
             Appointment.Status.PENDING, 
@@ -448,11 +452,14 @@ class RescheduleAppointmentApi(APIView):
             return build_error_response("invalid-time", "Invalid Time", 400, "Cannot reschedule to a past time")
             
         try:
+            # The patient's diary, not the caller's: staff reschedule on a
+            # patient's behalf, and their own bookings are beside the point.
             PatientAppointmentValidationService.validate_overlapping_appointments(
-                patient=request.user,
+                patient=appointment.patient,
                 date=new_date,
                 start_time=new_time,
-                duration_minutes=appointment.service.duration_minutes
+                duration_minutes=appointment.service.duration_minutes,
+                exclude_appointment_id=appointment.id,
             )
         except OverlappingAppointmentError as e:
             from rest_framework.response import Response
@@ -493,10 +500,57 @@ class AppointmentDetailApi(APIView):
         return build_success_response("Appointment retrieved", AppointmentSerializer(appointment).data)
 
     def delete(self, request, pk):
+        """
+        Discard a checkout that was started and not finished.
+
+        The booking wizard creates the appointment before payment and calls
+        this when the payment popup closes or fails. It used to delete whatever
+        it was pointed at, so a patient could delete a paid booking — and the
+        wizard itself did, whenever a bank transfer took longer to confirm than
+        its 15-second grace period. A real booking is cancelled, not deleted.
+        """
+        from naderk.payments.models import PaymentTransaction
+        from naderk.payments.services import confirm_and_fulfill
+        from .tasks import ABANDONED_CHECKOUT_REASON
+
         try:
             appointment = Appointment.objects.get(id=pk, patient=request.user)
         except Appointment.DoesNotExist:
             return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")
+
+        not_deletable = build_error_response(
+            "conflict", "Cannot delete", 409,
+            "This appointment is booked. Cancel it instead.",
+        )
+        if not Appointment.objects.unpaid_checkouts().filter(pk=appointment.pk).exists():
+            return not_deletable
+
+        # A payment may have gone through that we have not heard about yet.
+        # Ask the provider before throwing the booking away.
+        transactions = appointment.payment_transactions.all()
+        for txn in transactions.filter(status=PaymentTransaction.Status.INITIATED):
+            try:
+                confirm_and_fulfill(reference=txn.reference)
+            except Exception:
+                return build_error_response(
+                    "conflict", "Payment still being confirmed", 409,
+                    "We could not confirm whether this appointment was paid. "
+                    "It will be released automatically if no payment arrives.",
+                )
+        appointment.refresh_from_db()
+        if appointment.payment_status == Appointment.PaymentStatus.PAID:
+            return not_deletable
+
+        if transactions.exists():
+            # A payment was started. A slow bank transfer can still land after
+            # the provider has called it abandoned, so keep the row for it to
+            # attach to (confirm_appointment_payment revives it) and only free
+            # the slot.
+            appointment.status = Appointment.Status.CANCELLED
+            appointment.cancelled_at = timezone.now()
+            appointment.cancellation_reason = ABANDONED_CHECKOUT_REASON
+            appointment.save(update_fields=['status', 'cancelled_at', 'cancellation_reason'])
+            return build_success_response("Appointment checkout cancelled", None)
 
         appointment.delete()
         return build_success_response("Appointment deleted successfully", None)
@@ -587,13 +641,30 @@ class CheckInAppointmentApi(APIView):
 
         return build_success_response("Check-in undone", AppointmentSerializer(appointment).data)
 
+def can_run_appointment(user, appointment) -> bool:
+    """
+    True for whoever delivers the visit: its doctor, or — since a facility
+    service has no doctor — front-desk staff and admins.
+
+    The patient used to be accepted here too, so they could mark their own
+    consultation started or completed (and draw down a session pack) without
+    ever being seen.
+    """
+    if appointment.doctor_id is not None and user.id == appointment.doctor_id:
+        return True
+    if getattr(user, 'role', None) in ('ADMIN', 'SUPER_ADMIN'):
+        return True
+    from naderk.common.permissions import user_has_area
+    return user_has_area(user, 'appointments')
+
+
 class StartAppointmentApi(APIView):
     permission_classes = [IsAuthenticated]
     
     def post(self, request, pk):
         try:
             appointment = Appointment.objects.get(id=pk)
-            if request.user not in [appointment.patient, appointment.doctor]:
+            if not can_run_appointment(request.user, appointment):
                 return build_error_response("forbidden", "Access denied", 403, "Not your appointment")
         except Appointment.DoesNotExist:
             return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")
@@ -613,7 +684,7 @@ class CompleteAppointmentApi(APIView):
     def post(self, request, pk):
         try:
             appointment = Appointment.objects.get(id=pk)
-            if request.user not in [appointment.patient, appointment.doctor]:
+            if not can_run_appointment(request.user, appointment):
                 return build_error_response("forbidden", "Access denied", 403, "Not your appointment")
         except Appointment.DoesNotExist:
             return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")

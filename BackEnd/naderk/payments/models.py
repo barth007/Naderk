@@ -7,6 +7,7 @@ class PaymentProviderChoices(models.TextChoices):
     PAYSTACK    = 'PAYSTACK',    'Paystack'
     MONNIFY     = 'MONNIFY',     'Monnify'
     FLUTTERWAVE = 'FLUTTERWAVE', 'Flutterwave'
+    PAYPAL      = 'PAYPAL',      'PayPal'
 
 
 class PaymentTransaction(models.Model):
@@ -20,7 +21,9 @@ class PaymentTransaction(models.Model):
         ABANDONED = 'ABANDONED', 'Abandoned'
 
     id              = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user            = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='payment_transactions')
+    # Null for an Extend Life Africa gift from someone without an account.
+    user            = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+                                        related_name='payment_transactions')
     provider        = models.CharField(max_length=20, choices=Provider.choices)
     reference       = models.CharField(max_length=255, unique=True, db_index=True)
     # Provider-generated reference (e.g. Monnify transactionReference "MNFY|..."),
@@ -36,6 +39,10 @@ class PaymentTransaction(models.Model):
     )
     appointment  = models.ForeignKey(
         'appointments.Appointment', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='payment_transactions'
+    )
+    donation     = models.ForeignKey(
+        'donations.Donation', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='payment_transactions'
     )
     raw_response = models.JSONField(default=dict)
@@ -62,13 +69,15 @@ class PaymentGateway(models.Model):
     display_name  = models.CharField(max_length=100)
     is_active     = models.BooleanField(default=False)
     is_default    = models.BooleanField(default=False)
-    # Client-safe key exposed to the SDK: Paystack public key / Monnify API key.
+    # Client-safe key exposed to the SDK: Paystack public key / Monnify API key /
+    # PayPal client ID.
     client_key    = models.CharField(max_length=255, blank=True, default='')
     # Fernet ciphertext — access via get_secret_key()/set_secret_key().
     secret_key_encrypted = models.TextField(blank=True, default='')
     # Monnify contract code (first-class; other providers leave blank).
     contract_code = models.CharField(max_length=100, blank=True, default='')
-    # Optional provider-specific extras (e.g. webhook_secret, payment_methods).
+    # Optional provider-specific extras (e.g. webhook_secret, payment_methods;
+    # for PayPal, webhook_id and ngn_per_usd).
     config        = models.JSONField(default=dict, blank=True)
     created_at    = models.DateTimeField(auto_now_add=True)
     updated_at    = models.DateTimeField(auto_now=True)

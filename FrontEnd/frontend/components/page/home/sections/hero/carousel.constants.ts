@@ -40,7 +40,7 @@ export const CAROUSEL_SLIDES: CarouselSlideData[] = [
     image: "/images/pediatric_screening_banner.png",
     mobileImage: "/images/pediatric_screening_banner.png",
     ctaText: "Schedule Screening",
-    ctaLink: "/coming-soon",
+    ctaLink: "/dashboard/appointments/book",
     badge: "FAMILY SPECIAL",
     discount: "SAVE $50",
     backgroundColor: "linear-gradient(135deg, #fff5f5 0%, #ffe3e3 100%)",

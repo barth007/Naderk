@@ -40,25 +40,16 @@ class ProductSerializer(serializers.ModelSerializer):
             'variants', 'created_at', 'updated_at'
         ]
 
-    def _active_flash_sale(self, obj):
-        from django.utils import timezone
-        from naderk.ecommerce.models import FlashSale
-        now = timezone.now()
-        return (
-            FlashSale.objects
-            .filter(is_active=True, starts_at__lte=now, ends_at__gte=now, products=obj)
-            .first()
-        )
-
     def get_sale_price(self, obj):
-        sale = self._active_flash_sale(obj)
-        if sale:
-            discounted = float(obj.price) * (1 - float(sale.discount_percent) / 100)
-            return str(round(discounted, 2))
-        return None
+        # Same helper the cart and checkout charge from, so the price shown is
+        # the price paid.
+        from naderk.ecommerce.services import product_sale_price
+        price = product_sale_price(obj)
+        return str(price) if price is not None else None
 
     def get_flash_sale_name(self, obj):
-        sale = self._active_flash_sale(obj)
+        from naderk.ecommerce.services import active_flash_sale
+        sale = active_flash_sale(obj)
         return sale.name if sale else None
 
 
@@ -250,7 +241,9 @@ class AddToCartSerializer(serializers.Serializer):
             # If lens is prescription-based, ensure a prescription is attached.
             # Approval is NOT required at cart-add time — clinical review happens
             # after payment (order moves to PRESCRIPTION_REVIEW status).
-            lens = LensType.objects.get(id=attrs.get('lens_type_id'))
+            lens = LensType.objects.filter(id=attrs.get('lens_type_id')).first()
+            if lens is None:
+                raise serializers.ValidationError("The selected lens type does not exist.")
             if lens.name.lower() != 'non-prescription':
                 pres_id = attrs.get('prescription_id')
                 if not pres_id:
@@ -263,7 +256,9 @@ class AddToCartSerializer(serializers.Serializer):
                     raise serializers.ValidationError("The selected prescription does not exist.")
 
             # Frame Lens compatibility check
-            frame_var = FrameVariant.objects.get(id=frame_var_id)
+            frame_var = FrameVariant.objects.filter(id=frame_var_id).first()
+            if frame_var is None:
+                raise serializers.ValidationError("The selected frame does not exist.")
             if not FrameLensCompatibility.objects.filter(frame=frame_var.frame, lens_type=lens).exists():
                 raise serializers.ValidationError(f"The selected frame '{frame_var.frame.name}' is incompatible with the lens type '{lens.name}'.")
 
@@ -348,9 +343,18 @@ class OrderSerializer(serializers.ModelSerializer):
         read_only_fields = ['user', 'status', 'payment_status', 'total_price', 'created_at', 'updated_at']
 
 
+class CustomerOrderSerializer(OrderSerializer):
+    """
+    An order as its buyer sees it: everything except the two fields the model
+    marks "Staff only". OrderSerializer sent both to the customer.
+    """
+
+    class Meta(OrderSerializer.Meta):
+        fields = [f for f in OrderSerializer.Meta.fields if f not in ('production_notes', 'internal_notes')]
+
+
 class CheckoutSerializer(serializers.Serializer):
     shipping_address = serializers.CharField(required=True)
-    payment_reference = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
 # --- Glasses Builder Configuration ---

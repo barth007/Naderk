@@ -12,11 +12,11 @@ export const HERO_CONTENT: HeroContent = {
   ctas: {
     primary: {
       label: "Book Consultation",
-      href: "/coming-soon",
+      href: "/dashboard/appointments/book",
     },
     secondary: {
       label: "Explore Services",
-      href: "/coming-soon",
+      href: "/services/laboratory",
     },
   },
   trust: {

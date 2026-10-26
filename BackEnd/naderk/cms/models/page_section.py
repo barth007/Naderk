@@ -21,6 +21,7 @@ class PageSection(models.Model):
         OPTICAL_STORE = 'optical_store', 'Optical Store'
         CONTACT = 'contact', 'Contact'
         HOME = 'home', 'Home'
+        EXTEND_LIFE_AFRICA = 'extend_life_africa', 'Extend Life Africa'
 
     page = models.CharField(max_length=40, choices=Page.choices)
     section_key = models.CharField(max_length=60)

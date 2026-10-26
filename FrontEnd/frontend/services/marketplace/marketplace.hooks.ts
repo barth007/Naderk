@@ -248,13 +248,15 @@ export const useReviewPrescription = (id: string) => {
 };
 
 // Cart
-export const useCart = () => {
+/** `enabled: false` for pages also seen signed out, where the cart would 401. */
+export const useCart = (enabled = true) => {
   return useQuery({
     queryKey: ['marketplace-cart'],
     queryFn: async () => {
       const response = await apiClient.get('/marketplace/cart/');
       return response.data.data as Cart;
-    }
+    },
+    enabled,
   });
 };
 
@@ -326,13 +328,15 @@ export const useClearCart = () => {
 };
 
 // Wishlist
-export const useWishlist = () => {
+/** `enabled: false` for pages also seen signed out, where the wishlist would 401. */
+export const useWishlist = (enabled = true) => {
   return useQuery({
     queryKey: ['marketplace-wishlist'],
     queryFn: async () => {
       const response = await apiClient.get('/marketplace/wishlist/');
       return response.data.data as Wishlist;
-    }
+    },
+    enabled,
   });
 };
 
@@ -357,7 +361,6 @@ export const useToggleWishlist = () => {
 // Checkout & Orders
 export interface CheckoutPayload {
   shipping_address: string;
-  payment_reference?: string | null;
 }
 
 export const useCheckout = () => {

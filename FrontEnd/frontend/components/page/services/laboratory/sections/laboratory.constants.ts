@@ -5,14 +5,14 @@ export const LABORATORY_CONTENT: LaboratoryContent = {
     badge: "Diagnostic Excellence",
     title: "Advanced Lab & Diagnostics",
     description: "Precise testing for comprehensive eye health. Utilizing state of the art technology to detect, monitor, and manage ocular conditions with unparalleled accuracy.",
-    primaryCTA: { label: "Book Appointment", href: "/coming-soon" },
-    secondaryCTA: { label: "Explore Services", href: "/coming-soon" },
+    primaryCTA: { label: "Book Appointment", href: "/dashboard/appointments/book" },
+    secondaryCTA: { label: "Explore Services", href: "#overview-title" },
     image: "/images/image 13.png",
     imageAlt: "Advanced laboratory diagnostic equipment",
   },
   overview: {
     title: "Our Full Range of Services",
-    description: "At Naderk Eye Centre, our commitment extends beyond treatment; we are building a healthier, sustainable future through preventive healthcare, advanced technology, and patient-centred excellence, and a deep sense of purpose.",
+    description: "At NaderkEla, our commitment extends beyond treatment; we are building a healthier, sustainable future through preventive healthcare, advanced technology, and patient-centred excellence, and a deep sense of purpose.",
     services: [
       {
         icon: "eye",
@@ -40,7 +40,7 @@ export const LABORATORY_CONTENT: LaboratoryContent = {
     title: "Accessing Your Results",
     description: "Stay informed about your eye health. Our digital patient portal allows you to view detailed diagnostics reports, compare historical data, and share results with other healthcare providers securely.",
     buttonLabel: "Log In To View Your Results",
-    href: "/coming-soon",
+    href: "/dashboard/records",
   },
   standards: {
     title: "Uncompromising Standards",

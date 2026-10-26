@@ -17,8 +17,22 @@ User = get_user_model()
 
 logger = logging.getLogger(__name__)
 
+#: Wrong guesses allowed against one code before it is thrown away. A six-digit
+#: code with unlimited tries in its five-minute life could simply be guessed.
+MAX_OTP_ATTEMPTS = 5
+
+
 def _generate_otp_code() -> str:
     return str(random.randint(100000, 999999))
+
+
+def _otp_disabled() -> bool:
+    """
+    True while DISABLE_OTP_VERIFICATION is set — a temporary switch for load
+    testing (JMeter), where nothing can read a code out of an inbox.
+    """
+    from django.conf import settings
+    return getattr(settings, 'DISABLE_OTP_VERIFICATION', False)
 
 def register_patient(*, email: str, password: str, full_name: str) -> User:
     """
@@ -33,6 +47,10 @@ def register_patient(*, email: str, password: str, full_name: str) -> User:
     first_name = names[0]
     last_name = names[1] if len(names) > 1 else ''
 
+    # With OTP disabled the account is usable straight away: no code is sent,
+    # so the patient can log in immediately after registering.
+    verified = _otp_disabled()
+
     with transaction.atomic():
         user = User.objects.create_user(
             email=email,
@@ -40,8 +58,8 @@ def register_patient(*, email: str, password: str, full_name: str) -> User:
             first_name=first_name,
             last_name=last_name,
             role=User.Role.PATIENT,
-            is_verified=False,
-            otp_verified=False
+            is_verified=verified,
+            otp_verified=verified
         )
         generate_and_send_otp(user=user)
 
@@ -53,6 +71,9 @@ def generate_and_send_otp(*, user: User) -> None:
     Invalidates all previous unused OTPs for the user, creates a new
     hashed OTP record, then sends the plain code by email.
     """
+    if _otp_disabled():
+        return
+
     # Delete all previous unused OTPs so only the latest is ever valid.
     OTPVerification.objects.filter(user=user, is_used=False).delete()
 
@@ -113,7 +134,14 @@ def verify_otp(*, email: str, code: str) -> dict:
         expires_at__gt=timezone.now()
     ).order_by('-created_at').first()
 
-    if not otp_record or not check_password(code, otp_record.otp_code):
+    if not otp_record:
+        raise InvalidOTPException(detail="Invalid or expired OTP.")
+
+    if not check_password(str(code or ''), otp_record.otp_code):
+        otp_record.retry_attempts += 1
+        if otp_record.retry_attempts >= MAX_OTP_ATTEMPTS:
+            otp_record.is_used = True      # burned: the user must ask for a new code
+        otp_record.save(update_fields=['retry_attempts', 'is_used'])
         raise InvalidOTPException(detail="Invalid or expired OTP.")
 
     otp_record.is_used = True
@@ -141,7 +169,7 @@ def authenticate_user(*, email: str, password: str, request=None) -> dict:
         raise AuthenticationRequiredException(detail="Invalid credentials.")
 
     # OTP verification is only required for patients — staff accounts are created internally
-    if user.role == 'PATIENT' and not user.otp_verified:
+    if user.role == 'PATIENT' and not user.otp_verified and not _otp_disabled():
         raise AuthenticationRequiredException(
             detail="Account not verified. Please verify your OTP.",
             code="not_verified"

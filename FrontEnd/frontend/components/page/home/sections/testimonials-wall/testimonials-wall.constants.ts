@@ -6,7 +6,7 @@ export const COLUMN_1_TESTIMONIALS: TestimonialType[] = [
     role: "Patient",
     location: "Abuja",
     image: "/images/testimonials/sarah.png",
-    quote: "The doctors at NaderkEye completely transformed my experience. The care was exceptional, and my vision has never been clearer.",
+    quote: "The doctors at NaderkEla completely transformed my experience. The care was exceptional, and my vision has never been clearer.",
     rating: 5,
   },
   {
@@ -49,7 +49,7 @@ export const COLUMN_2_TESTIMONIALS: TestimonialType[] = [
     role: "Entrepreneur",
     location: "Abuja",
     image: "/images/testimonials/sarah.png",
-    quote: "NaderkEye is a real gem! I started using their services a few months ago and it completely changed the way I experience eye care.",
+    quote: "NaderkEla is a real gem! I started using their services a few months ago and it completely changed the way I experience eye care.",
     rating: 5,
   },
 ];

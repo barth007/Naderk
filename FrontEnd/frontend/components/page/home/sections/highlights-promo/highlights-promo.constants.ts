@@ -25,7 +25,7 @@ export const PROMO_CARDS: PromoCardType[] = [
     image: "/images/home-consultation.png",
     cta: {
       label: "Book Consultation",
-      href: "/coming-soon",
+      href: "/dashboard/appointments/book",
     },
   },
   {
@@ -34,7 +34,7 @@ export const PROMO_CARDS: PromoCardType[] = [
     image: "/images/prescription-glasses.png",
     cta: {
       label: "Browse Frames",
-      href: "/coming-soon",
+      href: "/dashboard/marketplace",
     },
   },
 ];

@@ -25,6 +25,7 @@ export const ADMIN_NAV: SidebarItem[] = [
   { name: 'Glasses Builder', href: '/admin/glasses-builder', iconName: 'SlidersHorizontal', area: 'glass_builder' },
   { name: 'Messages', href: '/admin/messages', iconName: 'MessageSquare', area: 'messaging' },
   { name: 'CMS', href: '/admin/cms', iconName: 'Globe', area: 'cms' },
+  { name: 'Extend Life Africa', href: '/admin/extend-life-africa', iconName: 'HandHeart', area: 'donations' },
   { name: 'Settings', href: '/profile', iconName: 'Settings' },
 ];
 
@@ -85,9 +86,6 @@ export const ROLE_CONFIGS: Record<string, RoleConfig> = {
     defaultTitle: 'Optician Portal',
     sidebarItems: [
       { name: 'Dashboard', href: '/optician/dashboard', iconName: 'LayoutGrid' },
-      { name: 'Prescription Reviews', href: '/optician/prescriptions', iconName: 'ClipboardCheck' },
-      { name: 'Marketplace Orders', href: '/optician/orders', iconName: 'Package' },
-      { name: 'Inventory', href: '/optician/inventory', iconName: 'Layers' },
       { name: 'Settings', href: '/profile', iconName: 'Settings' },
     ],
     profileSections: ['personal', 'security'],
@@ -208,6 +206,7 @@ const ADMIN_PATH_AREAS: Record<string, string> = {
   'glasses-builder': 'glass_builder',
   messages: 'messaging',
   cms: 'cms',
+  'extend-life-africa': 'donations',
 };
 
 export function areaForAdminPath(pathname: string): string | null {

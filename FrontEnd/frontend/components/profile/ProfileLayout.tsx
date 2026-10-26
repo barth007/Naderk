@@ -202,7 +202,7 @@ function DoctorProfileSection({ user, profileData, setProfileData, profilePictur
               {field('First Name', 'first_name')}
               {field('Last Name', 'last_name')}
               {field('Phone Number', 'phone_number', 'tel', '+234...')}
-              {field('Office Address', 'office_address', 'text', 'e.g. Naderk Eye Center, Abuja')}
+              {field('Office Address', 'office_address', 'text', 'e.g. NaderkEla, Abuja')}
             </div>
           </div>
 
@@ -470,7 +470,7 @@ export default function ProfileLayout() {
             department: "Clinical Staff",
             employee_id: "EMP-STAFF-1234",
             employment_date: "2024-01-15",
-            office_address: "Naderk Eye Center HQ, Abuja",
+            office_address: "NaderkEla HQ, Abuja",
           });
         }
       } catch {

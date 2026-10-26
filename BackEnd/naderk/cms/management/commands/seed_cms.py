@@ -33,7 +33,7 @@ class Command(BaseCommand):
             dict(badge_text='FAMILY SPECIAL', title='Back to School Screenings', subtitle='PEDIATRIC EYE HEALTH',
                  description='Prepare your children for classroom success. Make sure they see the board clearly with our custom kids\' screening packages.',
                  image_url='/images/pediatric_screening_banner.png',
-                 cta_primary_text='Schedule Screening', cta_primary_link='/coming-soon',
+                 cta_primary_text='Schedule Screening', cta_primary_link='/dashboard/appointments/book',
                  discount_text='SAVE $50', theme='LIGHT', order=3),
             dict(badge_text='CLINICAL LEADERSHIP', title='Retinal Screening & Imaging', subtitle='PREVENTATIVE EYE HEALTH',
                  description='Early detection saves sight. Get high-definition retinal analysis for glaucoma, diabetic retinopathy, and macular health.',

@@ -25,6 +25,10 @@ def get_products(*, category_slug: Optional[str] = None, search_query: Optional[
             Q(name__icontains=search_query) | Q(description__icontains=search_query)
         )
         
+    if sort_by == 'random':
+        # A fresh random sample each call (the home page's product strip).
+        return queryset.order_by('?')
+
     if sort_by:
         # Map sorting strings to fields
         sort_mapping = {

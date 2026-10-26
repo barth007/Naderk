@@ -38,8 +38,10 @@ export function SharedTelehealthDetailContainer({ sessionId }: SharedTelehealthD
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
-    // Only check if session is active/upcoming
-    if (session && ['SCHEDULED', 'READY', 'WAITING', 'IN_PROGRESS'].includes(session.status)) {
+    // Only check if session is active/upcoming. Staff never join the call
+    // (a consultation is between patient and doctor), so they are not asked
+    // for camera and microphone access either.
+    if (!isAgent && session && ['SCHEDULED', 'READY', 'WAITING', 'IN_PROGRESS'].includes(session.status)) {
       startDeviceCheck();
     } else {
       setCheckingDevices(false);
@@ -142,7 +144,7 @@ export function SharedTelehealthDetailContainer({ sessionId }: SharedTelehealthD
             </p>
           </div>
           
-          {!isPast && (
+          {!isPast && !isAgent && (
             <div className="flex items-center gap-3">
               <button 
                 onClick={startDeviceCheck}
@@ -160,6 +162,23 @@ export function SharedTelehealthDetailContainer({ sessionId }: SharedTelehealthD
             <h3 className="text-base font-bold text-gray-900 mb-1">Session Closed</h3>
             <p className="text-sm text-gray-500 max-w-sm mx-auto mb-6 leading-relaxed">
               This consultation has completed, expired, or been cancelled. You can no longer join the video room.
+            </p>
+            {session.conversation_id && (
+              <Link
+                href={`${messagesPath}?conversation_id=${session.conversation_id}`}
+                className="px-5 py-2.5 bg-[#E03E3E] hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-all inline-flex items-center gap-1.5"
+              >
+                Go to Care Team Messages
+              </Link>
+            )}
+          </div>
+        ) : isAgent ? (
+          <div className="bg-gray-50/50 border border-gray-100 rounded-2xl p-8 text-center">
+            <Video className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+            <h3 className="text-base font-bold text-gray-900 mb-1">Private consultation</h3>
+            <p className="text-sm text-gray-500 max-w-sm mx-auto mb-6 leading-relaxed">
+              Video consultations are between the patient and their doctor. You can follow
+              this session&apos;s status here and reach both of them through messages.
             </p>
             {session.conversation_id && (
               <Link

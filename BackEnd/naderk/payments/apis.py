@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 from naderk.common.responses.builders import build_success_response, build_error_response
 from .services import (
     initialize_payment, verify_and_confirm, get_provider, provider_public_config,
-    confirm_and_fulfill, record_webhook_event,
+    confirm_and_fulfill, record_webhook_event, checkout_public_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,18 +28,26 @@ class InitializePaymentApi(APIView):
     needs to open the payment popup, plus the order_id to poll for completion.
 
     Flow:
-      1. Frontend sends { shipping_address, amount_kobo, email? }
-      2. Backend creates Order (PENDING / UNPAID) from cart
-      3. Backend calls Paystack to get reference + access_code
-      4. Frontend opens Paystack popup using those credentials
-      5. Paystack calls our webhook on success → order is confirmed
+      1. Frontend sends { shipping_address, provider? }
+      2. Backend creates Order (PENDING / UNPAID) from cart and reserves its stock
+      3. Backend initialises the payment for the order's total
+      4. Frontend opens the payment popup using the returned credentials + amount
+      5. Payment is confirmed (verify-order, webhook or reconcile)
       6. Frontend polls GET /marketplace/orders/{order_id}/ until payment_status=PAID
+
+    The amount is always the order's own total. It used to be read from the
+    request body and was never compared with the order, and the later "exact
+    amount" check compared the provider's figure against that same client
+    number — so any cart could be bought for whatever the browser chose to send.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from django.db import transaction as db_transaction
+        from .services import order_amount_kobo, paypal_usd_minor
+
         shipping_address  = request.data.get('shipping_address', '').strip()
-        amount_kobo       = request.data.get('amount_kobo')
         email             = request.data.get('email') or request.user.email
         provider_name     = request.data.get('provider', 'PAYSTACK').upper()
         idempotency_key   = request.headers.get('Idempotency-Key', '').strip()
@@ -56,7 +64,7 @@ class InitializePaymentApi(APIView):
             )
             if existing_txn and existing_txn.order:
                 logger.info("Idempotency hit for key %s — returning cached response", idempotency_key)
-                pub = provider_public_config(existing_txn.provider)
+                pub = checkout_public_config(existing_txn)
                 data = {
                     'reference':         existing_txn.reference,
                     'authorization_url': '',   # popup can reuse access_code
@@ -65,22 +73,15 @@ class InitializePaymentApi(APIView):
                     'public_config':     pub,
                     'provider':          existing_txn.provider,
                     'order_id':          str(existing_txn.order.id),
+                    'amount_kobo':       existing_txn.amount_kobo,
+                    'currency':          existing_txn.currency,
                 }
                 return build_success_response("Payment already initialized", data)
 
         if not shipping_address:
             return build_error_response("validation-error", "shipping_address is required", 400,
                                         "Provide a delivery address before proceeding to payment.")
-        if not amount_kobo:
-            return build_error_response("validation-error", "amount_kobo is required", 400,
-                                        "Provide amount in kobo (e.g. 50000 = ₦500).")
-        try:
-            amount_kobo = int(amount_kobo)
-        except (TypeError, ValueError):
-            return build_error_response("validation-error", "Invalid amount", 400,
-                                        "amount_kobo must be an integer.")
 
-        # Step 1 — create the order from the cart (unpaid, holds items + address)
         from naderk.ecommerce.services import order_create_from_cart
         from naderk.ecommerce.models import Cart
         try:
@@ -92,26 +93,35 @@ class InitializePaymentApi(APIView):
             return build_error_response("bad-request", "Cart not found", 404,
                                         "No active cart found for this user.")
 
+        # Order creation and payment initialisation succeed or fail together.
+        # Creating the order empties the cart and reserves stock, so if the
+        # provider then refused the payment the customer was left with an empty
+        # cart and an order they had no way to pay for.
         try:
-            order = order_create_from_cart(
-                user=request.user,
-                shipping_address=shipping_address,
-                payment_reference=None,   # not paid yet — webhook will confirm
-            )
-        except Exception as e:
-            logger.exception("Order creation failed during payment init: %s", e)
-            return build_error_response("server-error", "Could not create order", 500, str(e))
-
-        # Step 2 — initialise payment with provider, linking the order
-        try:
-            result = initialize_payment(
-                user=request.user,
-                amount_kobo=amount_kobo,
-                email=email,
-                order=order,
-                provider_name=provider_name,
-                idempotency_key=idempotency_key or None,
-            )
+            with db_transaction.atomic():
+                order = order_create_from_cart(
+                    user=request.user,
+                    shipping_address=shipping_address,
+                )
+                amount_kobo = order_amount_kobo(order)
+                currency = 'NGN'
+                if provider_name == 'PAYPAL':
+                    # Shop prices are in Naira, which PayPal cannot charge: the
+                    # order is paid in dollars at the rate set for PayPal.
+                    amount_kobo, currency = paypal_usd_minor(amount_kobo), 'USD'
+                result = initialize_payment(
+                    user=request.user,
+                    amount_kobo=amount_kobo,
+                    email=email,
+                    order=order,
+                    currency=currency,
+                    provider_name=provider_name,
+                    idempotency_key=idempotency_key or None,
+                )
+        except DjangoValidationError as e:
+            # Expired prescription, or not enough stock left.
+            return build_error_response("validation-error", "Could not create order", 400,
+                                        '; '.join(e.messages))
         except ValueError as e:
             return build_error_response("bad-request", str(e), 400, str(e))
         except Exception as e:
@@ -126,6 +136,8 @@ class InitializePaymentApi(APIView):
             'public_config':    result.public_config,
             'provider':         provider_name,
             'order_id':         str(order.id),   # frontend polls this
+            'amount_kobo':      amount_kobo,     # what the popup must charge, in `currency`'s minor unit
+            'currency':         currency,
         }
         return build_success_response("Payment initialized successfully", data)
 
@@ -180,7 +192,7 @@ class InitializeAppointmentPaymentApi(APIView):
             )
             if existing_txn:
                 logger.info("Idempotency hit for key %s — returning cached appointment payment response", idempotency_key)
-                pub = provider_public_config(existing_txn.provider)
+                pub = checkout_public_config(existing_txn)
                 return build_success_response("Payment already initialized", {
                     'reference':         existing_txn.reference,
                     'access_code':       existing_txn.raw_response.get('access_code', ''),
@@ -313,7 +325,6 @@ class VerifyOrderPaymentApi(APIView):
 
         from .models import PaymentTransaction
         from naderk.ecommerce.models import Order
-        from naderk.ecommerce.services import order_process_payment
 
         try:
             txn = PaymentTransaction.objects.select_related('order').get(
@@ -413,6 +424,29 @@ class MonnifyWebhookApi(APIView):
         record_webhook_event(provider_name='MONNIFY', raw_body=raw_body, signature_valid=bool(signature))
         return build_success_response("Webhook received", {})
 
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PayPalWebhookApi(APIView):
+    """
+    POST /api/v1/payments/webhook/paypal/
+
+    PayPal calls this for CHECKOUT.ORDER.APPROVED and PAYMENT.CAPTURE.* events.
+    The delivery is checked with PayPal against the webhook ID set on the
+    gateway, recorded, and processed asynchronously; the task re-verifies with
+    the PayPal API (capturing an approved order) before fulfilling.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        raw_body = request.body
+        provider = get_provider('PAYPAL')
+        if not provider.verify_webhook_request(payload=raw_body, headers=request.headers):
+            logger.warning("PayPal webhook: verification failed")
+            return build_error_response("forbidden", "Invalid signature", 400, "Webhook verification failed.")
+
+        record_webhook_event(provider_name='PAYPAL', raw_body=raw_body, signature_valid=True)
+        return build_success_response("Webhook received", {})
+
         return build_success_response("Webhook processed", {})
 
 
@@ -441,7 +475,10 @@ class AdminBillingSummaryApi(APIView):
         if date_to:
             qs = qs.filter(created_at__date__lte=date_to)
 
-        successful = qs.filter(status=PaymentTransaction.Status.SUCCESS)
+        # Amounts are in each currency's minor unit, so only Naira payments can
+        # be added up into these kobo totals (PayPal and foreign-currency gifts
+        # are cents or pence).
+        successful = qs.filter(status=PaymentTransaction.Status.SUCCESS, currency='NGN')
         agg = successful.aggregate(
             total_revenue=Sum('amount_kobo'),
             appt_revenue=Sum('amount_kobo', filter=Q(appointment__isnull=False)),
@@ -460,7 +497,7 @@ class AdminBillingSummaryApi(APIView):
             status=PaymentTransaction.Status.INITIATED,
             created_at__lt=overdue_threshold,
         )
-        overdue_agg = overdue_qs.aggregate(total=Sum('amount_kobo'))
+        overdue_agg = overdue_qs.filter(currency='NGN').aggregate(total=Sum('amount_kobo'))
 
         data = {
             'total_revenue_kobo':          agg['total_revenue'] or 0,
@@ -488,7 +525,7 @@ class AdminTransactionListApi(APIView):
 
         qs = (
             PaymentTransaction.objects
-            .select_related('user', 'appointment__service', 'order')
+            .select_related('user', 'appointment__service', 'order', 'donation')
             .order_by('-created_at')
         )
 
@@ -501,6 +538,8 @@ class AdminTransactionListApi(APIView):
             qs = qs.filter(appointment__isnull=False)
         elif txn_type == 'order':
             qs = qs.filter(order__isnull=False)
+        elif txn_type == 'donation':
+            qs = qs.filter(donation__isnull=False)
 
         if status:
             qs = qs.filter(status=status.upper())
@@ -528,19 +567,29 @@ class AdminTransactionListApi(APIView):
             elif txn.order:
                 type_label   = 'ORDER'
                 service_desc = f"Marketplace Order #{str(txn.order.id)[:8].upper()}"
+            elif txn.donation:
+                type_label   = 'DONATION'
+                service_desc = f"Extend Life Africa — {txn.donation.get_purpose_display()}"
             else:
                 type_label   = 'OTHER'
                 service_desc = '—'
 
             patient = txn.user
+            if patient is not None:
+                payer_name, payer_email = patient.get_full_name() or patient.email, patient.email
+            elif txn.donation:
+                # A gift from someone without an account.
+                payer_name, payer_email = txn.donation.donor_name, txn.donation.donor_email
+            else:
+                payer_name, payer_email = '—', ''
             results.append({
                 'id':                  str(txn.id),
                 'reference':           txn.reference,
-                'patient_name':        patient.get_full_name() or patient.email,
-                'patient_email':       patient.email,
+                'patient_name':        payer_name,
+                'patient_email':       payer_email,
                 'type':                type_label,
                 'service_description': service_desc,
-                'insurance':           getattr(patient, 'insurance_provider', None) or '—',
+                'insurance':           (getattr(patient, 'insurance_provider', None) if patient else None) or '—',
                 'amount_kobo':         txn.amount_kobo,
                 'currency':            txn.currency,
                 'status':              txn.status,
@@ -585,7 +634,29 @@ def _gateway_public_config(gw: PaymentGateway) -> dict:
     """Client-safe config for the checkout SDK — never the secret key."""
     if gw.provider == PaymentProviderChoices.MONNIFY:
         return {'apiKey': gw.client_key, 'contractCode': gw.contract_code, 'isTestMode': gw.mode == PaymentGateway.Mode.TEST}
+    if gw.provider == PaymentProviderChoices.PAYPAL:
+        # The rate lets checkout show a Naira order's dollar price before paying.
+        return {
+            'client_id': gw.client_key,
+            'isTestMode': gw.mode == PaymentGateway.Mode.TEST,
+            'ngn_per_usd': str((gw.config or {}).get('ngn_per_usd') or ''),
+        }
     return {'public_key': gw.client_key}
+
+
+def _config_error(provider: str, config) -> str | None:
+    """Why a gateway's extra settings are unusable, or None."""
+    if not isinstance(config, dict):
+        return "config must be an object."
+    if provider == PaymentProviderChoices.PAYPAL and config.get('ngn_per_usd') not in (None, ''):
+        from decimal import Decimal, InvalidOperation
+        try:
+            rate = Decimal(str(config['ngn_per_usd']).replace(',', '').strip())
+        except InvalidOperation:
+            rate = Decimal(0)
+        if rate <= 0:
+            return "The exchange rate must be a positive number of naira per US dollar."
+    return None
 
 
 class AdminGatewayListApi(APIView):
@@ -608,6 +679,8 @@ class AdminGatewayListApi(APIView):
             return build_error_response("validation-error", "Invalid provider", 400, "Unknown payment provider.")
         if mode not in PaymentGateway.Mode.values:
             return build_error_response("validation-error", "Invalid mode", 400, "mode must be TEST or LIVE.")
+        if (err := _config_error(provider, data.get('config') or {})):
+            return build_error_response("validation-error", "Invalid settings", 400, err)
         if PaymentGateway.objects.filter(provider=provider, mode=mode).exists():
             return build_error_response("conflict", "Gateway exists", 409,
                                         f"A {provider} ({mode}) gateway already exists — edit it instead.")
@@ -646,7 +719,9 @@ class AdminGatewayDetailApi(APIView):
             gw.is_active = bool(data['is_active'])
         if 'is_default' in data:
             gw.is_default = bool(data['is_default'])
-        if 'config' in data and isinstance(data['config'], dict):
+        if 'config' in data:
+            if (err := _config_error(gw.provider, data['config'])):
+                return build_error_response("validation-error", "Invalid settings", 400, err)
             gw.config = data['config']
         # Write-only secret: only replace when a non-empty value is supplied.
         if data.get('secret_key'):
@@ -664,8 +739,13 @@ class AdminGatewayDetailApi(APIView):
 
 
 class GatewayListApi(APIView):
-    """GET active gateways with client-safe config only (for checkout)."""
-    permission_classes = [IsAuthenticated]
+    """
+    GET active gateways with client-safe config only (for checkout).
+
+    Public: the Extend Life Africa page takes gifts from people without an
+    account, and nothing here is secret (public keys only).
+    """
+    permission_classes = [AllowAny]
 
     def get(self, request):
         gateways = PaymentGateway.objects.filter(is_active=True)

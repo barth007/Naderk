@@ -4,7 +4,7 @@ export const TESTIMONIALS: TestimonialType[] = [
   {
     name: "Sarah Johnson",
     role: "Patient",
-    company: "Naderk Eye Care",
+    company: "NaderkEla",
     image: "/images/testimonials/sarah.png",
     quote: "The doctors were incredibly professional and the process was seamless. My vision has never been better since the surgery.",
     rating: 5,

@@ -122,7 +122,7 @@ export function TrendingProductsSection() {
             <h2 className="text-3xl font-bold text-foreground tracking-tight">Trending Now</h2>
             <p className="mt-2 text-muted-foreground">Our most popular frames this week</p>
           </div>
-          <Link href="/coming-soon" className="text-sm font-bold text-[var(--destructive)] hover:underline">
+          <Link href="/dashboard/marketplace" className="text-sm font-bold text-[var(--destructive)] hover:underline">
             View All Collection
           </Link>
         </div>

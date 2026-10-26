@@ -6,7 +6,9 @@ from naderk.telehealth.models import TelehealthSession
 from naderk.telehealth.serializers import TelehealthSessionSerializer
 from naderk.telehealth.selectors import get_user_sessions
 from naderk.telehealth.services.generate_token import generate_livekit_token
-from naderk.telehealth.services.session_lifecycle import join_session, end_session
+from naderk.telehealth.services.session_lifecycle import (
+    join_session, end_session, can_end_session, can_view_session, SESSION_OVERSIGHT_ROLES,
+)
 from django.conf import settings
 from django.utils import timezone
 from django.core.exceptions import ValidationError
@@ -35,9 +37,7 @@ class SessionDetailApi(APIView):
         except TelehealthSession.DoesNotExist:
             return build_error_response("not-found", "Session not found", 404, "Invalid session ID")
             
-        # Access control
-        appointment = session.appointment
-        if request.user.id not in [appointment.patient.id, appointment.doctor.id] and request.user.role not in ['AGENT', 'MEDICAL_AGENT', 'ADMIN']:
+        if not can_view_session(session, request.user):
             return build_error_response("forbidden", "Access Denied", 403, "You are not authorized to view this session")
             
         return build_success_response("Session detail retrieved", TelehealthSessionSerializer(session).data)
@@ -56,6 +56,14 @@ class SessionCreateApi(APIView):
         except (Appointment.DoesNotExist, ValidationError):
             return build_error_response("not-found", "Appointment not found", 404, "Invalid appointment ID")
             
+        # Only the appointment's own patient and doctor, or oversight staff. This
+        # endpoint returns the session (participants, notes, events), and any
+        # signed-in user who knew an appointment id could call it.
+        if (request.user.id not in (appointment.patient_id, appointment.doctor_id)
+                and request.user.role not in SESSION_OVERSIGHT_ROLES):
+            return build_error_response("forbidden", "Access Denied", 403,
+                                        "You are not authorized to manage this appointment's session.")
+
         # Assert appointment type is TELEHEALTH, status is CONFIRMED.
         if appointment.appointment_type != Appointment.AppointmentType.TELEHEALTH:
             return build_error_response("bad-request", "Invalid appointment type", 400, "Only telehealth appointments can have sessions.")
@@ -176,6 +184,15 @@ class SessionCompleteApi(APIView):
         except TelehealthSession.DoesNotExist:
             return build_error_response("not-found", "Session not found", 404, "Invalid session ID")
             
+        # Before anything is written. The notes below used to be saved first
+        # and the permission checked afterwards inside end_session, so a
+        # patient got a 403 — after replacing the doctor's notes.
+        if not can_end_session(session, request.user):
+            return build_error_response(
+                "forbidden", "Access Denied", 403,
+                "Only doctors or staff members can end the session.",
+            )
+
         session_notes = request.data.get('session_notes', '')
         diagnosis = request.data.get('diagnosis', '')
         recommendations = request.data.get('recommendations', '')

@@ -41,7 +41,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (mounted) {
       if (!isAuthenticated) {
-        router.push('/login');
+        // Come back here after logging in (e.g. "Book Consultation" on the
+        // public site lands on the booking page, not the dashboard home).
+        const here = window.location.pathname + window.location.search + window.location.hash;
+        router.push(`/login?next=${encodeURIComponent(here)}`);
       } else if (user) {
         // Only patients and doctors are held at onboarding. Staff were bounced
         // here too, which trapped a newly created agent on a patient/doctor

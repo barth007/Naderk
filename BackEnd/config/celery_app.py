@@ -42,6 +42,10 @@ app.conf.beat_schedule = {
         'task': 'naderk.telehealth.tasks.check_missed_sessions',
         'schedule': crontab(minute='*/30'),
     },
+    'send-donation-reminders-daily': {
+        'task': 'naderk.donations.tasks.send_donation_reminders',
+        'schedule': crontab(hour=9, minute=0),
+    },
     'send-telehealth-reminders-every-5-minutes': {
         'task': 'naderk.telehealth.tasks.send_session_reminders',
         'schedule': crontab(minute='*/5'),

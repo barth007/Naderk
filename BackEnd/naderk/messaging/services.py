@@ -32,6 +32,8 @@ from naderk.notifications.services import create_notification
 
 User = get_user_model()
 
+from .access import TRIAGE_ROLES, is_messaging_staff
+
 def assign_best_agent() -> User | None:
     """
     Returns the active agent with the least workload (fewest active conversations).
@@ -209,7 +211,7 @@ def send_message(
     triggers notification updates, and broadcasts to WebSocket groups.
     """
     # Reopen conversation if closed and patient sends message
-    is_staff = sender.role in [User.Role.AGENT, User.Role.DOCTOR, User.Role.ADMIN]
+    is_staff = is_messaging_staff(sender)
     
     if not is_staff and conversation.status == ConversationStatus.CLOSED:
         conversation.status = ConversationStatus.WAITING_FOR_AGENT
@@ -222,7 +224,7 @@ def send_message(
         )
         
     # Transition status when staff responds
-    if sender.role in [User.Role.AGENT, User.Role.ADMIN] and conversation.status == ConversationStatus.WAITING_FOR_AGENT:
+    if sender.role in TRIAGE_ROLES and conversation.status == ConversationStatus.WAITING_FOR_AGENT:
         conversation.status = ConversationStatus.AGENT_ACTIVE
         if not conversation.first_response_at:
             conversation.first_response_at = timezone.now()
@@ -306,7 +308,7 @@ def create_internal_note(
     """
     Saves a private staff note, logs activity, and broadcasts to staff members.
     """
-    if author.role not in [User.Role.AGENT, User.Role.DOCTOR, User.Role.ADMIN]:
+    if not is_messaging_staff(author):
         raise ValueError("Only staff can leave internal notes.")
         
     note = InternalNote.objects.create(

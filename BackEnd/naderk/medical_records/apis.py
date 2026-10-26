@@ -36,6 +36,13 @@ from .selectors import get_doctor_patient_records
 logger = logging.getLogger(__name__)
 
 
+def _patient_id_required():
+    return build_error_response(
+        "bad-request", "Patient ID is required", 400,
+        "Pass ?patient_id= to say whose records to read.",
+    )
+
+
 class PatientRecordsListApi(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -82,11 +89,7 @@ class PatientMedicalRecordsOverviewApi(APIView):
             if request.user.role == 'PATIENT':
                 patient = request.user
             else:
-                return build_error_response(
-                    "bad_request",
-                    "Patient ID is required.",
-                    400
-                )
+                return _patient_id_required()
         else:
             patient = get_object_or_404(User, id=patient_id)
             
@@ -139,7 +142,7 @@ class EncounterListApi(APIView):
             if request.user.role == 'PATIENT':
                 patient_id = request.user.id
             else:
-                return build_error_response("bad_request", "Patient ID is required.", 400)
+                return _patient_id_required()
 
         queryset = ConsultationEncounter.objects.filter(patient_id=patient_id)
 
@@ -180,7 +183,7 @@ class PrescriptionListApi(APIView):
             if request.user.role == 'PATIENT':
                 patient_id = request.user.id
             else:
-                return build_error_response("bad_request", "Patient ID is required.", 400)
+                return _patient_id_required()
 
         queryset = Prescription.objects.filter(patient_id=patient_id)
         paginator = MedicalRecordsPagination()
@@ -198,7 +201,7 @@ class DiagnosticResultListApi(APIView):
             if request.user.role == 'PATIENT':
                 patient_id = request.user.id
             else:
-                return build_error_response("bad_request", "Patient ID is required.", 400)
+                return _patient_id_required()
 
         queryset = DiagnosticResult.objects.filter(patient_id=patient_id)
 
@@ -303,7 +306,7 @@ class MedicalScanListApi(APIView):
             if request.user.role == 'PATIENT':
                 patient_id = request.user.id
             else:
-                return build_error_response("bad_request", "Patient ID is required.", 400)
+                return _patient_id_required()
 
         queryset = MedicalScan.objects.filter(patient_id=patient_id)
         paginator = MedicalRecordsPagination()

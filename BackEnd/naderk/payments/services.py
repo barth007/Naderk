@@ -10,6 +10,7 @@ from .models import PaymentTransaction
 from .providers.base import PaymentProvider, PaymentInitResult, PaymentVerifyResult
 from .providers.paystack import PaystackProvider
 from .providers.monnify import MonnifyProvider
+from .providers.paypal import PayPalProvider
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 PROVIDERS: dict[str, type[PaymentProvider]] = {
     'PAYSTACK': PaystackProvider,
     'MONNIFY': MonnifyProvider,
+    'PAYPAL': PayPalProvider,
 }
 
 
@@ -42,6 +44,38 @@ def provider_public_config(provider_name: str) -> dict:
         return {}
 
 
+def checkout_public_config(txn: PaymentTransaction) -> dict:
+    """
+    What the browser needs to reopen the payment for an existing transaction
+    (an idempotent retry). PayPal's buttons also need the PayPal order to show
+    and its currency, which only the transaction knows.
+    """
+    pub = provider_public_config(txn.provider)
+    if txn.provider == 'PAYPAL':
+        pub = {**pub, 'order_id': txn.provider_txn_ref, 'currency': txn.currency}
+    return pub
+
+
+def paypal_usd_minor(ngn_kobo: int) -> int:
+    """
+    A Naira amount in US cents, at the rate set in the PayPal gateway settings
+    (naira per dollar). Shop prices are in Naira only and PayPal cannot charge
+    Naira, so a PayPal order is charged its Naira total converted at that rate.
+    """
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    from .config import gateway_config, ProviderNotConfigured
+
+    try:
+        rate = Decimal(str((gateway_config('PAYPAL').get('config') or {}).get('ngn_per_usd') or 0))
+    except (ProviderNotConfigured, InvalidOperation):
+        rate = Decimal(0)
+    if rate <= 0:
+        raise ValueError("PayPal is not available for this order yet: no exchange rate "
+                         "(naira per US dollar) has been set for it. Choose another payment method.")
+    cents = (Decimal(ngn_kobo) / rate).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    return max(int(cents), 1)
+
+
 def initialize_payment(
     *,
     user,
@@ -49,6 +83,8 @@ def initialize_payment(
     email: str,
     order=None,
     appointment=None,
+    donation=None,
+    currency: str = 'NGN',
     provider_name: str = 'PAYSTACK',
     idempotency_key: str | None = None,
 ) -> PaymentInitResult:
@@ -58,19 +94,27 @@ def initialize_payment(
         amount_kobo=amount_kobo,
         email=email,
         reference=reference,
+        currency=currency,
         metadata={
-            'user_id': str(user.id),
+            'user_id': str(user.id) if user else None,
             'order_id': str(order.id) if order else None,
             'appointment_id': str(appointment.id) if appointment else None,
+            'donation_id': str(donation.id) if donation else None,
         },
     )
     PaymentTransaction.objects.create(
         user=user,
         provider=provider_name.upper(),
         reference=reference,
+        # The provider's own id for this payment when it differs from ours
+        # (PayPal's order id, which verify() needs to find the payment).
+        provider_txn_ref=(result.provider_reference
+                          if result.provider_reference and result.provider_reference != reference else ''),
         amount_kobo=amount_kobo,
+        currency=currency,
         order=order,
         appointment=appointment,
+        donation=donation,
         status=PaymentTransaction.Status.INITIATED,
         idempotency_key=idempotency_key or None,
         raw_response={'access_code': result.access_code},
@@ -120,8 +164,9 @@ def confirm_appointment_payment(*, appointment, reference: str) -> bool:
     appointment, False if it was already paid.
     """
     from django.db import transaction as db_transaction
-    from naderk.appointments.models import Appointment
+    from naderk.appointments.models import Appointment, AppointmentAuditLog
     from naderk.appointments.services import ConsultationService
+    from naderk.appointments.tasks import ABANDONED_CHECKOUT_REASON
 
     if appointment.payment_status == Appointment.PaymentStatus.PAID:
         return False
@@ -132,6 +177,42 @@ def confirm_appointment_payment(*, appointment, reference: str) -> bool:
 
         update_fields = ['payment_status', 'payment_reference']
 
+        # The checkout was given up on (popup closed, or swept after 30 minutes)
+        # and the money arrived afterwards — a slow bank transfer does this.
+        # Give the patient their booking back if the slot is still free.
+        abandoned = (
+            appointment.status == Appointment.Status.CANCELLED
+            and appointment.cancellation_reason == ABANDONED_CHECKOUT_REASON
+        )
+        if abandoned:
+            slot_taken = appointment.doctor_id is not None and (
+                Appointment.objects
+                .filter(
+                    doctor_id=appointment.doctor_id,
+                    appointment_date=appointment.appointment_date,
+                    appointment_time=appointment.appointment_time,
+                    status__in=[Appointment.Status.PENDING, Appointment.Status.CONFIRMED],
+                )
+                .exclude(pk=appointment.pk)
+                .exists()
+            )
+            if slot_taken:
+                # Paid, but the time has gone to someone else. Leave it
+                # cancelled and on record for staff to rebook or refund.
+                AppointmentAuditLog.objects.create(
+                    appointment=appointment,
+                    old_status=appointment.status, new_status=appointment.status,
+                    reason=f"Payment {reference} arrived after the checkout was abandoned and "
+                           "the slot was rebooked. Needs a new time or a refund.",
+                )
+                logger.error("Appointment %s paid (%s) after its slot was rebooked.",
+                             appointment.id, reference)
+            else:
+                appointment.status = Appointment.Status.PENDING
+                appointment.cancelled_at = None
+                appointment.cancellation_reason = None
+                update_fields += ['status', 'cancelled_at', 'cancellation_reason']
+
         # A doctor still has to accept a consultation, so those stay PENDING.
         # A facility service has no doctor to accept it, and the only route to
         # CONFIRMED (AdminScheduleAppointmentAPI) demands a doctor_id — so an
@@ -140,7 +221,8 @@ def confirm_appointment_payment(*, appointment, reference: str) -> bool:
         # Paid, with a slot held, is as confirmed as it can get.
         if not appointment.service.requires_doctor and appointment.status == Appointment.Status.PENDING:
             appointment.status = Appointment.Status.CONFIRMED
-            update_fields.append('status')
+            if 'status' not in update_fields:
+                update_fields.append('status')
 
         appointment.save(update_fields=update_fields)
         ConsultationService.create_service_plan(
@@ -182,11 +264,13 @@ def fulfill_payment_transaction(txn: PaymentTransaction) -> None:
         from naderk.ecommerce.services import order_process_payment
         if txn.order.payment_status != Order.PaymentStatus.PAID:
             order_process_payment(
-                order=txn.order, actor=txn.user,
-                payment_reference=txn.reference, skip_verify=True,
+                order=txn.order, actor=txn.user, payment_reference=txn.reference,
             )
+    elif txn.donation_id:
+        from naderk.donations.services import confirm_donation_payment
+        confirm_donation_payment(donation=txn.donation, reference=txn.reference)
     else:
-        logger.warning("fulfill_payment: txn %s has no linked order or appointment", txn.reference)
+        logger.warning("fulfill_payment: txn %s has no linked order, appointment or donation", txn.reference)
 
 
 def confirm_and_fulfill(*, reference: str, provider_name: str | None = None) -> PaymentVerifyResult | None:
@@ -199,7 +283,7 @@ def confirm_and_fulfill(*, reference: str, provider_name: str | None = None) -> 
     """
     txn = (
         PaymentTransaction.objects
-        .select_related('order', 'appointment', 'user')
+        .select_related('order', 'appointment', 'donation', 'user')
         .filter(reference=reference)
         .first()
     )
@@ -232,6 +316,39 @@ def confirm_and_fulfill(*, reference: str, provider_name: str | None = None) -> 
     confirm_payment_transaction(txn)
     fulfill_payment_transaction(txn)
     return result
+
+
+def order_amount_kobo(order) -> int:
+    """What an order costs, in kobo. Always derived server-side from the order."""
+    from decimal import Decimal
+    return int((order.total_price * Decimal('100')).to_integral_value())
+
+
+def confirm_order_payment(*, order, reference: str):
+    """
+    Settle `order` with the payment `reference`, for callers that are handed a
+    reference by the client. The reference must belong to a payment that was
+    started for this very order; it is then verified with the provider and its
+    amount checked like any other (confirm_and_fulfill).
+
+    Raises django ValidationError if the order does not end up paid.
+    """
+    from django.core.exceptions import ValidationError
+    from naderk.ecommerce.models import Order
+
+    if not PaymentTransaction.objects.filter(reference=reference, order=order).exists():
+        raise ValidationError("No payment with that reference was started for this order.")
+
+    try:
+        result = confirm_and_fulfill(reference=reference)
+    except Exception as e:
+        raise ValidationError(f"Payment verification failed: {e}")
+
+    order.refresh_from_db()
+    if order.payment_status != Order.PaymentStatus.PAID:
+        status = getattr(result, 'status', 'unknown')
+        raise ValidationError(f"Payment not confirmed by provider (status: {status}).")
+    return order
 
 
 def record_webhook_event(*, provider_name: str, raw_body: bytes, signature_valid: bool):

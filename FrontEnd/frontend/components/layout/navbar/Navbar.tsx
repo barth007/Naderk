@@ -220,7 +220,7 @@ function DesktopNavLink({ item, isActive }: NavLinkProps) {
 // Mobile navigation drawer
 // ─────────────────────────────────────────────────────────────
 
-function MobileNav({ id, items, ctas, activePath, isOpen, onClose, logoSrc = '/naderk_logo.png', logoAlt = 'Naderk' }: MobileNavProps) {
+function MobileNav({ id, items, ctas, activePath, isOpen, onClose, logoSrc = '/naderk_logo.png', logoAlt = 'NaderkEla' }: MobileNavProps) {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
 
   // Close drawer on route change

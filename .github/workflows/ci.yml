@@ -47,25 +47,20 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: BackEnd/requirements.txt
+          cache-dependency-path: |
+            BackEnd/requirements.txt
+            BackEnd/requirements-dev.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
-      - name: Run Django tests
+      # Settings come from config.settings.test (see pyproject.toml), which
+      # pins the provider keys, runs Celery inline and keeps channels in memory.
+      - name: Run tests
         env:
-          DJANGO_SETTINGS_MODULE: config.settings.local
           SECRET_KEY: ci-test-secret-key-not-for-production
           DATABASE_URL: postgres://naderk_user:naderk_password@localhost:5432/naderk_test_db
-          CELERY_BROKER_URL: redis://localhost:6379/0
-          CELERY_RESULT_BACKEND: redis://localhost:6379/0
-          LIVEKIT_URL: http://localhost:7880
-          LIVEKIT_API_KEY: testkey
-          LIVEKIT_API_SECRET: testsecret
-          CLOUDINARY_CLOUD_NAME: test
-          CLOUDINARY_API_KEY: test
-          CLOUDINARY_API_SECRET: test
-        run: python manage.py test --verbosity=2 --keepdb
+        run: pytest --create-db -p no:cacheprovider
 
   # ── Frontend ───────────────────────────────────────────────────────────────
   test-frontend:

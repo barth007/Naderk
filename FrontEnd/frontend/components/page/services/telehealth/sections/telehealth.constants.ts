@@ -5,8 +5,8 @@ export const TELEHEALTH_CONTENT: TelehealthContent = {
     badge: "NOW AVAILABLE",
     title: "Virtual Eye Care from Home",
     description: "Connect with our leading ophthalmologists through a secure, high-definition video platform. Get professional consultations without leaving your room.",
-    primaryCTA: { label: "Start a Virtual visit", href: "/coming-soon" },
-    secondaryCTA: { label: "Schedule Telehealth", href: "/coming-soon" },
+    primaryCTA: { label: "Start a Virtual visit", href: "/dashboard/telehealth" },
+    secondaryCTA: { label: "Schedule Telehealth", href: "/dashboard/appointments/book" },
     image: "/images/image.png",
     stats: "Trusted by 5,000+ Virtual Visits",
     avatars: [
@@ -60,7 +60,7 @@ export const TELEHEALTH_CONTENT: TelehealthContent = {
     ],
     privacy: {
       title: "Privacy & Security",
-      description: "Your privacy is our highest priority. All telehealth sessions at NaderkEye center are:",
+      description: "Your privacy is our highest priority. All telehealth sessions at NaderkEla are:",
       features: [
         "100% HIPAA Compliant",
         "End-to-End Encrypted Video",
@@ -76,7 +76,7 @@ export const TELEHEALTH_CONTENT: TelehealthContent = {
   cta: {
     title: "Ready to see better?",
     description: "Book your virtual consultation today and get the care you need from the comfort and safety of your home.",
-    primaryCTA: { label: "Start a Virtual Visit", href: "/coming-soon" },
-    secondaryCTA: { label: "View Pricing", href: "/coming-soon" },
+    primaryCTA: { label: "Start a Virtual Visit", href: "/dashboard/telehealth" },
+    secondaryCTA: { label: "View Pricing", href: "/dashboard/appointments/book" },
   },
 };

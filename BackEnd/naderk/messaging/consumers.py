@@ -10,6 +10,8 @@ from .models import Conversation, Message, MessageRead, ConversationParticipant,
 
 User = get_user_model()
 
+from .access import can_access_conversation, is_messaging_staff
+
 class MessagingConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         self.user = self.scope.get("user")
@@ -28,7 +30,7 @@ class MessagingConsumer(AsyncJsonWebsocketConsumer):
         )
         
         # If staff, join medical care team group
-        self.is_staff = self.user.role in [User.Role.AGENT, User.Role.DOCTOR, User.Role.ADMIN]
+        self.is_staff = is_messaging_staff(self.user)
         if self.is_staff:
             await self.channel_layer.group_add(
                 "medical_care_team",
@@ -74,6 +76,12 @@ class MessagingConsumer(AsyncJsonWebsocketConsumer):
             
         if action == "subscribe":
             conversation_id = content.get("conversation_id")
+            # The room carries every message in the conversation, so only people
+            # who may open it over REST may listen to it here. Any signed-in
+            # user who knew an id used to be let in.
+            if conversation_id and not await self.may_enter(conversation_id):
+                await self.send_json({"action": "error", "detail": "Conversation not found."})
+                return
             if conversation_id:
                 # Add to room group
                 await self.channel_layer.group_add(
@@ -96,12 +104,12 @@ class MessagingConsumer(AsyncJsonWebsocketConsumer):
         elif action == "typing":
             conversation_id = content.get("conversation_id")
             is_typing = content.get("is_typing", False)
-            if conversation_id:
+            if conversation_id and await self.may_enter(conversation_id):
                 await self.handle_typing_status(conversation_id, is_typing)
                 
         elif action == "read":
             conversation_id = content.get("conversation_id")
-            if conversation_id:
+            if conversation_id and await self.may_enter(conversation_id):
                 await self.mark_conversation_read(conversation_id)
 
     # Event handlers called by channel layer
@@ -153,6 +161,15 @@ class MessagingConsumer(AsyncJsonWebsocketConsumer):
         })
 
     # Helper methods
+    @database_sync_to_async
+    def may_enter(self, conversation_id) -> bool:
+        from django.core.exceptions import ValidationError
+        try:
+            conversation = Conversation.objects.get(id=conversation_id)
+        except (Conversation.DoesNotExist, ValidationError, ValueError):
+            return False
+        return can_access_conversation(self.user, conversation)
+
     @database_sync_to_async
     def set_online_status(self, is_online):
         cache_key = f"user_online_{self.user.id}"

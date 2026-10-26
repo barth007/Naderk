@@ -56,6 +56,14 @@ export default function RegisterPage() {
       });
 
       toast.success(response.data.message);
+
+      // The backend skips OTP while DISABLE_OTP_VERIFICATION is on (load
+      // testing); the account is already usable, so go straight to login.
+      if (response.data.data?.otp_required === false) {
+        router.push('/login');
+        return;
+      }
+
       // Store email temporarily for the OTP page
       if (typeof window !== 'undefined') {
           sessionStorage.setItem('verificationEmail', data.email);
