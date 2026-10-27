@@ -43,6 +43,7 @@ urlpatterns = [
     # Staff Management
     path('admin/staff/', apis.AdminStaffListAPI.as_view(), name='admin-staff'),
     path('admin/staff/schedule/', apis.AdminWeekScheduleAPI.as_view(), name='admin-staff-schedule'),
+    path('admin/staff/<uuid:pk>/', apis.AdminStaffDetailAPI.as_view(), name='admin-staff-detail'),
     path('admin/staff/<uuid:pk>/toggle/', apis.AdminStaffToggleAPI.as_view(), name='admin-staff-toggle'),
     # Departments
     # Readable by any signed-in user (doctor onboarding + profile dropdowns);

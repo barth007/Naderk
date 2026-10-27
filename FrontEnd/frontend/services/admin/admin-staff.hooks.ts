@@ -94,3 +94,87 @@ export const useAdminToggleStaff = () => {
     },
   });
 };
+
+export interface StaffDetail {
+  id: string;
+  first_name: string;
+  last_name: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  is_active: boolean;
+  date_joined: string | null;
+  last_login: string | null;
+  employee_id: string;
+  department: string;
+  office_address: string;
+  employment_date: string | null;
+  avatar: string | null;
+  doctor: {
+    specialization: string;
+    specialization_display: string;
+    bio: string;
+    license_number: string;
+    years_experience: number;
+    consultation_fee: string | null;
+    is_accepting_patients: boolean;
+    availability_status: string;
+  } | null;
+  /** Records tied to this person. Any non-zero count blocks deletion. */
+  history: {
+    appointments: number;
+    telehealth_sessions: number;
+    consultations: number;
+    prescriptions: number;
+    orders: number;
+  };
+  can_delete: boolean;
+}
+
+export interface UpdateStaffInput {
+  first_name?: string;
+  last_name?: string;
+  phone_number?: string;
+  department?: string;
+  office_address?: string;
+  employment_date?: string | null;
+  specialization?: string;
+  bio?: string;
+  license_number?: string;
+  years_experience?: number;
+  consultation_fee?: string | number;
+  is_accepting_patients?: boolean;
+}
+
+export const useAdminStaffDetail = (id: string) =>
+  useQuery({
+    queryKey: ['admin-staff', id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/dashboard/admin/staff/${id}/`);
+      return res.data.data as StaffDetail;
+    },
+    enabled: !!id,
+  });
+
+export const useAdminUpdateStaff = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: UpdateStaffInput) => apiClient.patch(`/dashboard/admin/staff/${id}/`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-staff'] });
+      qc.invalidateQueries({ queryKey: ['admin-week-schedule'] });
+    },
+  });
+};
+
+export const useAdminDeleteStaff = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/dashboard/admin/staff/${id}/`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-staff'] });
+      qc.invalidateQueries({ queryKey: ['admin-week-schedule'] });
+    },
+  });
+};

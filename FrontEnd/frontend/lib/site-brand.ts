@@ -1,5 +1,6 @@
 import 'server-only';
 import type { SiteSettings } from '@/services/cms/admin-cms.hooks';
+import { SITE_SETTINGS_TAG } from '@/lib/site-brand-tag';
 
 /**
  * Server-side CMS site settings.
@@ -37,7 +38,8 @@ const DEFAULT_BRAND: SiteBrand = {
  * Fetches the full CMS site settings, or null when unset/unreachable.
  *
  * Metadata is built per-request but the brand changes rarely; revalidate
- * hourly so a CMS rename propagates without hammering the API. Next dedupes
+ * hourly as a backstop; saving in the CMS expires the `site-settings` tag right
+ * away (refreshSiteSettings), so a rename or new logo shows up on the next load. Next dedupes
  * identical fetches within a render pass, so calling this from both
  * `generateMetadata` and the layout body costs one request.
  */
@@ -47,7 +49,7 @@ export async function getSiteSettings(): Promise<SiteSettings | null> {
 
   try {
     const res = await fetch(`${base}/cms/site-settings/`, {
-      next: { revalidate: 3600 },
+      next: { revalidate: 3600, tags: [SITE_SETTINGS_TAG] },
     });
     if (!res.ok) return null;
 

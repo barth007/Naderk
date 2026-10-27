@@ -2526,6 +2526,210 @@ class AdminStaffToggleAPI(APIView):
         )
 
 
+class AdminStaffDetailAPI(APIView):
+    """Full profile of one staff member, plus edit and delete."""
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def _forbidden():
+        return build_error_response(
+            type_uri='forbidden', title='Forbidden', status_code=403,
+            detail='Forbidden.',
+        )
+
+    @staticmethod
+    def _not_found():
+        return build_error_response(
+            type_uri='not-found', title='Not Found', status_code=404,
+            detail='Staff member not found.',
+        )
+
+    @staticmethod
+    def _get_staff(pk):
+        from naderk.core.models import User
+        return (
+            User.objects.filter(id=pk, role__in=STAFF_ROLES)
+            .select_related('staff_profile', 'doctor_profile')
+            .first()
+        )
+
+    @staticmethod
+    def _history(user):
+        """Records that would be destroyed (or block deletion) with this user."""
+        from naderk.medical_records.models import ConsultationEncounter, Medication
+        return {
+            'appointments': Appointment.objects.filter(doctor=user).count(),
+            'telehealth_sessions': TelehealthSession.objects.filter(doctor=user).count(),
+            'consultations': ConsultationEncounter.objects.filter(doctor=user).count(),
+            'prescriptions': Medication.objects.filter(prescribed_by=user).count(),
+            'orders': Order.objects.filter(user=user).count(),
+        }
+
+    def _serialize(self, u):
+        profile = getattr(u, 'staff_profile', None)
+        doc = getattr(u, 'doctor_profile', None)
+        history = self._history(u)
+        return {
+            'id': str(u.id),
+            'first_name': u.first_name,
+            'last_name': u.last_name,
+            'name': f"{u.first_name} {u.last_name}".strip() or u.email,
+            'email': u.email,
+            'phone': getattr(u, 'phone_number', '') or '',
+            'role': u.role,
+            'is_active': u.is_active,
+            'date_joined': u.date_joined.isoformat() if getattr(u, 'date_joined', None) else None,
+            'last_login': u.last_login.isoformat() if u.last_login else None,
+            'employee_id': (profile.employee_id if profile else None) or f"NDK{str(u.id).replace('-','')[:5].upper()}",
+            'department': (profile.department if profile else '') or '',
+            'office_address': (profile.office_address if profile else '') or '',
+            'employment_date': profile.employment_date.isoformat() if profile and profile.employment_date else None,
+            'avatar': (doc.avatar or doc.profile_picture) if doc else (profile.profile_picture if profile else None),
+            'doctor': None if not doc else {
+                'specialization': doc.specialization,
+                'specialization_display': doc.specialization_display,
+                'bio': doc.bio or '',
+                'license_number': doc.license_number or '',
+                'years_experience': doc.years_experience,
+                'consultation_fee': str(doc.consultation_fee) if doc.consultation_fee is not None else None,
+                'is_accepting_patients': doc.is_accepting_patients,
+                'availability_status': doc.availability_status,
+            },
+            'history': history,
+            'can_delete': not any(history.values()),
+        }
+
+    def get(self, request, pk):
+        if _admin_only(request):
+            return self._forbidden()
+        user = self._get_staff(pk)
+        if not user:
+            return self._not_found()
+        return build_success_response(message="Staff retrieved.", data=self._serialize(user), status_code=200)
+
+    def patch(self, request, pk):
+        if _admin_only(request):
+            return self._forbidden()
+        user = self._get_staff(pk)
+        if not user:
+            return self._not_found()
+        if user.role == 'SUPER_ADMIN' and request.user.role != 'SUPER_ADMIN':
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='Only a super admin can edit a super admin.',
+            )
+
+        data = request.data
+        doc = getattr(user, 'doctor_profile', None)
+        if doc and 'specialization' in data:
+            spec = (data.get('specialization') or '').strip()
+            if not spec:
+                return build_error_response(
+                    type_uri='validation-error', title='Validation Error', status_code=400,
+                    detail="Specialization is required for doctors.",
+                    errors={'specialization': ['Please select a specialization.']},
+                )
+            err = _validate_specialization_code(spec, field='specialization')
+            if err:
+                return err
+
+        if 'first_name' in data and not (data.get('first_name') or '').strip():
+            return build_error_response(
+                type_uri='validation-error', title='Validation Error', status_code=400,
+                detail="First name cannot be empty.",
+                errors={'first_name': ['First name cannot be empty.']},
+            )
+
+        with transaction.atomic():
+            user_fields = []
+            for key in ('first_name', 'last_name'):
+                if key in data:
+                    setattr(user, key, (data.get(key) or '').strip())
+                    user_fields.append(key)
+            if 'phone_number' in data:
+                user.phone_number = (data.get('phone_number') or '').strip()
+                user_fields.append('phone_number')
+            if user_fields:
+                user.save(update_fields=user_fields)
+
+            profile = getattr(user, 'staff_profile', None)
+            if profile:
+                profile_fields = []
+                for key in ('department', 'office_address'):
+                    if key in data:
+                        setattr(profile, key, (data.get(key) or '').strip())
+                        profile_fields.append(key)
+                if 'employment_date' in data:
+                    profile.employment_date = data.get('employment_date') or None
+                    profile_fields.append('employment_date')
+                if profile_fields:
+                    profile.save(update_fields=profile_fields)
+
+            if doc:
+                doc_fields = []
+                for key in ('specialization', 'bio', 'license_number'):
+                    if key in data:
+                        setattr(doc, key, (data.get(key) or '').strip())
+                        doc_fields.append(key)
+                if 'years_experience' in data:
+                    doc.years_experience = data.get('years_experience') or 0
+                    doc_fields.append('years_experience')
+                if 'consultation_fee' in data:
+                    doc.consultation_fee = data.get('consultation_fee') or 0
+                    doc_fields.append('consultation_fee')
+                if 'is_accepting_patients' in data:
+                    doc.is_accepting_patients = bool(data.get('is_accepting_patients'))
+                    doc_fields.append('is_accepting_patients')
+                if doc_fields:
+                    doc.save(update_fields=doc_fields)
+
+        user = self._get_staff(pk)
+        return build_success_response(message="Staff updated.", data=self._serialize(user), status_code=200)
+
+    def delete(self, request, pk):
+        if _admin_only(request):
+            return self._forbidden()
+        user = self._get_staff(pk)
+        if not user:
+            return self._not_found()
+
+        if user.id == request.user.id:
+            return build_error_response(
+                type_uri='validation-error', title='Not allowed', status_code=400,
+                detail='You cannot delete your own account.',
+            )
+        if user.role == 'SUPER_ADMIN':
+            return build_error_response(
+                type_uri='forbidden', title='Forbidden', status_code=403,
+                detail='A super admin account cannot be deleted from here.',
+            )
+
+        # Deleting a user cascades to their appointments, consultations and
+        # prescriptions — patient records. Only allow it when there is no such
+        # history; otherwise the account has to be deactivated instead.
+        history = self._history(user)
+        if any(history.values()):
+            return build_error_response(
+                type_uri='conflict', title='Cannot delete', status_code=409,
+                detail=(
+                    'This staff member has appointments, consultations, '
+                    'prescriptions or orders on record, so they cannot be deleted. '
+                    'Deactivate them instead.'
+                ),
+            )
+
+        from django.db.models import ProtectedError
+        try:
+            with transaction.atomic():
+                user.delete()
+        except ProtectedError:
+            return build_error_response(
+                type_uri='conflict', title='Cannot delete', status_code=409,
+                detail='This staff member is referenced by other records. Deactivate them instead.',
+            )
+        return build_success_response(message="Staff member deleted.", data={}, status_code=200)
+
+
 class AdminWeekScheduleAPI(APIView):
     permission_classes = [IsAuthenticated]
 
