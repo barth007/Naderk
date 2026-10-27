@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
+import { refreshSiteSettings } from '@/app/actions/site-settings';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -319,7 +320,11 @@ export const useUpdateSiteSettings = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: Partial<SiteSettings>) => apiClient.put('/cms/site-settings/', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['cms-site-settings'] }),
+    onSuccess: async () => {
+      // Expire the server-rendered copy too, or a refresh brings the old values back.
+      await refreshSiteSettings().catch(() => {});
+      qc.invalidateQueries({ queryKey: ['cms-site-settings'] });
+    },
   });
 };
 

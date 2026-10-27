@@ -1,12 +1,16 @@
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
+import Link from 'next/link';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 import {
-  Plus, Shield, CheckCircle2, AlertCircle, X,
+  Plus, Shield, X, AlertCircle,
   Loader2, UserPlus, Phone, MapPin,
-  Pencil, Trash2, Building2,
+  Pencil, Trash2, Building2, Eye,
 } from 'lucide-react';
+import { toastApiError } from '@/lib/api-errors';
+import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { Card } from '@/components/ui/card';
 import {
   TableContainer, Table, TableHead, TableBody, TableRow, Th, Td,
@@ -17,6 +21,7 @@ import {
   useAdminWeekSchedule,
   useAdminCreateStaff,
   useAdminToggleStaff,
+  useAdminDeleteStaff,
   StaffMember,
   DaySchedule,
 } from '@/services/admin/admin-staff.hooks';
@@ -67,18 +72,14 @@ const ROLE_LABELS: Record<string, string> = {
 const AVATAR_COLORS = ['#E03E3E', '#38bdf8', '#1e293b', '#a3e635', '#f59e0b', '#8b5cf6'];
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
+// Uses the app-wide sonner toaster; `showToast` keeps the (message, type) shape
+// the modals below were already written against.
 
 type ToastType = 'success' | 'error';
-interface ToastState { message: string; type: ToastType; id: number }
 
-function Toast({ toast, onDismiss }: { toast: ToastState; onDismiss: () => void }) {
-  return (
-    <div className={`fixed top-5 right-5 z-[100] flex items-center gap-2.5 px-4 py-3 rounded-md shadow-lg text-sm font-medium ${toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-      {toast.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
-      {toast.message}
-      <button onClick={onDismiss} className="ml-1 opacity-75 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
-    </div>
-  );
+function showToast(message: string, type: ToastType) {
+  if (type === 'success') toast.success(message);
+  else toast.error(message);
 }
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
@@ -681,19 +682,14 @@ export default function AdminStaffPage() {
   const { data: staff = [], isLoading: staffLoading } = useAdminStaff();
   const { data: scheduleData, isLoading: schedLoading } = useAdminWeekSchedule();
   const { mutate: toggleStaff } = useAdminToggleStaff();
+  const { mutate: deleteStaff, isPending: isDeleting } = useAdminDeleteStaff();
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeptModal, setShowDeptModal] = useState(false);
   const [showPermsModal, setShowPermsModal] = useState(false);
-  const [toast, setToast] = useState<ToastState | null>(null);
-
-  const showToast = useCallback((message: string, type: ToastType) => {
-    const id = Date.now();
-    setToast({ message, type, id });
-    setTimeout(() => setToast((t) => (t?.id === id ? null : t)), 4000);
-  }, []);
+  const [toDelete, setToDelete] = useState<StaffMember | null>(null);
 
   const filtered = search.trim()
     ? staff.filter((s) =>
@@ -719,14 +715,32 @@ export default function AdminStaffPage() {
 
   function handleToggle(member: StaffMember) {
     toggleStaff(member.id, {
-      onSuccess: () => showToast(`${member.name} ${member.is_active ? 'deactivated' : 'activated'}.`, 'success'),
-      onError: () => showToast('Failed to update status.', 'error'),
+      onSuccess: () => toast.success(`${member.name} ${member.is_active ? 'deactivated' : 'activated'}.`),
+      onError: (err) => toastApiError(err, 'Failed to update status.'),
+    });
+  }
+
+  function handleDelete() {
+    if (!toDelete) return;
+    const member = toDelete;
+    deleteStaff(member.id, {
+      onSuccess: () => { toast.success(`${member.name} deleted.`); setToDelete(null); },
+      onError: (err) => { toastApiError(err, 'Failed to delete staff member.'); setToDelete(null); },
     });
   }
 
   return (
     <div className="p-6 flex flex-col gap-5 max-w-screen-xl">
-      {toast && <Toast toast={toast} onDismiss={() => setToast(null)} />}
+      <ConfirmationModal
+        isOpen={!!toDelete}
+        onClose={() => setToDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete staff member?"
+        description={`${toDelete?.name ?? 'This person'} will be permanently removed. If they have appointments, consultations or orders on record, deletion is blocked and you can deactivate them instead.`}
+        confirmText="Delete"
+        isPending={isDeleting}
+        confirmButtonVariant="destructive"
+      />
       {showAddModal && (
         <AddStaffModal
           onClose={() => setShowAddModal(false)}
@@ -885,13 +899,14 @@ export default function AdminStaffPage() {
                 <Th className="px-4 py-3 text-xs">Status</Th>
                 <Th className="px-4 py-3 text-xs">Contact Info</Th>
                 <Th className="px-4 py-3 text-xs">Active</Th>
+                <Th className="px-4 py-3 text-xs">Actions</Th>
               </TableRow>
             </TableHead>
             <TableBody>
               {staffLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 5 }).map((__, j) => (
+                    {Array.from({ length: 6 }).map((__, j) => (
                       <Td key={j} className="px-4 py-4">
                         <div className="h-4 bg-gray-100 rounded-md animate-pulse" />
                       </Td>
@@ -900,7 +915,7 @@ export default function AdminStaffPage() {
                 ))
               ) : paginated.length === 0 ? (
                 <TableRow>
-                  <Td colSpan={5} className="px-4 py-16 text-center">
+                  <Td colSpan={6} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <Building2 className="w-8 h-8 text-gray-200" />
                       <p className="text-sm text-gray-400">{search ? 'No staff match your search.' : 'No staff members yet.'}</p>
@@ -914,7 +929,9 @@ export default function AdminStaffPage() {
                       <div className="flex items-center gap-3">
                         <Avatar name={member.name} src={member.avatar} size="md" colorIndex={idx} />
                         <div>
-                          <p className="text-sm font-semibold text-gray-900">{member.name || member.email}</p>
+                          <Link href={`/admin/staff/${member.id}`} className="text-sm font-semibold text-gray-900 hover:text-[#E03E3E] hover:underline">
+                            {member.name || member.email}
+                          </Link>
                           <p className="text-xs text-gray-400">ID: {member.employee_id}</p>
                         </div>
                       </div>
@@ -955,6 +972,32 @@ export default function AdminStaffPage() {
                       >
                         <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transform transition-transform ${member.is_active ? 'translate-x-4' : 'translate-x-1'}`} />
                       </button>
+                    </Td>
+
+                    <Td className="px-4 py-3.5">
+                      <div className="flex items-center gap-1">
+                        <Link
+                          href={`/admin/staff/${member.id}`}
+                          title="View details"
+                          className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Link>
+                        <Link
+                          href={`/admin/staff/${member.id}?edit=1`}
+                          title="Edit profile"
+                          className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Link>
+                        <button
+                          onClick={() => setToDelete(member)}
+                          title="Delete"
+                          className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </Td>
                   </TableRow>
                 ))
