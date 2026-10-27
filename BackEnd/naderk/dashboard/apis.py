@@ -2347,7 +2347,7 @@ class AdminStaffListAPI(APIView):
         from naderk.authentication.models import PasswordResetToken
         from naderk.common.email._provider_registry import get_provider
         from naderk.common.email.providers.base import EmailMessage
-        from naderk.common.email.exceptions import EmailError
+        from naderk.common.email.exceptions import EmailError, EmailDeliveryError
         import secrets
         import datetime
 
@@ -2466,9 +2466,19 @@ class AdminStaffListAPI(APIView):
                 ))
 
         except EmailError as exc:
+            # Log the provider's reason: the response below can't tell a bad
+            # address from a bad API token or an unverified sender domain.
+            logger.exception("Staff invite email to %s failed: %s", email, exc)
+            if isinstance(exc, EmailDeliveryError):
+                detail = "The email provider rejected this address or message. Please check the email address and try again."
+            else:
+                detail = (
+                    "Could not send the invite email because the email service is not "
+                    "working. This is not caused by the address; contact support."
+                )
             return build_error_response(
-                type_uri='email-error', title='Email Error', status_code=400,
-                detail="Could not send the invite email. Please check the email address and try again.",
+                type_uri='email-error', title='Email Error', status_code=502,
+                detail=detail,
             )
 
         employee_id = getattr(getattr(user, 'staff_profile', None), 'employee_id', '')
