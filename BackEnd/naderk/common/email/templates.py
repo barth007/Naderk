@@ -4,11 +4,11 @@ Each function returns (subject, html_body, text_body).
 Keep HTML simple — inline styles only, no external CSS.
 """
 
-from django.conf import settings
+from .branding import get_email_brand
 
 
 def _brand_name() -> str:
-    return getattr(settings, 'BRAND_NAME', 'Naderkela')
+    return get_email_brand()['brand_name']
 
 
 def _base_html(title: str, body_content: str) -> str:

@@ -95,11 +95,12 @@ def generate_and_send_otp(*, user: User) -> None:
         from naderk.common.email.providers.base import EmailMessage
         from django.conf import settings
 
-        brand = getattr(settings, 'BRAND_NAME', 'Naderkela')
+        from naderk.common.email.branding import get_email_brand
+        brand_ctx = get_email_brand()
+        brand = brand_ctx['brand_name']
         subject = f"Your {brand} Verification Code"
         html = render_to_string('email/authentication/otp.html', {
-            'brand_name': brand,
-            'brand_logo_url': getattr(settings, 'BRAND_LOGO_URL', ''),
+            **brand_ctx,
             'code': code,
             'expires_minutes': 5,
         })
