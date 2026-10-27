@@ -27,6 +27,7 @@ typing_extensions==4.15.0
 tzdata==2026.2
 tzlocal==5.3.1
 uvicorn[standard]==0.54.0
+whitenoise==6.9.0
 vine==5.1.0
 wcwidth==0.7.0
 daphne==4.1.2
