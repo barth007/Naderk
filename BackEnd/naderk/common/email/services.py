@@ -28,12 +28,13 @@ from django.utils import timezone
 from .providers.base import EmailMessage, Attachment
 from .exceptions import EmailError, EmailConfigurationError
 from ._provider_registry import get_provider
+from .branding import get_email_brand
 
 logger = logging.getLogger(__name__)
 
 
 def _brand() -> str:
-    return getattr(settings, 'BRAND_NAME', 'Naderkela')
+    return get_email_brand()['brand_name']
 
 
 def _frontend_url(path: str = '') -> str:
@@ -42,10 +43,7 @@ def _frontend_url(path: str = '') -> str:
 
 
 def _base_context() -> dict:
-    return {
-        'brand_name': _brand(),
-        'brand_logo_url': getattr(settings, 'BRAND_LOGO_URL', ''),
-    }
+    return get_email_brand()
 
 
 class EmailService:

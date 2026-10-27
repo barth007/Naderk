@@ -2438,11 +2438,12 @@ class AdminStaffListAPI(APIView):
                 # Build the invite URL pointing at the frontend reset-password page.
                 frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')
                 invite_url = f"{frontend_url}/reset-password?token={token}"
-                brand = getattr(settings, 'BRAND_NAME', 'Naderkela')
+                from naderk.common.email.branding import get_email_brand
+                brand_ctx = get_email_brand()
+                brand = brand_ctx['brand_name']
 
                 html = render_to_string('email/authentication/staff_invite.html', {
-                    'brand_name': brand,
-                    'brand_logo_url': getattr(settings, 'BRAND_LOGO_URL', ''),
+                    **brand_ctx,
                     'first_name': first_name,
                     'email': email,
                     'role_display': ROLE_DISPLAY.get(role, role.title()),
